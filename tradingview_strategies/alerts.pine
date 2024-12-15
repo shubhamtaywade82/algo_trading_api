@@ -1,0 +1,31 @@
+1. {{ticker}} - ticker of the symbol used in alert (AAPL, BTCUSD, etc.).
+
+2. {{exchange}} - exchange of the symbol used in alert (NASDAQ, NYSE, CME, etc). Note that for delayed symbols, the exchange will end with “_DL” or “_DLY.” For example, “NYMEX_DL.”
+
+3. {{close}}, {{open}}, {{high}}, {{low}}, {{time}}, {{volume}} - corresponding values of the bar on which the alert has been triggered. Note that alerts on indicators, non-standard charts and drawings depends on a resolution, while simple price alerts (e.g., price crossing some value) are always calculated on 1-minute bars. {{time}} is in UTC, formatted as yyyy-MM-ddTHH:mm:ssZ. For example, 2019-08-27T09:56:00Z. Other values are fixed-point numbers with a decimal point separating the integral and fractional parts. For example, 1245.25.
+
+4. {{timenow}} - current fire time of the alert, formatted in the same way as {{time}}. Return time to the nearest second, regardless of the resolution.
+
+5. {{plot_0}}, {{plot_1}}, ... {{plot_19}} - corresponding output series of an indicator used in the alert. Note that the plots are numbered from zero. The highest plot ID is 19 (you can access only 20 first output series). Output series are the values of an indicator you can see on a chart. For example, the built-in volume indicator has two output series: Volume and Volume MA. You can create an alert on it and type in a message box something like this: Volume: {{plot_0}}, Volume average: {{plot_1}}
+
+6. {{interval}} - returns the interval (i.e. timeframe/resolution) of the chart that the alert is created on. Note that, for technical reasons, in some cases, this placeholder will return “1” instead of the timeframe on the chart. Regular price-based alerts (with conditions such as “AAPL Crossing 120” or “AMZN Greater Than 3600”) are all based on the symbol’s last value, so the timeframe of the chart is not relevant for the alert. Because of that, all price-based alerts are actually calculated on the 1m timeframe and the placeholder will always return “1” accordingly. Additionally, Range charts are also calculated based on 1m data so the {{interval}} placeholder will always return “1” on any alert created on a Range chart. With alerts created on drawings and indicators, this placeholder will function as expected.
+
+7. {{syminfo.currency}} - returns the currency code of the current symbol (“EUR”, “USD”, etc.).
+
+8. {{syminfo.basecurrency}} - returns the base currency code of the current symbol if the symbol refers to a currency pair. Otherwise, it returns na. For example, it returns “EUR” when the symbol is “EURUSD”.
+
+
+Placeholders with the "strategy" prefix can only be used in strategy alerts:
+{{strategy.position_size}} - returns the value of the same keyword in Pine, i.e., the size of the current position.
+{{strategy.order.action}} - returns the string “buy” or “sell” for the executed order.
+{{strategy.order.contracts}} - returns the number of contracts of the executed order.
+{{strategy.order.price}} - returns the price at which the order was executed.
+{{strategy.order.id}} - returns the ID of the executed order (the string used as the first parameter in one of the function calls generating orders: strategy.entry, strategy.exit or strategy.order).
+{{strategy.order.comment}} - returns the comment of the executed order (the string used in the comment parameter in one of the function calls generating orders: strategy.entry, strategy.exit or strategy.order). If no comment is specified, then the value of strategy.order.id will be used.
+{{strategy.order.alert_message}} - returns the value of the alert_message parameter which can be used in the strategy's Pine code when calling one of the functions used to place orders: strategy.entry, strategy.exit or strategy.order. This feature is only supported in Pine v4 and higher.
+{{strategy.market_position}} - returns the current position of the strategy in string form: “long”, “flat”, or “short”.
+{{strategy.market_position_size}} - returns the size of the current position as an absolute value, i.e. a non-negative number.
+{{strategy.prev_market_position}} - returns the previous position of the strategy in string form: “long”, “flat”, or “short”.
+{{strategy.prev_market_position_size}} - returns the size of the previous position as an absolute value, i.e. a non-negative number.
+After the alert is triggered, you’ll see the corresponding values:
+

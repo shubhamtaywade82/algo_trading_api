@@ -1,0 +1,19 @@
+{
+  "ticker": "AAPL",
+  "exchange": "NASDAQ",
+  "instrument_type": "stock",
+  "action": "buy",
+  "order_type": "market",
+  "current_position": "long",
+  "previous_position": "flat",
+  "current_price": 150.5,
+  "high": 152.0,
+  "low": 149.5,
+  "volume": 1200000,
+  "time": "2024-12-15T10:30:00Z",
+  "stop_loss": 147.49,
+  "take_profit": 156.52,
+  "trailing_stop_loss": 0.0,
+  "strategy_name": "Supertrend and VWAP Strategy with JSON Alerts",
+  "strategy_id": "AAPL_SUPER_VWAP"
+}

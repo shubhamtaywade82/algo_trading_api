@@ -1,0 +1,20 @@
+//@version=6
+indicator("Supertrend and VWAP with JSON Alerts", overlay = true)
+
+// EMA Cross Conditions and Calculation
+float ema = ta.ema(close, 4)
+bool crossUp   = ta.crossover(close, ema)
+bool crossDown = ta.crossunder(close, ema)
+
+
+// JSON Alert Template
+string jsonAlert = '{' +'"ticker": "' + syminfo.ticker+ '", ' + '"instrument_type": "' + syminfo.type + '", ' +'"action": "' + (crossUp ? "buy" : "sell") + '", ' +'"order_type": "market", ' +'"current_position": "' + (crossUp ? "long" : "short") + '", ' +'"previous_position": "flat", ' +'"current_price": ' + str.tostring(close, "#.##") + ', ' +'"high": ' + str.tostring(high, "#.##") + ', ' +'"low": ' + str.tostring(low, "#.##") + ', ' +'"volume": ' + str.tostring(volume) + ', ' +'"time": "' + str.format_time(time, "yyyy-MM-dd HH:mm", syminfo.timezone) + '", ' +'"stop_loss": ' + str.tostring(close * 0.98, "#.##") + ', ' +'"take_profit": ' + str.tostring(close * 1.04, "#.##") + ', ' +'"trailing_stop_loss": 0.0, ' +'"strategy_name": "Supertrend and VWAP Strategy with JSON Alerts", ' +'"strategy_id": "' + syminfo.ticker + '_SUPER_VWAP"' +'}'
+// Trigger Alerts for CrossUp and CrossDown
+if crossUp
+    alert(jsonAlert, alert.freq_once_per_bar_close)
+if crossDown
+    alert(jsonAlert, alert.freq_once_per_bar_close)
+
+// Plot EMA for Visualization
+plot(ema, title="EMA 4", color=color.blue, linewidth=2)
+plot(ta.ema(close, 9), title="EMA 9", color=color.orange, linewidth=2)
