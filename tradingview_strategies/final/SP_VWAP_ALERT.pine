@@ -1,0 +1,39 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("Supertrend Strategy + Indicator ALERTS F", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=15)
+
+// Input Parameters
+atrPeriod = input.int(7, "ATR Length", minval = 1)
+factor = input.float(1.2, "Factor", minval = 0.01, step = 0.01)
+
+// Supertrend Calculation
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+supertrend := barstate.isfirst ? na : supertrend
+
+// Plotting Supertrend
+upTrend = plot(direction < 0 ? supertrend : na, "Up Trend", color = color.blue, style = plot.style_linebr)
+downTrend = plot(direction < 0 ? na : supertrend, "Down Trend", color = color.red, style = plot.style_linebr)
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle", display = display.none)
+fill(bodyMiddle, upTrend, color.new(color.blue, 90), fillgaps = false)
+fill(bodyMiddle, downTrend, color.new(color.red, 90), fillgaps = false)
+
+// Alert Conditions (Static Messages)
+alertcondition(direction[1] > direction, title='Downtrend to Uptrend', message='The Supertrend value switched from Downtrend to Uptrend')
+alertcondition(direction[1] < direction, title='Uptrend to Downtrend', message='The Supertrend value switched from Uptrend to Downtrend')
+alertcondition(direction[1] != direction, title='Trend Change', message='The Supertrend value switched from Uptrend to Downtrend or vice versa')
+
+// JSON Alert Template Function
+string jsonBuyAlert = '{' + '"ticker": "' + syminfo.ticker + '", ' + '"instrument_type": "' + syminfo.type + '", ' + '"action": "' + "buy" + '", ' + '"order_type": "market", ' + '"current_position": "' + "long" + '", ' + '"previous_position": "flat", ' + '"current_price": ' + str.tostring(close, "#.##") + ', ' + '"high": ' + str.tostring(high, "#.##") + ', ' + '"low": ' + str.tostring(low, "#.##") + ', ' + '"volume": ' + str.tostring(volume) + ', ' + '"time": "' + str.format_time(time, "yyyy-MM-dd HH:mm", syminfo.timezone) + '", ' + '"chart_interval": "' + timeframe.period + '", ' +  '"stop_loss": ' + str.tostring(close * 0.98, "#.##") + ', ' + '"take_profit": ' + str.tostring(close * 1.04, "#.##") + ', ' + '"trailing_stop_loss": 0.0, ' + '"strategy_name": "Supertrend Strategy + Indicator", ' + '"strategy_id": "' + syminfo.ticker + '_SUPER_VWAP"' + '}'
+
+string jsonSellAlert = '{' + '"ticker": "' + syminfo.ticker + '", ' + '"instrument_type": "' +  syminfo.type + '", ' + '"action": "' + "sell" + '", ' + '"order_type": "market", ' + '"current_position": "' + "short" + '", ' + '"previous_position": "flat", ' + '"current_price": ' + str.tostring(close, "#.##") + ', ' + '"high": ' + str.tostring(high, "#.##") + ', ' + '"low": ' + str.tostring(low, "#.##") + ', ' + '"volume": ' + str.tostring(volume) + ', ' + '"time": "' + str.format_time(time, "yyyy-MM-dd HH:mm", syminfo.timezone) + '", ' + '"chart_interval": "' + timeframe.period + '", ' +  '"stop_loss": ' + str.tostring(close * 0.98, "#.##") + ', ' + '"take_profit": ' + str.tostring(close * 1.04, "#.##") + ', ' + '"trailing_stop_loss": 0.0, ' + '"strategy_name": "Supertrend Strategy + Indicator", ' + '"strategy_id": "' + syminfo.ticker + '_SUPER_VWAP"' + '}'
+
+// Long and Short Conditions with Alerts
+if ta.change(direction) < 0
+    strategy.entry("My Long Entry Id", strategy.long)
+    alert(jsonBuyAlert, alert.freq_once_per_bar_close)
+
+if ta.change(direction) > 0
+    strategy.entry("My Short Entry Id", strategy.short)
+    alert(jsonSellAlert, alert.freq_once_per_bar_close) 
