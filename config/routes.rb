@@ -2,7 +2,7 @@ Rails.application.routes.draw do
   namespace :webhooks do
     post :tradingview, to: "alerts#create"
   end
-  
+
   resources :instruments
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.

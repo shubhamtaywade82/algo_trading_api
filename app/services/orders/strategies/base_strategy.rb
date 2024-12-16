@@ -1,10 +1,12 @@
 module Orders
   module Strategies
     class BaseStrategy
-      attr_reader :alert
+      attr_reader :alert, :instrument, :security_symbol, :exchange
 
       def initialize(alert)
         @alert = alert
+        @security_symbol = alert[:ticker]
+        @exchange = alert[:market] || "NSE"
       end
 
       def execute
@@ -13,31 +15,60 @@ module Orders
 
       private
 
-      def dhan_order_params
-        {
-          transactionType: alert[:action].upcase,
-          orderType: "MARKET",
-          productType: Dhanhq::Constants::INTRA, # Intraday by default
-          validity: "DAY"
-        }
+      # Fetch the instrument record
+      def instrument
+        @instrument ||= Instrument.find_by!(
+          exch_id: exchange,
+          underlying_symbol: security_symbol
+        )
+      rescue ActiveRecord::RecordNotFound
+        raise "Instrument not found for #{security_symbol} in #{exchange}"
       end
 
-      def fetch_security_id(symbol, exchange: nil, instrument_type: nil)
-        query = { underlying_symbol: symbol }
-        query[:exch_id] = exchange if exchange
-        # query[:instrument_type] = instrument_type if instrument_type
-        Instrument.find_by(query)&.security_id
-      end
-
-      def calculate_quantity(price, lot_size: 1, utilization: 0.3)
-        available_funds = fetch_funds * utilization
-        (available_funds / (price * lot_size)).floor
-      end
-
+      # Fetch available funds
       def fetch_funds
         Dhanhq::API::Funds.balance["availabelBalance"].to_f
       end
 
+      # Prepare common order parameters
+      def dhan_order_params
+        {
+          transactionType: alert[:action].upcase,
+          orderType: Dhanhq::Constants::MARKET,
+          productType: default_product_type,
+          validity: Dhanhq::Constants::DAY,
+          securityId: instrument.security_id,
+          exchangeSegment: map_exchange_segment(instrument.exch_id),
+          quantity: calculate_quantity(alert[:current_price])
+        }
+      end
+
+      # Map exchange segments dynamically
+      def map_exchange_segment(exchange)
+        Dhanhq::Constants::EXCHANGE_SEGMENTS.find { |seg| seg.include?(exchange) } ||
+          raise("Unsupported exchange: #{exchange}")
+      end
+
+      def calculate_quantity(price)
+        available_funds = fetch_funds * leverage_factor
+        lot_size = instrument.lot_size || 1
+        max_quantity = (available_funds / price).floor
+
+        # Adjust quantity to be a multiple of lot size
+        quantity = (max_quantity / lot_size) * lot_size
+        [ quantity, lot_size ].max
+      end
+
+      def leverage_factor
+        1.0 # Default leverage is 1x
+      end
+
+      # Default product type (can be overridden by subclasses)
+      def default_product_type
+        Dhanhq::Constants::INTRA # Default to intraday
+      end
+
+      # Place an order using Dhan API
       def place_order(params)
         Dhanhq::API::Orders.place(params)
       rescue StandardError => e
