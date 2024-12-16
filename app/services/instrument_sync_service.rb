@@ -11,9 +11,9 @@ class InstrumentSyncService
       expiry_date = parse_date(row["SM_EXPIRY_DATE"])
       next if expiry_date && expiry_date < Date.today
 
-      # Check if the instrument already exists
-      existing_instrument = Instrument.find_by(security_id: row["SECURITY_ID"])
-      next if existing_instrument # Skip if the instrument is already present
+      # # Check if the instrument already exists
+      # existing_instrument = Instrument.find_by(security_id: row["SECURITY_ID"])
+      # next if existing_instrument # Skip if the instrument is already present
 
       # Create or update the instrument
       Instrument.find_or_initialize_by(security_id: row["SECURITY_ID"]).tap do |instrument|
