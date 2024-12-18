@@ -34,11 +34,11 @@ class AlertProcessor < ApplicationService
 
   def fetch_open_position
     positions = Dhanhq::API::Portfolio.positions
-    positions.find { |pos| pos["tradingSymbol"] == alert[:ticker] }
+    positions.find { |pos| pos["tradingSymbol"] == alert[:ticker] && pos["positionType"] != "CLOSED" }
   end
 
   def position_profitable?(position)
-    position["unrealizedProfit"].to_f > 0
+    position["unrealizedProfit"].to_f > 20.00
   end
 
   def close_position(position)
@@ -57,19 +57,21 @@ class AlertProcessor < ApplicationService
     raise "Failed to close position for #{position['tradingSymbol']}: #{e.message}"
   end
 
-
-
   def select_strategy
     case alert[:instrument_type].downcase
-    when "stock" then Orders::Strategies::StockOrderStrategy.new(alert)
-    when "index", "option" then Orders::Strategies::UnifiedOptionsStrategy.new(alert)
-    when "crypto" then Orders::Strategies::CryptoOrderStrategy.new(alert)
+    when "stock"
+      case alert[:strategy_type]
+      when "intraday" then Orders::Strategies::IntradayStockStrategy.new(alert)
+      when "swing"    then Orders::Strategies::SwingStockStrategy.new(alert)
+      when "long_term" then Orders::Strategies::StockOrderStrategy.new(alert)
+      end
+    when "index", "option"
+      Orders::Strategies::OptionsStrategy.new(alert)
     else
       nil
     end
   end
 
-  # Setup trailing stop-loss if applicable
   def setup_trailing_stop_loss(order_response)
     order_details = fetch_order_details(order_response["orderId"])
 
@@ -78,7 +80,7 @@ class AlertProcessor < ApplicationService
     TrailingStopLossService.new(
       order_id: order_details["orderId"],
       security_id: order_details["securityId"],
-      transaction_type: order_details["transactionType"],
+      transaction_type: alert[:action],
       trailing_stop_loss_percentage: alert[:trailing_stop_loss]
     ).call
   end
@@ -88,8 +90,5 @@ class AlertProcessor < ApplicationService
     raise "Failed to fetch order details for order ID #{order_id}" unless response
 
     response
-  rescue StandardError => e
-    Rails.logger.error("Error fetching order details: #{e.message}")
-    nil
   end
 end

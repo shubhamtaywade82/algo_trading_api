@@ -50,17 +50,21 @@ module Orders
       end
 
       def calculate_quantity(price)
-        available_funds = fetch_funds * leverage_factor
-        lot_size = instrument.lot_size || 1
-        max_quantity = (available_funds / price).floor
+        utilized_funds = fetch_funds * funds_utilization * leverage_factor
 
-        # Adjust quantity to be a multiple of lot size
+        lot_size = instrument.lot_size || 1
+        max_quantity = (utilized_funds / price).floor
+
         quantity = (max_quantity / lot_size) * lot_size
         [ quantity, lot_size ].max
       end
 
       def leverage_factor
         1.0 # Default leverage is 1x
+      end
+
+      def funds_utilization
+        0.3 # 30% utilization of funds
       end
 
       # Default product type (can be overridden by subclasses)

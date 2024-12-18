@@ -2,6 +2,8 @@ module Orders
   module Strategies
     class OptionsStrategy < BaseStrategy
       def execute
+        strike_price = calculate_strike_price(alert[:current_price])
+        option_type = determine_option_type(alert[:action].upcase)
         raise "Lot size not found for #{alert[:ticker]}" unless instrument.lot_size
 
         place_order(
