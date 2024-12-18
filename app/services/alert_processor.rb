@@ -58,17 +58,27 @@ class AlertProcessor < ApplicationService
   end
 
   def select_strategy
+    strategy_suffix = alert[:strategy_id]&.split("_")&.last
+
     case alert[:instrument_type].downcase
     when "stock"
-      case alert[:strategy_type]
+      case strategy_suffix
       when "intraday" then Orders::Strategies::IntradayStockStrategy.new(alert)
       when "swing"    then Orders::Strategies::SwingStockStrategy.new(alert)
       when "long_term" then Orders::Strategies::StockOrderStrategy.new(alert)
+      else
+        raise "Unsupported stock strategy: #{strategy_suffix}"
       end
     when "index", "option"
-      Orders::Strategies::OptionsStrategy.new(alert)
+      case strategy_suffix
+      when "intraday" then Orders::Strategies::IntradayOptionsStrategy.new(alert)
+      when "swing"    then Orders::Strategies::SwingOptionsStrategy.new(alert)
+      when "long_term" then Orders::Strategies::LongTermOptionsStrategy.new(alert)
+      else
+        Orders::Strategies::OptionsStrategy.new(alert) # Default to generic options strategy
+      end
     else
-      nil
+      raise "Unsupported instrument type: #{alert[:instrument_type]}"
     end
   end
 
@@ -86,7 +96,7 @@ class AlertProcessor < ApplicationService
   end
 
   def fetch_order_details(order_id)
-    response = Dhanhq::API::Orders.get_order_by_id(order_id)
+    response = Dhanhq::API::Orders.find(order_id)
     raise "Failed to fetch order details for order ID #{order_id}" unless response
 
     response

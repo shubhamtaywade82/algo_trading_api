@@ -1,0 +1,37 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("Enhanced AlgoTrading Alerts", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=15)
+
+// Input Parameters
+atrPeriod = input.int(8, "ATR Length", minval=1)
+factor = input.float(1.7, "Supertrend Factor", minval=0.01, step=0.01)
+stopLossPercent = input.float(2.0, "Stop Loss (%)", minval=0.1)
+takeProfitPercent = input.float(4.0, "Take Profit (%)", minval=0.1)
+strategyType = input.string("intraday", "Strategy Type", options=["intraday", "swing", "long_term"])
+instrumentType = syminfo.type
+
+// Supertrend Calculation
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+supertrend := barstate.isfirst ? na : supertrend
+
+// Dynamic Stop Loss and Take Profit
+stopLoss = close * (direction > 0 ? (1 - stopLossPercent / 100) : (1 + stopLossPercent / 100))
+takeProfit = close * (direction > 0 ? (1 + takeProfitPercent / 100) : (1 - takeProfitPercent / 100))
+
+// Trend Change Alerts
+jsonAlert(action, position, strategy, instrument, stop, target) =>
+    '{' +'"ticker": "' + syminfo.ticker + '", ' +'"instrument_type": "' + instrument + '", ' +'"action": "' + action + '", ' +'"order_type": "market", ' +'"current_position": "' + position + '", ' +'"strategy_type": "' + strategy + '", ' +'"current_price": ' + str.tostring(close, "#.##") + ', ' +'"high": ' + str.tostring(high, "#.##") + ', ' +'"low": ' + str.tostring(low, "#.##") + ', ' +'"volume": ' + str.tostring(volume) + ', ' +'"time": "' + str.format_time(time, "yyyy-MM-dd HH:mm:ss", syminfo.timezone) + '", ' +'"chart_interval": "' + timeframe.period + '", ' +'"stop_loss": ' + str.tostring(stop, "#.##") + ', ' +'"take_profit": ' + str.tostring(target, "#.##") + ', ' +'"strategy_name": "Enhanced AlgoTrading Alerts", ' +'"strategy_id": "' + syminfo.ticker + '_' + strategy + '"' +'}'
+
+// Long and Short Alerts
+if ta.change(direction) < 0
+    strategy.entry("Long Entry", strategy.long)
+    alert(jsonAlert("buy", "long", strategyType, instrumentType, stopLoss, takeProfit), alert.freq_once_per_bar_close)
+
+if ta.change(direction) > 0
+    strategy.entry("Short Entry", strategy.short)
+    alert(jsonAlert("sell", "short", strategyType, instrumentType, stopLoss, takeProfit), alert.freq_once_per_bar_close)
+
+// Plot Supertrend
+plot(supertrend, color=direction > 0 ? color.green : color.red, title="Supertrend")
