@@ -49,6 +49,8 @@ class Instrument < ApplicationRecord
     "W" => "W"   # Weekly
   }, prefix: true
 
+  has_one :mis_detail, dependent: :destroy
+
   # Validation
   validates :instrument_type, inclusion: { in: Instrument.instrument_types.keys }
   validates :segment, inclusion: { in: Instrument.segments.keys }

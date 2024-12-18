@@ -1,0 +1,2 @@
+class MisDetailsController < ApplicationController
+end

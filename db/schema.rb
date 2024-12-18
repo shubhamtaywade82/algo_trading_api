@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2024_12_16_022320) do
+ActiveRecord::Schema[8.0].define(version: 2024_12_18_104754) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -68,6 +68,17 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_16_022320) do
     t.index ["security_id"], name: "index_instruments_on_security_id", unique: true
   end
 
+  create_table "mis_details", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.string "isin"
+    t.decimal "mis_leverage"
+    t.decimal "bo_leverage"
+    t.decimal "co_leverage"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_mis_details_on_instrument_id"
+  end
+
   create_table "orders", force: :cascade do |t|
     t.string "ticker"
     t.string "action"
@@ -95,4 +106,6 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_16_022320) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end
+
+  add_foreign_key "mis_details", "instruments"
 end
