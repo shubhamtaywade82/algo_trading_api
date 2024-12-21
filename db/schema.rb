@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2024_12_18_104754) do
+ActiveRecord::Schema[8.0].define(version: 2024_12_21_185356) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,6 +103,18 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_18_104754) do
     t.decimal "take_profit_price"
     t.string "security_id"
     t.string "status"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "strategies", force: :cascade do |t|
+    t.string "name", null: false
+    t.text "objective"
+    t.text "how_it_works"
+    t.text "risk"
+    t.text "reward"
+    t.text "best_used_when"
+    t.text "example"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end
