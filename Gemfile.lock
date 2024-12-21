@@ -2,9 +2,11 @@ PATH
   remote: ../dhanhq
   specs:
     dhanhq (0.1.0)
+      bindata
       dry-validation
       faraday
       faraday_middleware
+      websocket-driver
 
 GEM
   remote: https://rubygems.org/
@@ -87,6 +89,7 @@ GEM
     bcrypt_pbkdf (1.1.1-x86_64-darwin)
     benchmark (0.4.0)
     bigdecimal (3.1.8)
+    bindata (2.5.0)
     bootsnap (1.18.4)
       msgpack (~> 1.2)
     brakeman (6.2.2)
@@ -140,6 +143,8 @@ GEM
     erubi (1.13.0)
     et-orbi (1.2.11)
       tzinfo
+    event_emitter (0.2.6)
+    eventmachine (1.2.7)
     faraday (1.10.4)
       faraday-em_http (~> 1.0)
       faraday-em_synchrony (~> 1.0)
@@ -165,6 +170,9 @@ GEM
     faraday-retry (1.0.3)
     faraday_middleware (1.2.1)
       faraday (~> 1.0)
+    faye-websocket (0.11.3)
+      eventmachine (>= 0.12.0)
+      websocket-driver (>= 0.5.1)
     fugit (1.11.1)
       et-orbi (~> 1, >= 1.2.11)
       raabro (~> 1.4)
@@ -356,6 +364,10 @@ GEM
     unicode-emoji (4.0.4)
     uri (1.0.2)
     useragent (0.16.11)
+    websocket (1.2.11)
+    websocket-client-simple (0.8.0)
+      event_emitter
+      websocket
     websocket-driver (0.7.6)
       websocket-extensions (>= 0.1.0)
     websocket-extensions (0.1.5)
@@ -376,6 +388,7 @@ DEPENDENCIES
   debug
   dhanhq!
   dotenv
+  faye-websocket (~> 0.11.3)
   kamal
   pg (~> 1.1)
   puma (>= 5.0)
@@ -387,6 +400,7 @@ DEPENDENCIES
   solid_queue
   thruster
   tzinfo-data
+  websocket-client-simple
 
 BUNDLED WITH
    2.5.11

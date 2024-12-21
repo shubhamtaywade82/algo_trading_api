@@ -9,7 +9,9 @@ class LiveMarketFeed
   def connect
     @ws = WebSocket::Client::Simple.connect(@url)
 
-    @ws.on(:message) { |msg| handle_message(msg) }
+    @ws.on(:message) do |msg|
+      pp msg.data
+    end
     @ws.on(:open)    { Rails.logger.info "Market feed connection established." }
     @ws.on(:close)   { Rails.logger.warn "Market feed connection closed." }
     @ws.on(:error)   { |err| Rails.logger.error "Market feed error: #{err.message}" }
@@ -30,7 +32,13 @@ class LiveMarketFeed
   private
 
   def handle_message(msg)
-    data = JSON.parse(msg.data)
-    MarketFeed::DataProcessor.new(data).process
+    begin
+      data = JSON.parse(msg.data)
+      MarketFeed::DataProcessor.new(data).process
+    rescue JSON::ParserError => e
+      Rails.logger.error "Failed to parse market feed message: #{msg.data}. Error: #{e.message}"
+    rescue StandardError => e
+      Rails.logger.error "Error processing market feed message: #{e.message}"
+    end
   end
 end
