@@ -89,11 +89,57 @@ STRATEGIES_DATA = [
     reward: "High if the price moves significantly in the expected direction.",
     best_used_when: "Expecting strong movement in one direction.",
     example: "Buy 2 Nifty 24,200 CE and Sell 1 Nifty 24,000 CE."
+  },
+  {
+    name: "Iron Butterfly",
+    objective: "Profit from low volatility and a stable market.",
+    how_it_works: "Sell a straddle and buy strangles at further OTM strikes to limit risk.",
+    risk: "Limited to the net premium paid.",
+    reward: "Limited to the net premium received if the price stays near the strike price.",
+    best_used_when: "Market is expected to remain stable with low volatility.",
+    example: "Sell Nifty 24,000 CE, Sell Nifty 24,000 PE, Buy Nifty 24,100 CE, and Buy Nifty 23,900 PE."
+  },
+  {
+    name: "Short Straddle",
+    objective: "Profit from minimal price movement.",
+    how_it_works: "Sell both a call and a put at the same strike price and expiration.",
+    risk: "Unlimited if the price moves significantly in either direction.",
+    reward: "Limited to the premium received.",
+    best_used_when: "Expecting low volatility.",
+    example: "Sell Nifty 24,000 CE and 24,000 PE."
+  },
+  {
+    name: "Short Strangle",
+    objective: "Profit from minimal price movement with lower risk than a straddle.",
+    how_it_works: "Sell both a call and a put at different OTM strikes.",
+    risk: "Limited, but requires the price to stay within a range.",
+    reward: "Limited to the premium received.",
+    best_used_when: "Expecting low volatility with reduced risk.",
+    example: "Sell Nifty 24,100 CE and 23,900 PE."
+  },
+  {
+    name: "Bull Call Spread",
+    objective: "Profit from a moderate rise in the underlying price.",
+    how_it_works: "Buy a lower strike call and sell a higher strike call.",
+    risk: "Limited to the net premium paid.",
+    reward: "Limited to the difference between strike prices minus the premium paid.",
+    best_used_when: "Expecting a moderate bullish movement.",
+    example: "Buy Nifty 24,000 CE at ₹100 and Sell Nifty 24,100 CE at ₹60."
+  },
+  {
+    name: "Bear Put Spread",
+    objective: "Profit from a moderate fall in the underlying price.",
+    how_it_works: "Buy a higher strike put and sell a lower strike put.",
+    risk: "Limited to the net premium paid.",
+    reward: "Limited to the difference between strike prices minus the premium paid.",
+    best_used_when: "Expecting a moderate bearish movement.",
+    example: "Buy Nifty 24,000 PE at ₹120 and Sell Nifty 23,900 PE at ₹80."
   }
-].freeze
+]
 
 # Create strategies in the database
 STRATEGIES_DATA.each do |strategy_data|
+  next if Strategy.exists?(name: strategy_data[:name])
   Strategy.create!(strategy_data)
 end
 
