@@ -2,6 +2,7 @@ class OptionsController < ApplicationController
   def suggest_strategies
     index_symbol = params[:index_symbol]
     expiry_date = params[:expiry_date]
+    option_preference = params[:option_preference] || "both" # Default to "both"
 
     # Fetch instrument data
     instrument = Instrument.indices.find_by(underlying_symbol: index_symbol, segment: "I")
@@ -17,7 +18,7 @@ class OptionsController < ApplicationController
     )
 
     suggester = Option::StrategySuggester.new(option_chain, params)
-    strategies = suggester.suggest
+    strategies = suggester.suggest(outlook: params[:outlook], volatility: params[:volatility], risk: params[:risk], option_preference: option_preference)
 
     render json: { index_symbol: index_symbol, strategies: strategies }
   rescue StandardError => e
