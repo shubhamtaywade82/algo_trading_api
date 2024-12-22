@@ -1,7 +1,7 @@
 # app/services/websocket_handlers/market_feed_handler.rb
-require 'faye/websocket'
-require 'eventmachine'
-require 'json'
+require "faye/websocket"
+require "eventmachine"
+require "json"
 
 module WebsocketHandlers
   class MarketFeedHandler

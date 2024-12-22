@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  get "options/suggest_strategies"
   resources :mis_details
   namespace :webhooks do
     post :tradingview, to: "alerts#create"

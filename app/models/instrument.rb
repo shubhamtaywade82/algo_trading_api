@@ -54,4 +54,39 @@ class Instrument < ApplicationRecord
   # Validation
   validates :instrument_type, inclusion: { in: Instrument.instrument_types.keys }
   validates :segment, inclusion: { in: Instrument.segments.keys }
+
+  # Scopes
+  scope :equities, -> { where(instrument_type: "EQ") }
+  scope :indices, -> { where(instrument_type: "INDEX") }
+  scope :currencies, -> { where(segment: "C") }
+  scope :expiring_soon, -> { where(expiry_flag: "1") }
+
+  # Instance Methods
+  def display_name
+    "#{name} (#{instrument_type})"
+  end
+
+  def full_segment_name
+    case segment
+    when "C" then "Currency"
+    when "D" then "Derivative"
+    when "E" then "Equity"
+    when "I" then "Index"
+    when "M" then "Commodity"
+    else "Unknown"
+    end
+  end
+
+  def ltp
+    response = Dhanhq::API::MarketFeed.ltp(data: { segment => [security_id]})
+    response[:status] == "success" ? response[:data] : nil
+  end
+
+  def fetch_option_chain(expiry)
+    Dhanhq::API::Option.chain(
+      UnderlyingScrip: security_id,
+      UnderlyingSeg: segment,
+      Expiry: expiry
+    )
+  end
 end
