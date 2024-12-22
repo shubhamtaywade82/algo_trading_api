@@ -2,6 +2,8 @@ PATH
   remote: ../dhanhq
   specs:
     dhanhq (0.1.0)
+      activesupport
+      base64
       bindata
       dry-validation
       faraday
