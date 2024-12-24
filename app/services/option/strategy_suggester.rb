@@ -7,38 +7,13 @@ module Option
     end
 
     def suggest(criteria = {})
+      analysis = criteria[:analysis]
       strategies = Strategy.all
 
-      # Filter strategies based on market outlook
-      if criteria[:outlook] == "bullish"
-        strategies = strategies.where(name: [ "Long Call", "Bull Call Spread", "Long Ratio Backspread", "Protective Long Put" ])
-      elsif criteria[:outlook] == "bearish"
-        strategies = strategies.where(name: [ "Long Put", "Bear Put Spread", "Short Straddle", "Short Strangle" ])
-      end
-
-      # Filter strategies based on volatility expectations
-      if criteria[:volatility] == "high"
-        strategies = strategies.where(name: [ "Long Straddle", "Long Strangle", "Iron Butterfly", "Long Vega (Volatility Play)" ])
-      elsif criteria[:volatility] == "low"
-        strategies = strategies.where(name: [ "Short Straddle", "Short Strangle", "Iron Condor", "Iron Butterfly" ])
-      end
-
-      # Filter based on risk preference (low, moderate, high)
-      if criteria[:risk] == "low"
-        strategies = strategies.where(name: [ "Iron Condor", "Iron Butterfly", "Protective Long Put" ])
-      elsif criteria[:risk] == "moderate"
-        strategies = strategies.where(name: [ "Bull Call Spread", "Bear Put Spread", "Long Calendar Spread", "Long Ratio Backspread" ])
-      elsif criteria[:risk] == "high"
-        strategies = strategies.where(name: [ "Long Call", "Long Put", "Long Straddle", "Long Strangle" ])
-      end
-
-      # Filter strategies based on option preference (buy, sell, or both)
-      case criteria[:option_preference]
-      when "buy"
-        strategies = strategies.where(name: ["Long Call", "Long Put", "Long Straddle", "Long Strangle", "Bull Call Spread", "Bear Put Spread", "Protective Long Put", "Long Vega (Volatility Play)"])
-      when "sell"
-        strategies = strategies.where(name: ["Short Straddle", "Short Strangle", "Iron Condor", "Iron Butterfly"])
-      end
+      strategies = filter_by_outlook(strategies, criteria[:outlook])
+      strategies = filter_by_volatility(strategies, criteria[:volatility])
+      strategies = filter_by_risk(strategies, criteria[:risk])
+      strategies = filter_by_option_preference(strategies, criteria[:option_preference])
 
       # Map filtered strategies with generated examples
       strategies.map do |strategy|
@@ -109,18 +84,62 @@ module Option
 
     private
 
-    def update_examples
-      Strategy.all.each do |strategy|
-        example = generate_example(strategy.name)
-        strategy.update(example: example) if example.is_a?(String)
+    def filter_by_outlook(strategies, outlook)
+      return strategies unless outlook
+
+      case outlook
+      when "bullish"
+        strategies.where(name: [ "Long Call", "Bull Call Spread", "Long Ratio Backspread", "Protective Long Put" ])
+      when "bearish"
+        strategies.where(name: [ "Long Put", "Bear Put Spread", "Short Straddle", "Short Strangle" ])
+      else
+        strategies
+      end
+    end
+
+    def filter_by_volatility(strategies, volatility)
+      return strategies unless volatility
+
+      case volatility
+      when "high"
+        strategies.where(name: [ "Long Straddle", "Long Strangle", "Iron Butterfly", "Long Vega (Volatility Play)" ])
+      when "low"
+        strategies.where(name: [ "Short Straddle", "Short Strangle", "Iron Condor", "Iron Butterfly" ])
+      else
+        strategies
+      end
+    end
+
+    def filter_by_risk(strategies, risk)
+      return strategies unless risk
+
+      case risk
+      when "low"
+        strategies.where(name: [ "Iron Condor", "Iron Butterfly", "Protective Long Put" ])
+      when "moderate"
+        strategies.where(name: [ "Bull Call Spread", "Bear Put Spread", "Long Calendar Spread", "Long Ratio Backspread" ])
+      when "high"
+        strategies.where(name: [ "Long Call", "Long Put", "Long Straddle", "Long Strangle" ])
+      else
+        strategies
+      end
+    end
+
+    def filter_by_option_preference(strategies, preference)
+      return strategies unless preference
+
+      case preference
+      when "buy"
+        strategies.where(name: [ "Long Call", "Long Put", "Long Straddle", "Long Strangle", "Bull Call Spread", "Bear Put Spread", "Protective Long Put", "Long Vega (Volatility Play)" ])
+      when "sell"
+        strategies.where(name: [ "Short Straddle", "Short Strangle", "Iron Condor", "Iron Butterfly" ])
+      else
+        strategies
       end
     end
 
     def best_option(type)
-      options = @option_chain.dig(:data, :oc).select do |strike, data|
-        data[type].present?
-      end
-
+      options = @option_chain.dig(:data, :oc).select { |strike, data| data[type].present? }
       return nil if options.empty?
 
       options.map do |strike, data|
@@ -133,10 +152,7 @@ module Option
     end
 
     def far_option(type, position)
-      options = @option_chain.dig(:data, :oc).select do |strike, data|
-        data[type].present?
-      end
-
+      options = @option_chain.dig(:data, :oc).select { |strike, data| data[type].present? }
       return nil if options.empty?
 
       mapped_options = options.map do |strike, data|

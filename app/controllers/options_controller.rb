@@ -2,7 +2,7 @@ class OptionsController < ApplicationController
   def suggest_strategies
     index_symbol = params[:index_symbol]
     expiry_date = params[:expiry_date]
-    option_preference = params[:option_preference] || "both" # Default to "both"
+    option_preference = params[:option_preference] || "both"
 
     # Fetch instrument data
     instrument = Instrument.indices.find_by(underlying_symbol: index_symbol, segment: "I")
@@ -17,10 +17,20 @@ class OptionsController < ApplicationController
       Expiry: expiry_date
     )
 
-    suggester = Option::StrategySuggester.new(option_chain, params)
-    strategies = suggester.suggest(outlook: params[:outlook], volatility: params[:volatility], risk: params[:risk], option_preference: option_preference)
+    # Analyze the options chain
+    analysis = Option::ChainAnalyzer.new(option_chain).analyze
 
-    render json: { index_symbol: index_symbol, strategies: strategies }
+    # Suggest strategies based on analysis
+    suggester = Option::StrategySuggester.new(option_chain, params)
+    strategies = suggester.suggest(
+      analysis: analysis,
+      option_preference: option_preference,
+      outlook: params[:outlook],
+      volatility: params[:volatility],
+      risk: params[:risk]
+    )
+
+    render json: { index_symbol: index_symbol, strategies: strategies, analysis: analysis }
   rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
   end
