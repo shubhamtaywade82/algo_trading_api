@@ -145,7 +145,6 @@ GEM
     erubi (1.13.0)
     et-orbi (1.2.11)
       tzinfo
-    event_emitter (0.2.6)
     eventmachine (1.2.7)
     faraday (1.10.4)
       faraday-em_http (~> 1.0)
@@ -366,10 +365,6 @@ GEM
     unicode-emoji (4.0.4)
     uri (1.0.2)
     useragent (0.16.11)
-    websocket (1.2.11)
-    websocket-client-simple (0.8.0)
-      event_emitter
-      websocket
     websocket-driver (0.7.6)
       websocket-extensions (>= 0.1.0)
     websocket-extensions (0.1.5)
@@ -390,7 +385,7 @@ DEPENDENCIES
   debug
   dhanhq!
   dotenv
-  faye-websocket (~> 0.11.3)
+  faye-websocket
   kamal
   pg (~> 1.1)
   puma (>= 5.0)
@@ -402,7 +397,6 @@ DEPENDENCIES
   solid_queue
   thruster
   tzinfo-data
-  websocket-client-simple
 
 BUNDLED WITH
    2.5.11

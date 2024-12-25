@@ -1,8 +1,17 @@
-# config/initializers/websockets.rb
-# Thread.new do
-#   market_feed = LiveMarketFeed.new(token: ENV["DHAN_ACCESS_TOKEN"], client_id: ENV["DHAN_CLIENT_ID"])
-#   market_feed.connect
+Thread.new do
+  # Start Live Market Feed WebSocket
+  begin
+    market_feed = LiveMarketFeed.new
+    market_feed.connect
+  rescue StandardError => e
+    Rails.logger.error "[WebSocket] Error starting LiveMarketFeed: #{e.message}"
+  end
 
-#   order_update = LiveOrderUpdate.new(token: ENV["DHAN_ACCESS_TOKEN"], client_id: ENV["DHAN_CLIENT_ID"])
-#   order_update.connect
-# end
+  # Start Live Order Update WebSocket
+  begin
+    order_update = LiveOrderUpdate.new
+    order_update.connect
+  rescue StandardError => e
+    Rails.logger.error "[WebSocket] Error starting LiveOrderUpdate: #{e.message}"
+  end
+end

@@ -4,10 +4,14 @@ class TrailingStopLossJob < ApplicationJob
   def perform
     Position.where(status: "active").find_each do |position|
       latest_price = fetch_latest_price(position.ticker)
+      next unless latest_price
+
       new_stop_loss = calculate_new_stop_loss(position, latest_price)
 
       update_stop_loss_order(position, new_stop_loss) if new_stop_loss != position.stop_loss_price
     end
+  rescue StandardError => e
+    Rails.logger.error("TrailingStopLossJob failed: #{e.message}")
   end
 
   private
