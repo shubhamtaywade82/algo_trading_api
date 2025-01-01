@@ -5,13 +5,21 @@ module DhanhqMappings
     "MCX" => "Multi Commodity Exchange"
   }.freeze
 
+  # SEGMENTS = {
+  #   "IDX_I" => "Index",
+  #   "NSE_EQ" => "Equity Cash",
+  #   "NSE_FNO" => "Futures & Options",
+  #   "NSE_CURRENCY" => "Currency",
+  #   "BSE_EQ" => "Equity Cash",
+  #   "MCX_COMM" => "Commodity"
+  # }.freeze
+
   SEGMENTS = {
-    "IDX_I" => "Index",
-    "NSE_EQ" => "Equity Cash",
-    "NSE_FNO" => "Futures & Options",
-    "NSE_CURRENCY" => "Currency",
-    "BSE_EQ" => "Equity Cash",
-    "MCX_COMM" => "Commodity"
+    I: "Index",
+    E: "Equity",
+    D: "Derivatives",
+    C: "Currency",
+    M: "Commodity"
   }.freeze
 
   PRODUCT_TYPES = {

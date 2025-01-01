@@ -2,75 +2,19 @@ class Instrument < ApplicationRecord
   # Associations
   belongs_to :exchange
   belongs_to :segment
+  belongs_to :exchange_segment
   has_one :mis_detail, dependent: :destroy
 
-  # Enums
-  enum :instrument_type, {
-    "FUTCUR" => "FUTCUR",
-    "OPTCUR" => "OPTCUR",
-    "OPTIDX" => "OPTIDX",
-    "FUTIDX" => "FUTIDX",
-    "OPTSTK" => "OPTSTK",
-    "FUTSTK" => "FUTSTK",
-    "ES" => "ES",
-    "Other" => "Other",
-    "ETF" => "ETF",
-    "MF" => "MF",
-    "InvITU" => "InvITU",
-    "REIT" => "REIT",
-    "EQ" => "EQ",
-    "PS" => "PS",
-    "CB" => "CB",
-    "DBT" => "DBT",
-    "DEB" => "DEB",
-    "TB" => "TB",
-    "GB" => "GB",
-    "PN" => "PN",
-    "PTC" => "PTC",
-    "INDEX" => "INDEX",
-    "IDX" => "IDX"
-  }, prefix: :instrument_type
-
-  # enum :segment, {
-  #   "C" => "C",  # Currency
-  #   "D" => "D",  # Derivative
-  #   "E" => "E",  # Equity
-  #   "I" => "I"   # Index
-  # }, prefix: :segment
-
-  # enum :expiry_flag, {
-  #   "1" => "Immediate",
-  #   "H" => "Half Yearly",
-  #   "M" => "Monthly",
-  #   "Q" => "Quarterly",
-  #   "W" => "Weekly"
-  # }, prefix: true
+  delegate :code, to: :exchange_segment, allow_nil: true, prefix: true
 
   # Validations
-  validates :security_id, presence: true, uniqueness: true
-  validates :instrument_type, inclusion: { in: Instrument.instrument_types.keys }
-  # validates :segment, inclusion: { in: Instrument.segments.keys }
+  validates :security_id, presence: true
 
   # Scopes
   scope :equities, -> { where(instrument_type: "EQ") }
   scope :indices, -> { where(instrument_type: "INDEX") }
-  # scope :currencies, -> { where(segment: "C") }
+  scope :currencies, -> { where(segment: "C") }
   scope :expiring_soon, -> { where(expiry_flag: "1") }
-
-  # Instance Methods
-  def display_name
-    "#{symbol_name} (#{instrument_type})"
-  end
-
-  # def full_segment_name
-  #   case segment
-  #   when "C" then "Currency"
-  #   when "D" then "Derivative"
-  #   when "E" then "Equity"
-  #   when "I" then "Index"
-  #   else "Unknown"
-  #   end
-  # end
 
   # API Methods
   def ltp
@@ -100,7 +44,7 @@ class Instrument < ApplicationRecord
   def fetch_option_chain(expiry)
     Dhanhq::API::Option.chain(
       UnderlyingScrip: security_id,
-      UnderlyingSeg: segment_code_for_api,
+      UnderlyingSeg: exchange_segment_code,
       Expiry: expiry
     )
   rescue StandardError => e
@@ -108,23 +52,11 @@ class Instrument < ApplicationRecord
     nil
   end
 
-  # Helper Methods
-  def exchange_segment
-    exchange_segment_mapping[[ exch_id, segment ]] || "UNKNOWN"
-  end
 
-  private
-
-  # Maps exchange and segment to API values
-  def exchange_segment_mapping
-    {
-      [ "NSE", "E" ] => "NSE_EQ",
-      [ "NSE", "D" ] => "NSE_FNO",
-      [ "NSE", "C" ] => "NSE_CURRENCY",
-      [ "BSE", "E" ] => "BSE_EQ",
-      [ "BSE", "D" ] => "BSE_FNO",
-      [ "BSE", "C" ] => "BSE_CURRENCY",
-      [ "NSE", "I" ] => "IDX_I"
-    }
+  def expiry_list
+    Dhanhq::API::Option.expiry_list(
+      UnderlyingScrip: security_id,
+      UnderlyingSeg: exchange_segment_code,
+    )
   end
 end

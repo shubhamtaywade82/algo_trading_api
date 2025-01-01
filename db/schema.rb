@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2024_12_25_101753) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_01_150340) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -52,6 +52,16 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_25_101753) do
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
   end
 
+  create_table "exchange_segments", force: :cascade do |t|
+    t.bigint "exchange_id", null: false
+    t.bigint "segment_id", null: false
+    t.string "exchange_segment", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exchange_id"], name: "index_exchange_segments_on_exchange_id"
+    t.index ["segment_id"], name: "index_exchange_segments_on_segment_id"
+  end
+
   create_table "exchanges", force: :cascade do |t|
     t.string "exch_id"
     t.string "name"
@@ -78,7 +88,9 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_25_101753) do
     t.bigint "segment_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "exchange_segment_id", null: false
     t.index ["exchange_id"], name: "index_instruments_on_exchange_id"
+    t.index ["exchange_segment_id"], name: "index_instruments_on_exchange_segment_id"
     t.index ["security_id"], name: "index_instruments_on_security_id", unique: true
     t.index ["segment_id"], name: "index_instruments_on_segment_id"
   end
@@ -175,6 +187,9 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_25_101753) do
   end
 
   add_foreign_key "derivatives", "instruments"
+  add_foreign_key "exchange_segments", "exchanges"
+  add_foreign_key "exchange_segments", "segments"
+  add_foreign_key "instruments", "exchange_segments"
   add_foreign_key "instruments", "exchanges"
   add_foreign_key "instruments", "segments"
   add_foreign_key "margin_requirements", "instruments"

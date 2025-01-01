@@ -1,14 +1,15 @@
 module Option
   class SuggestStrategyService
     def self.call(index_symbol:, expiry_date:, params:)
-      instrument = Instrument.indices.find_by(underlying_symbol: index_symbol, segment: "I")
-      raise "Invalid index symbol." if instrument.nil?
+      instrument = Instrument.indices.find_by(underlying_symbol: index_symbol, segment: Segment.find_by(segment_code: "I"))
+      raise "Invalid index symbol.#{index_symbol}" if instrument.nil?
 
-      option_chain = Dhanhq::API::Option.chain(
-        UnderlyingScrip: instrument.security_id,
-        UnderlyingSeg: instrument.exchange_segment,
-        Expiry: expiry_date
-      )
+      option_chain = instrument.fetch_option_chain(expiry_date)
+      # Dhanhq::API::Option.chain(
+      #   UnderlyingScrip: instrument.security_id,
+      #   UnderlyingSeg: instrument.exchange_segment_code,
+      #   Expiry: expiry_date
+      # )
       analysis = ChainAnalyzer.new(option_chain).analyze
       suggester = StrategySuggester.new(option_chain, params)
 

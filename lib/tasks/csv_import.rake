@@ -1,10 +1,16 @@
 namespace :csv do
   desc "Import instruments from CSV"
   task import: :environment do
-    file_path = ENV["FILE_PATH"]
-    raise "Please provide FILE_PATH as an environment variable" unless file_path
+    begin
+      puts "Starting CSV import process..."
 
-    CsvImporter.import(file_path)
-    puts "CSV import completed successfully!"
+      # Dynamically download and import the CSV
+      CsvImporter.import
+
+      puts "CSV import completed successfully!"
+    rescue StandardError => e
+      puts "An error occurred during the import: #{e.message}"
+      puts e.backtrace.join("\n")
+    end
   end
 end
