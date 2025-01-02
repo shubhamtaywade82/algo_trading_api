@@ -1,10 +1,6 @@
 class Webhooks::AlertsController < ApplicationController
   def create
-    pp params
-
     alert = Alert.new(alert_params)
-
-
 
     if valid_alert?(alert_params)
       # Create the alert with a pending status

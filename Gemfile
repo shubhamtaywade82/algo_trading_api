@@ -49,5 +49,5 @@ end
 
 gem "csv"
 gem "dotenv"
-
 gem "faye-websocket"
+gem "whenever", "~> 1.0"

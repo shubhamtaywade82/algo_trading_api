@@ -121,9 +121,9 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_01_150340) do
   create_table "mis_details", force: :cascade do |t|
     t.bigint "instrument_id", null: false
     t.string "isin"
-    t.decimal "mis_leverage"
-    t.decimal "bo_leverage"
-    t.decimal "co_leverage"
+    t.integer "mis_leverage"
+    t.integer "bo_leverage"
+    t.integer "co_leverage"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_mis_details_on_instrument_id"

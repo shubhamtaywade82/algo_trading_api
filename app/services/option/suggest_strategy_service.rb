@@ -5,11 +5,7 @@ module Option
       raise "Invalid index symbol.#{index_symbol}" if instrument.nil?
 
       option_chain = instrument.fetch_option_chain(expiry_date)
-      # Dhanhq::API::Option.chain(
-      #   UnderlyingScrip: instrument.security_id,
-      #   UnderlyingSeg: instrument.exchange_segment_code,
-      #   Expiry: expiry_date
-      # )
+
       analysis = ChainAnalyzer.new(option_chain).analyze
       suggester = StrategySuggester.new(option_chain, params)
 

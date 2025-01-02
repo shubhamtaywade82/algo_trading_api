@@ -38,7 +38,7 @@ module Orders
           productType: default_product_type,
           validity: Dhanhq::Constants::DAY,
           securityId: instrument.security_id,
-          exchangeSegment: map_exchange_segment(instrument.exch_id),
+          exchangeSegment: map_exchange_segment(instrument.exchange_segment_code),
           quantity: calculate_quantity(alert[:current_price])
         }
       end

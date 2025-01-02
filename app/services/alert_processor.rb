@@ -9,9 +9,9 @@ class AlertProcessor < ApplicationService
     strategy = select_strategy
     raise "Strategy not found for instrument type: #{@alert[:instrument_type]}" unless strategy
 
-    order_response = strategy.execute
+    strategy.execute
 
-    setup_trailing_stop_loss(order_response) if order_response&.dig("orderId")
+    # setup_trailing_stop_loss(order_response) if order_response&.dig("orderId")
 
     @alert.update(status: "processed")
   rescue StandardError => e
@@ -29,7 +29,13 @@ class AlertProcessor < ApplicationService
 
     return unless position && position_profitable?(position)
 
-    close_position(position)
+    if opposite_signal?(position)
+      if position_profitable?(position)
+        close_position(position)
+      elsif risk_reward_hit?(position)
+        close_position(position)
+      end
+    end
   end
 
   def fetch_open_position
@@ -37,8 +43,20 @@ class AlertProcessor < ApplicationService
     positions.find { |pos| pos["tradingSymbol"] == alert[:ticker] && pos["positionType"] != "CLOSED" }
   end
 
+
   def position_profitable?(position)
     position["unrealizedProfit"].to_f > 20.00
+  end
+
+  def risk_reward_hit?(position)
+    entry_price = position["entryPrice"].to_f
+    target_price = entry_price + (entry_price - position["stopLoss"].to_f) * 2
+    current_price = position["lastTradedPrice"].to_f
+    current_price >= target_price
+  end
+
+  def opposite_signal?(position)
+    alert[:action].upcase != position["positionType"]
   end
 
   def close_position(position)
@@ -80,25 +98,5 @@ class AlertProcessor < ApplicationService
     else
       raise "Unsupported instrument type: #{alert[:instrument_type]}"
     end
-  end
-
-  def setup_trailing_stop_loss(order_response)
-    order_details = fetch_order_details(order_response["orderId"])
-
-    return unless order_details
-
-    TrailingStopLossService.new(
-      order_id: order_details["orderId"],
-      security_id: order_details["securityId"],
-      transaction_type: alert[:action],
-      trailing_stop_loss_percentage: alert[:trailing_stop_loss]
-    ).call
-  end
-
-  def fetch_order_details(order_id)
-    response = Dhanhq::API::Orders.find(order_id)
-    raise "Failed to fetch order details for order ID #{order_id}" unless response
-
-    response
   end
 end
