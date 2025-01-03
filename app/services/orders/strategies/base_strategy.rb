@@ -6,7 +6,8 @@ module Orders
       def initialize(alert)
         @alert = alert
         @security_symbol = alert[:ticker]
-        @exchange = alert[:market] || "NSE"
+        pp alert[:exchange]
+        @exchange = Exchange.find_by(exch_id: alert[:exchange])
       end
 
       def execute
@@ -18,8 +19,9 @@ module Orders
       # Fetch the instrument record
       def instrument
         @instrument ||= Instrument.find_by!(
-          exch_id: exchange,
-          underlying_symbol: security_symbol
+          exchange: exchange,
+          underlying_symbol: security_symbol,
+          instrument_type: alert[:instrument_type] == "stock" ? "ES" : "INDEX"
         )
       rescue ActiveRecord::RecordNotFound
         raise "Instrument not found for #{security_symbol} in #{exchange}"
@@ -38,7 +40,7 @@ module Orders
           productType: default_product_type,
           validity: Dhanhq::Constants::DAY,
           securityId: instrument.security_id,
-          exchangeSegment: map_exchange_segment(instrument.exch_id),
+          exchangeSegment: map_exchange_segment(instrument.exchange_segment_code),
           quantity: calculate_quantity(alert[:current_price])
         }
       end
@@ -74,7 +76,8 @@ module Orders
 
       # Place an order using Dhan API
       def place_order(params)
-        Dhanhq::API::Orders.place(params)
+        pp params
+        # Dhanhq::API::Orders.place(params)
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"
       end

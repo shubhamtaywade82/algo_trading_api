@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2024_12_21_185356) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -36,47 +36,108 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_21_185356) do
     t.string "status", default: "pending", null: false
     t.text "error_message"
     t.string "action"
+    t.string "exchange"
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"
     t.index ["ticker"], name: "index_alerts_on_ticker"
   end
 
-  create_table "instruments", force: :cascade do |t|
+  create_table "derivatives", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.decimal "strike_price"
+    t.string "option_type"
+    t.date "expiry_date"
+    t.string "expiry_flag"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
+  end
+
+  create_table "exchange_segments", force: :cascade do |t|
+    t.bigint "exchange_id", null: false
+    t.bigint "segment_id", null: false
+    t.string "exchange_segment", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exchange_id"], name: "index_exchange_segments_on_exchange_id"
+    t.index ["segment_id"], name: "index_exchange_segments_on_segment_id"
+  end
+
+  create_table "exchanges", force: :cascade do |t|
     t.string "exch_id"
-    t.string "segment"
-    t.string "security_id"
+    t.string "name"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "instruments", force: :cascade do |t|
+    t.string "security_id", null: false
     t.string "isin"
     t.string "instrument"
+    t.string "instrument_type"
+    t.string "underlying_security_id"
     t.string "underlying_symbol"
     t.string "symbol_name"
     t.string "display_name"
-    t.string "instrument_type"
+    t.string "series"
     t.integer "lot_size"
-    t.date "sm_expiry_date"
-    t.decimal "strike_price", precision: 10, scale: 2
-    t.string "option_type"
-    t.decimal "tick_size", precision: 10, scale: 2
-    t.string "expiry_flag"
+    t.decimal "tick_size", precision: 10, scale: 4
     t.string "asm_gsm_flag"
-    t.decimal "buy_co_min_margin_per", precision: 10, scale: 2
-    t.decimal "sell_co_min_margin_per", precision: 10, scale: 2
-    t.decimal "buy_bo_min_margin_per", precision: 10, scale: 2
-    t.decimal "sell_bo_min_margin_per", precision: 10, scale: 2
-    t.decimal "mtf_leverage", precision: 10, scale: 2
+    t.string "asm_gsm_category"
+    t.decimal "mtf_leverage", precision: 5, scale: 2
+    t.bigint "exchange_id"
+    t.bigint "segment_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "exchange_segment_id", null: false
+    t.index ["exchange_id"], name: "index_instruments_on_exchange_id"
+    t.index ["exchange_segment_id"], name: "index_instruments_on_exchange_segment_id"
     t.index ["security_id"], name: "index_instruments_on_security_id", unique: true
+    t.index ["segment_id"], name: "index_instruments_on_segment_id"
+  end
+
+  create_table "margin_requirements", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.decimal "buy_co_min_margin_per"
+    t.decimal "sell_co_min_margin_per"
+    t.decimal "buy_bo_min_margin_per"
+    t.decimal "sell_bo_min_margin_per"
+    t.decimal "buy_co_sl_range_max_perc"
+    t.decimal "sell_co_sl_range_max_perc"
+    t.decimal "buy_co_sl_range_min_perc"
+    t.decimal "sell_co_sl_range_min_perc"
+    t.decimal "buy_bo_sl_range_max_perc"
+    t.decimal "sell_bo_sl_range_max_perc"
+    t.decimal "buy_bo_sl_range_min_perc"
+    t.decimal "sell_bo_sl_min_range"
+    t.decimal "buy_bo_profit_range_max_perc"
+    t.decimal "sell_bo_profit_range_max_perc"
+    t.decimal "buy_bo_profit_range_min_perc"
+    t.decimal "sell_bo_profit_range_min_perc"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_margin_requirements_on_instrument_id"
   end
 
   create_table "mis_details", force: :cascade do |t|
     t.bigint "instrument_id", null: false
     t.string "isin"
-    t.decimal "mis_leverage"
-    t.decimal "bo_leverage"
-    t.decimal "co_leverage"
+    t.integer "mis_leverage"
+    t.integer "bo_leverage"
+    t.integer "co_leverage"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_mis_details_on_instrument_id"
+  end
+
+  create_table "order_features", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.string "bracket_flag"
+    t.string "cover_flag"
+    t.string "buy_sell_indicator"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_order_features_on_instrument_id"
   end
 
   create_table "orders", force: :cascade do |t|
@@ -107,6 +168,13 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_21_185356) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "segments", force: :cascade do |t|
+    t.string "segment_code"
+    t.string "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "strategies", force: :cascade do |t|
     t.string "name", null: false
     t.text "objective"
@@ -119,5 +187,13 @@ ActiveRecord::Schema[8.0].define(version: 2024_12_21_185356) do
     t.datetime "updated_at", null: false
   end
 
+  add_foreign_key "derivatives", "instruments"
+  add_foreign_key "exchange_segments", "exchanges"
+  add_foreign_key "exchange_segments", "segments"
+  add_foreign_key "instruments", "exchange_segments"
+  add_foreign_key "instruments", "exchanges"
+  add_foreign_key "instruments", "segments"
+  add_foreign_key "margin_requirements", "instruments"
   add_foreign_key "mis_details", "instruments"
+  add_foreign_key "order_features", "instruments"
 end
