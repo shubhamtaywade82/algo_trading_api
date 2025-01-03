@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_01_150340) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -36,6 +36,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_01_150340) do
     t.string "status", default: "pending", null: false
     t.text "error_message"
     t.string "action"
+    t.string "exchange"
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"
     t.index ["ticker"], name: "index_alerts_on_ticker"
