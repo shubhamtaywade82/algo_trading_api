@@ -26,8 +26,7 @@ namespace :data do
         end
 
         # Fetch the associated instruments
-        instruments = Instrument.joins(:exchange, :segment)
-                                 .where(underlying_symbol: row["Symbol / Scrip Name"], isin: row["ISIN"])
+        instruments = Instrument.where(underlying_symbol: row["Symbol / Scrip Name"], isin: row["ISIN"])
 
         if instruments.empty?
           Rails.logger.warn "No matching instruments found for Symbol: #{row['Symbol / Scrip Name']}, Exchange: #{row['Exchange ID']}, Segment: #{row['Segment Code']}"

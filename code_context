@@ -199,53 +199,40 @@ class Derivative < ApplicationRecord
 end
 
 
-# File: app/models/exchange.rb
-class Exchange < ApplicationRecord
-  has_many :exchange_segments
-  has_many :segments, through: :exchange_segments
-  has_many :instruments, through: :exchange_segments
-
-  validates :exch_id, presence: true, uniqueness: true
-  validates :name, presence: true
-end
-
-
-# File: app/models/exchange_segment.rb
-class ExchangeSegment < ApplicationRecord
-  belongs_to :exchange
-  belongs_to :segment
-  has_many :instruments
-
-  validates :exchange_segment, presence: true, uniqueness: { scope: [ :exchange_id, :segment_id ] }
-
-  def code
-    exchange_segment
-  end
-end
-
-
 # File: app/models/instrument.rb
 class Instrument < ApplicationRecord
   # Associations
-  belongs_to :exchange
-  belongs_to :segment
-  belongs_to :exchange_segment
   has_one :mis_detail, dependent: :destroy
+  has_many :derivatives, dependent: :destroy
+  has_many :margin_requirements, dependent: :destroy
+  has_many :order_features, dependent: :destroy
 
-  delegate :code, to: :exchange_segment, allow_nil: true, prefix: true
+  enum :exchange, { nse: "NSE", bse: "BSE" }
+  enum :segment, { index: "I", equity: "E", currency: "C", derivatives: "D" }, prefix: true
+  enum :instrument, {
+    index: "INDEX",
+    futures_index: "FUTIDX",
+    options_index: "OPTIDX",
+    equity: "EQUITY",
+    futures_stock: "FUTSTK",
+    options_stock: "OPTSTK",
+    futures_currency: "FUTCUR",
+    options_currency: "OPTCUR"
+  }, prefix: true
+
 
   # Validations
   validates :security_id, presence: true
 
   # Scopes
-  scope :equities, -> { where(instrument_type: "EQ") }
-  scope :indices, -> { where(instrument_type: "INDEX") }
-  scope :currencies, -> { where(segment: "C") }
+  # scope :equities, -> { where(instrument: equities) }
+  # scope :indices, -> { where(instrument: :index) }
+  # scope :currencies, -> { where(segment: "C") }
   scope :expiring_soon, -> { where(expiry_flag: "1") }
 
   # API Methods
   def ltp
-    response = Dhanhq::API::MarketFeed.ltp({ exchange_segment => [ security_id.to_i ] })
+    response = Dhanhq::API::MarketFeed.ltp(exch_segment_enum)
     response["status"] == "success" ? response.dig("data", exchange_segment, security_id.to_s, "last_price") : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch LTP for Instrument #{id}: #{e.message}")
@@ -253,7 +240,7 @@ class Instrument < ApplicationRecord
   end
 
   def ohlc
-    response = Dhanhq::API::MarketFeed.ohlc({ exchange_segment => [ security_id.to_i ] })
+    response = Dhanhq::API::MarketFeed.ohlc(exch_segment_enum)
     response["status"] == "success" ? response.dig("data", exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch OHLC for Instrument #{id}: #{e.message}")
@@ -261,7 +248,7 @@ class Instrument < ApplicationRecord
   end
 
   def depth
-    response = Dhanhq::API::MarketFeed.quote({ exchange_segment => [ security_id.to_i ] })
+    response = Dhanhq::API::MarketFeed.quote(exch_segment_enum)
     response["status"] == "success" ? response.dig("data", exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Depth for Instrument #{id}: #{e.message}")
@@ -269,22 +256,45 @@ class Instrument < ApplicationRecord
   end
 
   def fetch_option_chain(expiry)
-    Dhanhq::API::Option.chain(
-      UnderlyingScrip: security_id,
-      UnderlyingSeg: exchange_segment_code,
+    response = Dhanhq::API::Option.chain(
+      UnderlyingScrip: security_id.to_i,
+      UnderlyingSeg: exchange_segment,
       Expiry: expiry
     )
+    response["data"]
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Option Chain for Instrument #{id}: #{e.message}")
     nil
   end
 
-
   def expiry_list
-    Dhanhq::API::Option.expiry_list(
+    response = Dhanhq::API::Option.expiry_list(
       UnderlyingScrip: security_id,
-      UnderlyingSeg: exchange_segment_code,
+      UnderlyingSeg: exchange_segment,
     )
+    response["data"]
+  end
+
+  # Generate `exchange_segment` dynamically
+  def exchange_segment
+    case [ exchange.to_sym, segment.to_sym ]
+    when [ :nse, :index ] then "IDX_I"
+    when [ :bse, :index ] then "IDX_I"
+    when [ :nse, :equity ] then "NSE_EQ"
+    when [ :bse, :equity ] then "BSE_EQ"
+    when [ :nse, :derivatives ] then "NSE_FNO"
+    when [ :bse, :derivatives ] then "BSE_FNO"
+    when [ :nse, :currency ] then "NSE_CURRENCY"
+    when [ :bse, :currency ] then "BSE_CURRENCY"
+    else
+      raise "Unsupported exchange and segment combination: #{exchange}, #{segment}"
+    end
+  end
+
+  private
+
+  def exch_segment_enum
+    { exchange_segment => [ security_id.to_i ] }
   end
 end
 
@@ -332,17 +342,6 @@ class Position < ApplicationRecord
   # Validations
   validates :ticker, :action, :quantity, :entry_price, :stop_loss_price, :take_profit_price, presence: true
   validates :quantity, numericality: { only_integer: true, greater_than: 0 }
-end
-
-
-# File: app/models/segment.rb
-class Segment < ApplicationRecord
-  has_many :exchange_segments
-  has_many :exchanges, through: :exchange_segments
-  has_many :instruments, through: :exchange_segments
-
-  validates :segment_code, presence: true, uniqueness: true
-  validates :description, presence: true
 end
 
 
@@ -442,13 +441,26 @@ class AlertProcessor < ApplicationService
       else
         raise "Unsupported stock strategy: #{strategy_suffix}"
       end
-    when "index", "option"
+    when "index"
+      case strategy_suffix
+      when "intraday" then Orders::Strategies::IntradayIndexStrategy.new(alert)
+      when "swing"    then Orders::Strategies::SwingIndexStrategy.new(alert)
+      else
+        raise "Unsupported index strategy: #{strategy_suffix}"
+      end
+    when "option"
       case strategy_suffix
       when "intraday" then Orders::Strategies::IntradayOptionsStrategy.new(alert)
       when "swing"    then Orders::Strategies::SwingOptionsStrategy.new(alert)
-      when "long_term" then Orders::Strategies::LongTermOptionsStrategy.new(alert)
       else
-        Orders::Strategies::OptionsStrategy.new(alert) # Default to generic options strategy
+        raise "Unsupported options strategy: #{strategy_suffix}"
+      end
+    when "future"
+      case strategy_suffix
+      when "intraday" then Orders::Strategies::IntradayFuturesStrategy.new(alert)
+      when "swing"    then Orders::Strategies::SwingFuturesStrategy.new(alert)
+      else
+        raise "Unsupported futures strategy: #{strategy_suffix}"
       end
     else
       raise "Unsupported instrument type: #{alert[:instrument_type]}"
@@ -544,17 +556,9 @@ class CsvImporter
     file_path = download_csv
     csv_data = filter_csv_data(CSV.read(file_path, headers: true))
 
-    # Import Exchanges
-    import_exchanges(csv_data)
-
-    # Import Segments
-    import_segments(csv_data)
-
-    # Import Exchange Segments
-    import_exchange_segments(csv_data)
-
+    debugger
     # Import Instruments
-    # import_instruments(csv_data)
+    import_instruments(csv_data)
 
     # Import Derivatives
     import_derivatives(csv_data)
@@ -566,7 +570,7 @@ class CsvImporter
     import_order_features(csv_data)
 
     # Cleanup temporary file
-    File.delete(file_path) if File.exist?(file_path)
+    # File.delete(file_path) if File.exist?(file_path)
 
     puts "CSV Import completed successfully!"
   end
@@ -590,62 +594,10 @@ class CsvImporter
     end
   end
 
-  def self.import_exchanges(csv_data)
-    puts "Importing Exchanges..."
-    unique_exchanges = csv_data.map { |row| row["EXCH_ID"] }.uniq.compact
-    unique_exchanges.each do |exch_id|
-      Exchange.find_or_create_by!(exch_id: exch_id) do |exchange|
-        exchange.name = DhanhqMappings::EXCHANGES[exch_id]
-      end
-    end
-    puts "Imported Exchanges: #{unique_exchanges.join(', ')}"
-  end
-
-  def self.import_segments(csv_data)
-    puts "Importing Segments..."
-    unique_segments = csv_data.map { |row| row["SEGMENT"] }.uniq.compact
-    unique_segments.each do |segment_code|
-      Segment.find_or_create_by!(segment_code: segment_code) do |segment|
-        segment.description = DhanhqMappings::SEGMENTS[segment_code.to_sym]
-      end
-    end
-    puts "Imported Segments: #{unique_segments.join(', ')}"
-  end
-
-  def self.import_exchange_segments(csv_data)
-    puts "Importing Exchange Segments..."
-
-    # Find unique combinations of exchanges and segments
-    unique_combinations = csv_data.map { |row| [ row["EXCH_ID"], row["SEGMENT"] ] }.uniq.compact
-
-    unique_combinations.each do |exch_id, segment_code|
-      exchange = Exchange.find_by(exch_id: exch_id)
-      segment = Segment.find_by(segment_code: segment_code)
-
-      next unless exchange && segment
-
-      exchange_segment_code = derive_exchange_segment(exch_id, segment_code)
-      next unless exchange_segment_code
-
-      ExchangeSegment.find_or_create_by!(exchange: exchange, segment: segment) do |exchange_segment|
-        exchange_segment.exchange_segment = exchange_segment_code
-      end
-    end
-
-    puts "Imported Exchange Segments: #{unique_combinations.map { |c| derive_exchange_segment(c[0], c[1]) }.compact.join(', ')}"
-  end
-
   def self.import_instruments(csv_data)
     puts "Importing Instruments..."
     csv_data.each do |row|
       next if Instrument.find_by(security_id: row["SECURITY_ID"], symbol_name: row["SYMBOL_NAME"])
-      exchange_segment_code = derive_exchange_segment(row["EXCH_ID"], row["SEGMENT"])
-      exchange_segment = ExchangeSegment.find_by(exchange_segment: exchange_segment_code)
-
-      exchange = Exchange.find_by(exch_id: row["EXCH_ID"])
-      segment = Segment.find_by(segment_code: row["SEGMENT"])
-
-      next unless exchange && segment
 
       puts "Importing Instrument: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]})"
 
@@ -656,16 +608,14 @@ class CsvImporter
         underlying_symbol: row["UNDERLYING_SYMBOL"],
         symbol_name: row["SYMBOL_NAME"],
         display_name: row["DISPLAY_NAME"],
-        instrument_type: row["INSTRUMENT_TYPE"],
         series: row["SERIES"],
         lot_size: row["LOT_SIZE"].to_i.positive? ? row["LOT_SIZE"].to_i : nil,
         tick_size: row["TICK_SIZE"],
         asm_gsm_flag: row["ASM_GSM_FLAG"],
         asm_gsm_category: row["ASM_GSM_CATEGORY"],
         mtf_leverage: row["MTF_LEVERAGE"],
-        exchange: exchange,
-        segment: segment,
-        exchange_segment: exchange_segment
+        exchange: row["EXCH_ID"],
+        segment: row["SEGMENT"]
       )
     end
   end
@@ -675,7 +625,7 @@ class CsvImporter
     csv_data.each do |row|
       next unless row["STRIKE_PRICE"] && row["OPTION_TYPE"]
 
-      puts "Importing Derivatives: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]}) #{row["STRIKE_PRICE"]}  #{row["OPTION_TYPE"]} "
+      puts "Importing Derivatives: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]}) #{row["STRIKE_PRICE"]} #{row["OPTION_TYPE"]}"
       expiry_date = parse_date(row["SM_EXPIRY_DATE"])
       next unless expiry_date && expiry_date >= Date.today # Only upcoming expiries
 
@@ -735,22 +685,8 @@ class CsvImporter
     end
   end
 
-  def self.derive_exchange_segment(exch_id, segment_code)
-    {
-      [ "NSE", "I" ] => "IDX_I",
-      %w[BSE I] => "IDX_I",
-      [ "NSE", "E" ] => "NSE_EQ",
-      [ "BSE", "E" ] => "BSE_EQ",
-      [ "NSE", "D" ] => "NSE_FNO",
-      [ "BSE", "D" ] => "BSE_FNO",
-      [ "NSE", "C" ] => "NSE_CURRENCY",
-      [ "BSE", "C" ] => "BSE_CURRENCY",
-      [ "MCX", "M" ] => "MCX_COMM"
-    }[[ exch_id, segment_code ]]
-  end
-
   def self.valid_instrument?(row)
-    VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive?
+    VALID_EXCHANGES.include?(row["EXCH_ID"]) && VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive?
   end
 
   def self.valid_buy_sell_indicator?(row)
@@ -973,31 +909,31 @@ module Option
     private
 
     def calculate_max_pain
-      strikes = @options_chain.dig(:data, :oc).keys
+      strikes = @options_chain.dig(:oc).keys
       strikes.map do |strike|
-        oi_call = @options_chain.dig(:data, :oc, strike, "ce", :open_interest).to_i
-        oi_put = @options_chain.dig(:data, :oc, strike, "pe", :open_interest).to_i
+        oi_call = @options_chain.dig(:oc, strike, "ce", :open_interest).to_i
+        oi_put = @options_chain.dig(:oc, strike, "pe", :open_interest).to_i
         [ strike, oi_call + oi_put ]
       end.min_by { |_strike, combined_oi| combined_oi }&.first
     end
 
     def analyze_oi_support_resistance
-      calls = @options_chain.dig(:data, :oc).filter_map do |strike, data|
+      calls = @options_chain.dig(:oc).filter_map do |strike, data|
         { strike: strike.to_f, oi: data.dig("ce", :open_interest).to_i } if data["ce"]
       end
-      puts = @options_chain.dig(:data, :oc).filter_map do |strike, data|
+      pe = @options_chain.dig(:oc).filter_map do |strike, data|
         { strike: strike.to_f, oi: data.dig("pe", :open_interest).to_i } if data["pe"]
       end
 
       {
         resistance: calls.max_by { |c| c[:oi] }&.dig(:strike),
-        support: puts.max_by { |p| p[:oi] }&.dig(:strike)
+        support: pe.max_by { |p| p[:oi] }&.dig(:strike)
       }
     end
 
     def analyze_greeks
       greeks = %w[delta gamma theta vega].each_with_object({}) do |greek, summary|
-        values = @options_chain.dig(:data, :oc).values.flat_map do |data|
+        values = @options_chain.dig(:oc).values.flat_map do |data|
           [ data.dig("ce", greek), data.dig("pe", greek) ].compact
         end
         summary[:"#{greek}_avg"] = values.sum / values.size if values.any?
@@ -1007,8 +943,8 @@ module Option
     end
 
     def analyze_price_action
-      prices = @options_chain.dig(:data, :prices) || [] # Assume price data is available in the options chain
-      volumes = @options_chain.dig(:data, :volumes) || [] # Assume volume data is available
+      prices = @options_chain.dig(:prices) || [] # Assume price data is available in the options chain
+      volumes = @options_chain.dig(:volumes) || [] # Assume volume data is available
 
       return { bullish: false, bearish: false, neutral: true } if prices.empty? || prices.size < 5
 
@@ -1062,10 +998,11 @@ module Option
     def initialize(option_chain, params)
       @option_chain = option_chain.with_indifferent_access
       @params = params
-      @current_price = @option_chain.dig(:data, :last_price) || 0
+      @current_price = @option_chain.dig(:last_price) || 0
     end
 
     def suggest(criteria = {})
+
       analysis = criteria[:analysis]
       strategies = Strategy.all
 
@@ -1198,7 +1135,7 @@ module Option
     end
 
     def best_option(type)
-      options = @option_chain.dig(:data, :oc).select { |strike, data| data[type].present? }
+      options = @option_chain.dig(:oc).select { |strike, data| data[type].present? }
       return nil if options.empty?
 
       options.map do |strike, data|
@@ -1211,7 +1148,7 @@ module Option
     end
 
     def far_option(type, position)
-      options = @option_chain.dig(:data, :oc).select { |strike, data| data[type].present? }
+      options = @option_chain.dig(:oc).select { |strike, data| data[type].present? }
       return nil if options.empty?
 
       mapped_options = options.map do |strike, data|
@@ -1248,10 +1185,12 @@ end
 module Option
   class SuggestStrategyService
     def self.call(index_symbol:, expiry_date:, params:)
-      instrument = Instrument.indices.find_by(underlying_symbol: index_symbol, segment: Segment.find_by(segment_code: "I"))
-      raise "Invalid index symbol.#{index_symbol}" if instrument.nil?
+      instrument = Instrument.segment_index.find_by(underlying_symbol: index_symbol)
+      raise "Invalid index symbol. #{index_symbol}" if instrument.nil?
+      expiry_date = instrument.expiry_list.find { |e| e["Expiry"] == expiry_date } || instrument.expiry_list.first
 
       option_chain = instrument.fetch_option_chain(expiry_date)
+
 
       analysis = ChainAnalyzer.new(option_chain).analyze
       suggester = StrategySuggester.new(option_chain, params)
@@ -1295,7 +1234,7 @@ module Orders
         @instrument ||= Instrument.find_by!(
           exchange: exchange,
           underlying_symbol: security_symbol,
-          instrument_type: alert[:instrument_type] == "stock" ? "ES" : "OP"
+          instrument_type: alert[:instrument_type] == "stock" ? "ES" : "INDEX"
         )
       rescue ActiveRecord::RecordNotFound
         raise "Instrument not found for #{security_symbol} in #{exchange}"
@@ -1354,6 +1293,80 @@ module Orders
         # Dhanhq::API::Orders.place(params)
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"
+      end
+    end
+  end
+end
+
+
+# File: app/services/orders/strategies/intraday_futures_strategy.rb
+module Orders
+  module Strategies
+    class IntradayFuturesStrategy < BaseStrategy
+      def execute
+        place_order(dhan_order_params.merge(productType: Dhanhq::Constants::INTRA))
+      end
+    end
+  end
+end
+
+
+# File: app/services/orders/strategies/intraday_index_strategy.rb
+module Orders
+  module Strategies
+    class IntradayIndexStrategy < IntradayOptionsStrategy
+      private
+
+      def determine_option_type(action)
+        # Index uses CALL/PUT
+        super
+      end
+    end
+  end
+end
+
+
+# File: app/services/orders/strategies/intraday_options_strategy.rb
+module Orders
+  module Strategies
+    class IntradayOptionsStrategy < BaseStrategy
+      def execute
+        strike_price = calculate_strike_price(alert[:current_price])
+        option_type = determine_option_type(alert[:action].upcase)
+
+        place_order(
+          dhan_order_params.merge(
+            productType: Dhanhq::Constants::INTRA,
+            strikePrice: strike_price,
+            optionType: option_type,
+            expiryDate: nearest_expiry_date
+          )
+        )
+      end
+
+      private
+
+      def calculate_strike_price(price)
+        step = instrument.tick_size || 50
+        (price / step).round * step
+      end
+
+      def determine_option_type(action)
+        case action
+        when Dhanhq::Constants::BUY then "CE" # Call Option
+        when Dhanhq::Constants::SELL then "PE" # Put Option
+        else
+          raise "Invalid action: #{action}"
+        end
+      end
+
+      def nearest_expiry_date
+        Derivative.where(instrument: instrument)
+                  .where("expiry_date >= ?", Date.today)
+                  .order(:expiry_date)
+                  .limit(1)
+                  .pluck(:expiry_date)
+                  .first
       end
     end
   end
@@ -1453,6 +1466,43 @@ module Orders
     class StockOrderStrategy < BaseStrategy
       def execute
         place_order(dhan_order_params)
+      end
+    end
+  end
+end
+
+
+# File: app/services/orders/strategies/swing_futures_strategy.rb
+module Orders
+  module Strategies
+    class SwingFuturesStrategy < IntradayFuturesStrategy
+      private
+
+      def default_product_type
+        Dhanhq::Constants::CNC # Swing Trading Futures
+      end
+    end
+  end
+end
+
+
+# File: app/services/orders/strategies/swing_index_strategy.rb
+module Orders
+  module Strategies
+    class SwingIndexStrategy < SwingOptionsStrategy
+    end
+  end
+end
+
+
+# File: app/services/orders/strategies/swing_options_strategy.rb
+module Orders
+  module Strategies
+    class SwingOptionsStrategy < IntradayOptionsStrategy
+      private
+
+      def default_product_type
+        Dhanhq::Constants::CNC # Delivery-based options
       end
     end
   end
