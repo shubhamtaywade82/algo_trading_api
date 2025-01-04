@@ -15,12 +15,13 @@ class CreateInstruments < ActiveRecord::Migration[8.0]
       t.string :asm_gsm_flag
       t.string :asm_gsm_category
       t.decimal :mtf_leverage, precision: 5, scale: 2
-      t.references :exchange, foreign_key: true
-      t.references :segment, foreign_key: true
+      t.string :exchange, null: false
+      t.string :segment, null: false
 
       t.timestamps
     end
 
     add_index :instruments, :security_id, unique: true
+    add_index :instruments, :instrument
   end
 end

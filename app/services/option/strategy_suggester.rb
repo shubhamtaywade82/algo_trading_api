@@ -3,10 +3,11 @@ module Option
     def initialize(option_chain, params)
       @option_chain = option_chain.with_indifferent_access
       @params = params
-      @current_price = @option_chain.dig(:data, :last_price) || 0
+      @current_price = @option_chain.dig(:last_price) || 0
     end
 
     def suggest(criteria = {})
+
       analysis = criteria[:analysis]
       strategies = Strategy.all
 
@@ -139,7 +140,7 @@ module Option
     end
 
     def best_option(type)
-      options = @option_chain.dig(:data, :oc).select { |strike, data| data[type].present? }
+      options = @option_chain.dig(:oc).select { |strike, data| data[type].present? }
       return nil if options.empty?
 
       options.map do |strike, data|
@@ -152,7 +153,7 @@ module Option
     end
 
     def far_option(type, position)
-      options = @option_chain.dig(:data, :oc).select { |strike, data| data[type].present? }
+      options = @option_chain.dig(:oc).select { |strike, data| data[type].present? }
       return nil if options.empty?
 
       mapped_options = options.map do |strike, data|

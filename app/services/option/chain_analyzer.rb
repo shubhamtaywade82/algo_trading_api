@@ -16,31 +16,31 @@ module Option
     private
 
     def calculate_max_pain
-      strikes = @options_chain.dig(:data, :oc).keys
+      strikes = @options_chain.dig(:oc).keys
       strikes.map do |strike|
-        oi_call = @options_chain.dig(:data, :oc, strike, "ce", :open_interest).to_i
-        oi_put = @options_chain.dig(:data, :oc, strike, "pe", :open_interest).to_i
+        oi_call = @options_chain.dig(:oc, strike, "ce", :open_interest).to_i
+        oi_put = @options_chain.dig(:oc, strike, "pe", :open_interest).to_i
         [ strike, oi_call + oi_put ]
       end.min_by { |_strike, combined_oi| combined_oi }&.first
     end
 
     def analyze_oi_support_resistance
-      calls = @options_chain.dig(:data, :oc).filter_map do |strike, data|
+      calls = @options_chain.dig(:oc).filter_map do |strike, data|
         { strike: strike.to_f, oi: data.dig("ce", :open_interest).to_i } if data["ce"]
       end
-      puts = @options_chain.dig(:data, :oc).filter_map do |strike, data|
+      pe = @options_chain.dig(:oc).filter_map do |strike, data|
         { strike: strike.to_f, oi: data.dig("pe", :open_interest).to_i } if data["pe"]
       end
 
       {
         resistance: calls.max_by { |c| c[:oi] }&.dig(:strike),
-        support: puts.max_by { |p| p[:oi] }&.dig(:strike)
+        support: pe.max_by { |p| p[:oi] }&.dig(:strike)
       }
     end
 
     def analyze_greeks
       greeks = %w[delta gamma theta vega].each_with_object({}) do |greek, summary|
-        values = @options_chain.dig(:data, :oc).values.flat_map do |data|
+        values = @options_chain.dig(:oc).values.flat_map do |data|
           [ data.dig("ce", greek), data.dig("pe", greek) ].compact
         end
         summary[:"#{greek}_avg"] = values.sum / values.size if values.any?
@@ -50,8 +50,8 @@ module Option
     end
 
     def analyze_price_action
-      prices = @options_chain.dig(:data, :prices) || [] # Assume price data is available in the options chain
-      volumes = @options_chain.dig(:data, :volumes) || [] # Assume volume data is available
+      prices = @options_chain.dig(:prices) || [] # Assume price data is available in the options chain
+      volumes = @options_chain.dig(:volumes) || [] # Assume volume data is available
 
       return { bullish: false, bearish: false, neutral: true } if prices.empty? || prices.size < 5
 

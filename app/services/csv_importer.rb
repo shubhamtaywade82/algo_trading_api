@@ -12,17 +12,9 @@ class CsvImporter
     file_path = download_csv
     csv_data = filter_csv_data(CSV.read(file_path, headers: true))
 
-    # Import Exchanges
-    import_exchanges(csv_data)
-
-    # Import Segments
-    import_segments(csv_data)
-
-    # Import Exchange Segments
-    import_exchange_segments(csv_data)
-
+    debugger
     # Import Instruments
-    # import_instruments(csv_data)
+    import_instruments(csv_data)
 
     # Import Derivatives
     import_derivatives(csv_data)
@@ -34,7 +26,7 @@ class CsvImporter
     import_order_features(csv_data)
 
     # Cleanup temporary file
-    File.delete(file_path) if File.exist?(file_path)
+    # File.delete(file_path) if File.exist?(file_path)
 
     puts "CSV Import completed successfully!"
   end
@@ -58,62 +50,10 @@ class CsvImporter
     end
   end
 
-  def self.import_exchanges(csv_data)
-    puts "Importing Exchanges..."
-    unique_exchanges = csv_data.map { |row| row["EXCH_ID"] }.uniq.compact
-    unique_exchanges.each do |exch_id|
-      Exchange.find_or_create_by!(exch_id: exch_id) do |exchange|
-        exchange.name = DhanhqMappings::EXCHANGES[exch_id]
-      end
-    end
-    puts "Imported Exchanges: #{unique_exchanges.join(', ')}"
-  end
-
-  def self.import_segments(csv_data)
-    puts "Importing Segments..."
-    unique_segments = csv_data.map { |row| row["SEGMENT"] }.uniq.compact
-    unique_segments.each do |segment_code|
-      Segment.find_or_create_by!(segment_code: segment_code) do |segment|
-        segment.description = DhanhqMappings::SEGMENTS[segment_code.to_sym]
-      end
-    end
-    puts "Imported Segments: #{unique_segments.join(', ')}"
-  end
-
-  def self.import_exchange_segments(csv_data)
-    puts "Importing Exchange Segments..."
-
-    # Find unique combinations of exchanges and segments
-    unique_combinations = csv_data.map { |row| [ row["EXCH_ID"], row["SEGMENT"] ] }.uniq.compact
-
-    unique_combinations.each do |exch_id, segment_code|
-      exchange = Exchange.find_by(exch_id: exch_id)
-      segment = Segment.find_by(segment_code: segment_code)
-
-      next unless exchange && segment
-
-      exchange_segment_code = derive_exchange_segment(exch_id, segment_code)
-      next unless exchange_segment_code
-
-      ExchangeSegment.find_or_create_by!(exchange: exchange, segment: segment) do |exchange_segment|
-        exchange_segment.exchange_segment = exchange_segment_code
-      end
-    end
-
-    puts "Imported Exchange Segments: #{unique_combinations.map { |c| derive_exchange_segment(c[0], c[1]) }.compact.join(', ')}"
-  end
-
   def self.import_instruments(csv_data)
     puts "Importing Instruments..."
     csv_data.each do |row|
       next if Instrument.find_by(security_id: row["SECURITY_ID"], symbol_name: row["SYMBOL_NAME"])
-      exchange_segment_code = derive_exchange_segment(row["EXCH_ID"], row["SEGMENT"])
-      exchange_segment = ExchangeSegment.find_by(exchange_segment: exchange_segment_code)
-
-      exchange = Exchange.find_by(exch_id: row["EXCH_ID"])
-      segment = Segment.find_by(segment_code: row["SEGMENT"])
-
-      next unless exchange && segment
 
       puts "Importing Instrument: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]})"
 
@@ -124,16 +64,14 @@ class CsvImporter
         underlying_symbol: row["UNDERLYING_SYMBOL"],
         symbol_name: row["SYMBOL_NAME"],
         display_name: row["DISPLAY_NAME"],
-        instrument_type: row["INSTRUMENT_TYPE"],
         series: row["SERIES"],
         lot_size: row["LOT_SIZE"].to_i.positive? ? row["LOT_SIZE"].to_i : nil,
         tick_size: row["TICK_SIZE"],
         asm_gsm_flag: row["ASM_GSM_FLAG"],
         asm_gsm_category: row["ASM_GSM_CATEGORY"],
         mtf_leverage: row["MTF_LEVERAGE"],
-        exchange: exchange,
-        segment: segment,
-        exchange_segment: exchange_segment
+        exchange: row["EXCH_ID"],
+        segment: row["SEGMENT"]
       )
     end
   end
@@ -143,7 +81,7 @@ class CsvImporter
     csv_data.each do |row|
       next unless row["STRIKE_PRICE"] && row["OPTION_TYPE"]
 
-      puts "Importing Derivatives: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]}) #{row["STRIKE_PRICE"]}  #{row["OPTION_TYPE"]} "
+      puts "Importing Derivatives: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]}) #{row["STRIKE_PRICE"]} #{row["OPTION_TYPE"]}"
       expiry_date = parse_date(row["SM_EXPIRY_DATE"])
       next unless expiry_date && expiry_date >= Date.today # Only upcoming expiries
 
@@ -203,22 +141,8 @@ class CsvImporter
     end
   end
 
-  def self.derive_exchange_segment(exch_id, segment_code)
-    {
-      [ "NSE", "I" ] => "IDX_I",
-      %w[BSE I] => "IDX_I",
-      [ "NSE", "E" ] => "NSE_EQ",
-      [ "BSE", "E" ] => "BSE_EQ",
-      [ "NSE", "D" ] => "NSE_FNO",
-      [ "BSE", "D" ] => "BSE_FNO",
-      [ "NSE", "C" ] => "NSE_CURRENCY",
-      [ "BSE", "C" ] => "BSE_CURRENCY",
-      [ "MCX", "M" ] => "MCX_COMM"
-    }[[ exch_id, segment_code ]]
-  end
-
   def self.valid_instrument?(row)
-    VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive?
+    VALID_EXCHANGES.include?(row["EXCH_ID"]) && VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive?
   end
 
   def self.valid_buy_sell_indicator?(row)

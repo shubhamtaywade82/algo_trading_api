@@ -53,23 +53,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
   end
 
-  create_table "exchange_segments", force: :cascade do |t|
-    t.bigint "exchange_id", null: false
-    t.bigint "segment_id", null: false
-    t.string "exchange_segment", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["exchange_id"], name: "index_exchange_segments_on_exchange_id"
-    t.index ["segment_id"], name: "index_exchange_segments_on_segment_id"
-  end
-
-  create_table "exchanges", force: :cascade do |t|
-    t.string "exch_id"
-    t.string "name"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-  end
-
   create_table "instruments", force: :cascade do |t|
     t.string "security_id", null: false
     t.string "isin"
@@ -85,15 +68,12 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
     t.string "asm_gsm_flag"
     t.string "asm_gsm_category"
     t.decimal "mtf_leverage", precision: 5, scale: 2
-    t.bigint "exchange_id"
-    t.bigint "segment_id"
+    t.string "exchange", null: false
+    t.string "segment", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "exchange_segment_id", null: false
-    t.index ["exchange_id"], name: "index_instruments_on_exchange_id"
-    t.index ["exchange_segment_id"], name: "index_instruments_on_exchange_segment_id"
+    t.index ["instrument"], name: "index_instruments_on_instrument"
     t.index ["security_id"], name: "index_instruments_on_security_id", unique: true
-    t.index ["segment_id"], name: "index_instruments_on_segment_id"
   end
 
   create_table "margin_requirements", force: :cascade do |t|
@@ -168,13 +148,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
     t.datetime "updated_at", null: false
   end
 
-  create_table "segments", force: :cascade do |t|
-    t.string "segment_code"
-    t.string "description"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-  end
-
   create_table "strategies", force: :cascade do |t|
     t.string "name", null: false
     t.text "objective"
@@ -188,11 +161,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
   end
 
   add_foreign_key "derivatives", "instruments"
-  add_foreign_key "exchange_segments", "exchanges"
-  add_foreign_key "exchange_segments", "segments"
-  add_foreign_key "instruments", "exchange_segments"
-  add_foreign_key "instruments", "exchanges"
-  add_foreign_key "instruments", "segments"
   add_foreign_key "margin_requirements", "instruments"
   add_foreign_key "mis_details", "instruments"
   add_foreign_key "order_features", "instruments"
