@@ -7,10 +7,11 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins "*" # Update '*' with specific domains for security, e.g., 'http://localhost:3000'
+    origins "http://localhost:3000", /.*\.ngrok-free\.app/ # Allow localhost and ngrok subdomains
 
     resource "*",
              headers: :any,
-             methods: [ :get, :post, :put, :patch, :delete, :options, :head ]
+             methods: [ :get, :post, :put, :patch, :delete, :options, :head ],
+             expose: [ "Authorization" ] # Expose any custom headers your API might send
   end
 end
