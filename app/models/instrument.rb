@@ -53,16 +53,35 @@ class Instrument < ApplicationRecord
     nil
   end
 
-  def fetch_option_chain(expiry)
+  def fetch_option_chain(expiry = nil)
+    expiry = expiry ? expiry : expiry_list.first
     response = Dhanhq::API::Option.chain(
       UnderlyingScrip: security_id.to_i,
       UnderlyingSeg: exchange_segment,
       Expiry: expiry
     )
-    response["data"]
+    data = response["data"]
+    return nil unless data
+
+    filtered_data = data["oc"].select do |strike, option_data|
+      call_data = option_data["ce"]
+      put_data = option_data["pe"]
+
+      has_call_values = call_data && call_data.except("implied_volatility").values.any? { |v| numeric_value?(v) && v.to_f > 0 }
+      has_put_values = put_data && put_data.except("implied_volatility").values.any? { |v| numeric_value?(v) && v.to_f > 0 }
+
+      has_call_values || has_put_values
+    end
+
+    { last_price: data["last_price"], oc: filtered_data }
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Option Chain for Instrument #{id}: #{e.message}")
     nil
+  end
+
+  # Helper method to check if a value is numeric
+  def numeric_value?(value)
+    value.is_a?(Numeric) || value.to_s.match?(/\A-?\d+(\.\d+)?\z/)
   end
 
   def expiry_list
