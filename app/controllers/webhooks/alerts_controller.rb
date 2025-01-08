@@ -4,8 +4,9 @@ class Webhooks::AlertsController < ApplicationController
 
     if valid_alert?(alert_params)
       if alert.save
-        # Process the alert asynchronously
-        AlertProcessor.call(alert)
+        # Select the appropriate processor based on `instrument_type`
+        processor = select_processor(alert_params[:instrument_type])
+        processor.call(alert)
 
         render json: { message: "Alert processed successfully", alert: alert }, status: :ok
       else
@@ -36,5 +37,17 @@ class Webhooks::AlertsController < ApplicationController
   def parse_payload
     payload = JSON.parse(request.body.read)
     AlertValidator.new(payload)
+  end
+
+  def select_processor(instrument_type)
+    case instrument_type.downcase
+    when "stock"
+      # AlertProcessors::StocksAlertProcessor
+      AlertProcessor
+    when "index"
+      AlertProcessors::IndexAlertProcessor
+    else
+      raise "Unsupported instrument type: #{instrument_type}"
+    end
   end
 end

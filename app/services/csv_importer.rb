@@ -31,7 +31,6 @@ class CsvImporter
     puts "CSV Import completed successfully!"
   end
 
-  private
 
   def self.download_csv
     puts "Downloading CSV from #{CSV_URL}..."
@@ -57,12 +56,13 @@ class CsvImporter
 
       puts "Importing Instrument: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]})"
 
-      instrument = Instrument.find_or_initialize_by(security_id: row["SECURITY_ID"])
+      instrument = Instrument.find_or_initialize_by(security_id: row["SECURITY_ID"], symbol_name: row["SYMBOL_NAME"])
       instrument.update!(
         isin: row["ISIN"],
         instrument: row["INSTRUMENT"],
+        instrument_type: row["INSTRUMENT_TYPE"],
         underlying_symbol: row["UNDERLYING_SYMBOL"],
-        symbol_name: row["SYMBOL_NAME"],
+        underlying_security_id: row["UNDERYLING_SECURITY_ID"],
         display_name: row["DISPLAY_NAME"],
         series: row["SERIES"],
         lot_size: row["LOT_SIZE"].to_i.positive? ? row["LOT_SIZE"].to_i : nil,
@@ -72,7 +72,7 @@ class CsvImporter
         mtf_leverage: row["MTF_LEVERAGE"],
         exchange: row["EXCH_ID"],
         segment: row["SEGMENT"]
-      )
+      ) if instrument
     end
   end
 
@@ -153,7 +153,7 @@ class CsvImporter
     return true unless row["SM_EXPIRY_DATE"]
 
     expiry_date = parse_date(row["SM_EXPIRY_DATE"])
-    expiry_date.nil? || expiry_date >= Date.today || expiry_date == parse_date("1979-12-31")
+    expiry_date.nil? || expiry_date >= Date.today
   end
 
   def self.parse_date(date_string)

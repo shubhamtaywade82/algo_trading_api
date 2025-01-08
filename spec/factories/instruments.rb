@@ -1,12 +1,26 @@
 FactoryBot.define do
   factory :instrument do
-    security_id { Faker::Number.number(digits: 8) }
-    symbol_name { Faker::Finance.ticker }
-    instrument { :equity }
-    exchange { :nse }
-    segment { :equity }
-    isin { Faker::Alphanumeric.alphanumeric(number: 12) }
-    lot_size { Faker::Number.number(digits: 2) }
-    tick_size { Faker::Number.decimal(l_digits: 1, r_digits: 2) }
+    security_id { "2885" }
+    isin { "INE002A01018" }
+    instrument { "equity" }
+    instrument_type { nil }
+    underlying_security_id { nil }
+    underlying_symbol { "RELIANCE" }
+    symbol_name { "RELIANCE INDUSTRIES LTD" }
+    display_name { "Reliance Industries" }
+    series { "EQ" }
+    lot_size { 1 }
+    tick_size { 0.5 }
+    asm_gsm_flag { "N" }
+    asm_gsm_category { "NA" }
+    mtf_leverage { 3.77 }
+    exchange { "nse" }
+    segment { "equity" }
+
+    trait :bse do
+      security_id { "500325" }
+      exchange { "bse" }
+      series { "A" }
+    end
   end
 end

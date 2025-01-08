@@ -1,7 +1,7 @@
 class Instrument < ApplicationRecord
   # Associations
   has_one :mis_detail, dependent: :destroy
-  has_many :derivatives, dependent: :destroy
+  has_one :derivative, foreign_key: :instrument_id, dependent: :destroy
   has_many :margin_requirements, dependent: :destroy
   has_many :order_features, dependent: :destroy
 

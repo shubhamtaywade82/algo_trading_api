@@ -16,7 +16,7 @@ class AlertProcessor < ApplicationService
     @alert.update(status: "processed")
   rescue StandardError => e
     @alert.update(status: "failed", error_message: e.message)
-    Rails.logger.error("Failed to process alert #{@alert.id}: #{e.message}")
+    Rails.logger.error("Failed to process alert #{@alert.id}: #{e}")
   end
 
   private
