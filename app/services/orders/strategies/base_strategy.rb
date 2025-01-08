@@ -6,7 +6,6 @@ module Orders
       def initialize(alert)
         @alert = alert
         @security_symbol = alert[:ticker]
-        pp alert[:exchange]
         @exchange = Exchange.find_by(exch_id: alert[:exchange])
       end
 
@@ -76,8 +75,7 @@ module Orders
 
       # Place an order using Dhan API
       def place_order(params)
-        pp params
-        # Dhanhq::API::Orders.place(params)
+        Dhanhq::API::Orders.place(params)
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"
       end

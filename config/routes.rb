@@ -1,11 +1,21 @@
 Rails.application.routes.draw do
-  post "options/suggest_strategies"
+  namespace :options do
+    post "/suggest_strategies", to: "strategy_suggestions#index"
+  end
   resources :mis_details
   namespace :webhooks do
     post :tradingview, to: "alerts#create"
   end
 
-  resources :instruments
+  get "/funds", to: "funds#index"
+  get "/orders", to: "orders#index"
+  get "/orders/trades", to: "orders#trades"
+  get "/portfolio/holdings", to: "portfolios#holdings"
+  get "/portfolio/positions", to: "portfolios#positions"
+  get "/statements/ledger", to: "statements#ledger"
+  get "/statements/trade_history", to: "statements#trade_history"
+
+  resources :instruments, only: [ :index ]
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   # Can be used by load balancers and uptime monitors to verify that the app is live.

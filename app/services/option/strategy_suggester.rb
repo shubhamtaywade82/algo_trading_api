@@ -9,7 +9,7 @@ module Option
     def suggest(criteria)
       strategies = Strategy.all
       strategies = apply_filters(strategies, criteria)
-      pp strategies
+
       strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
     end
 

@@ -1,4 +1,4 @@
-class OptionsController < ApplicationController
+class Options::StrategySuggestionsController < ApplicationController
   def index
     strategies = Option::SuggestStrategyService.call(
       index_symbol: strategy_params[:index_symbol],

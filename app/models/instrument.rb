@@ -108,6 +108,26 @@ class Instrument < ApplicationRecord
     end
   end
 
+  # Define searchable attributes for Ransack
+  def self.ransackable_attributes(auth_object = nil)
+    [
+      "instrument",
+      "instrument_type",
+      "underlying_symbol",
+      "symbol_name",
+      "display_name",
+      "exchange",
+      "segment",
+      "created_at",
+      "updated_at"
+    ]
+  end
+
+  # Define searchable associations for Ransack
+  def self.ransackable_associations(auth_object = nil)
+    [ "derivatives", "margin_requirement", "mis_detail", "order_feature" ]
+  end
+
   private
 
   def exch_segment_enum

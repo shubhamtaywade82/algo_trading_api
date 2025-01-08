@@ -62,3 +62,7 @@ gem "csv"
 gem "dotenv"
 gem "faye-websocket"
 gem "whenever", "~> 1.0"
+
+gem "kaminari", "~> 1.2"
+
+gem "ransack", "~> 4.2"
