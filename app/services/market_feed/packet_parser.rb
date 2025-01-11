@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module MarketFeed
   class PacketParser
     def self.parse(binary_data)
@@ -5,14 +7,14 @@ module MarketFeed
       io = StringIO.new(binary_data)
 
       # Parse the Response Header
-      response_code = io.read(1).unpack1("C") # Unsigned char
-      message_length = io.read(2).unpack1("n") # Unsigned 16-bit (big-endian)
-      exchange_segment = io.read(1).unpack1("C") # Unsigned char
-      security_id = io.read(4).unpack1("N") # Unsigned 32-bit (big-endian)
+      response_code = io.read(1).unpack1('C') # Unsigned char
+      message_length = io.read(2).unpack1('n') # Unsigned 16-bit (big-endian)
+      exchange_segment = io.read(1).unpack1('C') # Unsigned char
+      security_id = io.read(4).unpack1('N') # Unsigned 32-bit (big-endian)
 
       # Fetch Payload Handler
       handler = handler_for_response_code(response_code)
-      payload = handler ? handler.new(io).parse_payload : nil
+      payload = handler&.new(io)&.parse_payload
 
       {
         response_code: response_code,

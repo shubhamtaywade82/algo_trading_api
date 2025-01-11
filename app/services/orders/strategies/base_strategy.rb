@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class BaseStrategy
-      attr_reader :alert, :instrument, :security_symbol, :exchange
+      attr_reader :alert, :security_symbol, :exchange
 
       def initialize(alert)
         @alert = alert
@@ -15,12 +17,12 @@ module Orders
 
       private
 
-      # Fetch the instrument record
+      # Fetch the instrument record for stock type
       def instrument
         @instrument ||= Instrument.find_by!(
           exchange: exchange,
           underlying_symbol: security_symbol,
-          instrument_type: alert[:instrument_type] == "stock" ? "ES" : "INDEX"
+          segment: 'equity' # Only process stocks
         )
       rescue ActiveRecord::RecordNotFound
         raise "Instrument not found for #{security_symbol} in #{exchange}"
@@ -28,18 +30,20 @@ module Orders
 
       # Fetch available funds
       def fetch_funds
-        Dhanhq::API::Funds.balance["availabelBalance"].to_f
+        Dhanhq::API::Funds.balance['availabelBalance'].to_f
+      rescue StandardError => e
+        raise "Failed to fetch funds: #{e.message}"
       end
 
-      # Prepare common order parameters
+      # Prepare common order parameters for stock
       def dhan_order_params
         {
           transactionType: alert[:action].upcase,
-          orderType: Dhanhq::Constants::MARKET,
+          orderType: alert[:order_type].upcase,
           productType: default_product_type,
           validity: Dhanhq::Constants::DAY,
           securityId: instrument.security_id,
-          exchangeSegment: map_exchange_segment(instrument.exchange_segment),
+          exchangeSegment: instrument.exchange_segment,
           quantity: calculate_quantity(alert[:current_price])
         }
       end
@@ -52,12 +56,8 @@ module Orders
 
       def calculate_quantity(price)
         utilized_funds = fetch_funds * funds_utilization * leverage_factor
-
-        lot_size = instrument.lot_size || 1
         max_quantity = (utilized_funds / price).floor
-
-        quantity = (max_quantity / lot_size) * lot_size
-        [ quantity, lot_size ].max
+        [max_quantity, 1].max
       end
 
       def leverage_factor
@@ -75,7 +75,7 @@ module Orders
 
       # Place an order using Dhan API
       def place_order(params)
-        pp params
+        Rails.logger.debug params
         Dhanhq::API::Orders.place(params)
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"

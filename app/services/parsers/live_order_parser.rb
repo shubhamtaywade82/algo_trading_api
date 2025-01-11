@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # app/services/parsers/live_order_parser.rb
 module Parsers
   class LiveOrderParser
@@ -27,7 +29,7 @@ module Parsers
     attr_reader :raw_data
 
     def extract_data
-      @parsed_data = raw_data["Data"].slice(*REQUIRED_FIELDS)
+      @parsed_data = raw_data['Data'].slice(*REQUIRED_FIELDS)
     end
 
     def validate_data

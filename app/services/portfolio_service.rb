@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class PortfolioService
   def self.fetch_holdings
     Dhanhq::API::Portfolio.holdings

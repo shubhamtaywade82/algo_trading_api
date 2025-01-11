@@ -1,6 +1,8 @@
-require "faye/websocket"
-require "eventmachine"
-require "json"
+# frozen_string_literal: true
+
+require 'faye/websocket'
+require 'eventmachine'
+require 'json'
 
 class LiveMarketFeed
   MAX_INSTRUMENTS_PER_BATCH = 100
@@ -15,7 +17,7 @@ class LiveMarketFeed
       @ws = Faye::WebSocket::Client.new(@url)
 
       @ws.on(:open) do |_event|
-        Rails.logger.info "[LiveMarketFeed] WebSocket connection established."
+        Rails.logger.info '[LiveMarketFeed] WebSocket connection established.'
       end
 
       @ws.on(:message) do |event|
@@ -53,14 +55,14 @@ class LiveMarketFeed
   def unsubscribe_all
     send_message({ RequestCode: 16 })
     @subscribed_instruments.clear
-    Rails.logger.info "[LiveMarketFeed] Unsubscribed from all instruments."
+    Rails.logger.info '[LiveMarketFeed] Unsubscribed from all instruments.'
   end
 
   private
 
   def build_url
-    token = ENV.fetch("DHAN_ACCESS_TOKEN")
-    client_id = ENV.fetch("DHAN_CLIENT_ID")
+    token = ENV.fetch('DHAN_ACCESS_TOKEN')
+    client_id = ENV.fetch('DHAN_CLIENT_ID')
     "wss://api-feed.dhan.co?version=2&token=#{token}&clientId=#{client_id}&authType=2"
   end
 
@@ -69,19 +71,17 @@ class LiveMarketFeed
       @ws.send(message.to_json)
       Rails.logger.info "[LiveMarketFeed] Sent message: #{message}"
     else
-      Rails.logger.error "[LiveMarketFeed] WebSocket connection not established. Cannot send message."
+      Rails.logger.error '[LiveMarketFeed] WebSocket connection not established. Cannot send message.'
     end
   end
 
   def handle_message(data)
-    begin
-      # Market feed messages are in binary and need to be parsed
-      parsed_data = MarketFeed::PacketParser.parse(data)
-      MarketFeed::DataProcessor.new(parsed_data).process
-    rescue JSON::ParserError => e
-      Rails.logger.error "[LiveMarketFeed] Failed to parse message: #{e.message}. Raw data: #{data}"
-    rescue StandardError => e
-      Rails.logger.error "[LiveMarketFeed] Error processing message: #{e.message}"
-    end
+    # Market feed messages are in binary and need to be parsed
+    parsed_data = MarketFeed::PacketParser.parse(data)
+    MarketFeed::DataProcessor.new(parsed_data).process
+  rescue JSON::ParserError => e
+    Rails.logger.error "[LiveMarketFeed] Failed to parse message: #{e.message}. Raw data: #{data}"
+  rescue StandardError => e
+    Rails.logger.error "[LiveMarketFeed] Error processing message: #{e.message}"
   end
 end

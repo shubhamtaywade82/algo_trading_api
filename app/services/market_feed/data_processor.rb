@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module MarketFeed
   class DataProcessor
     def initialize(data)
@@ -13,7 +15,7 @@ module MarketFeed
 
     def significant_movement?
       # Implement logic to detect significant price changes
-      @data["priceChange"] > 1.0
+      @data['priceChange'] > 1.0
     end
 
     def update_strategy

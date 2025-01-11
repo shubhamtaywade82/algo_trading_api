@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # app/services/algo_trading/stop_loss_manager.rb
 module AlgoTrading
   class StopLossManager
@@ -6,7 +8,7 @@ module AlgoTrading
     end
 
     def adjust_stop_loss(order, market_data)
-      new_stop_loss = calculate_stop_loss(market_data["last_price"])
+      new_stop_loss = calculate_stop_loss(market_data['last_price'])
       Dhanhq::API::Orders.modify(order_id: order[:id], stop_loss_price: new_stop_loss)
     end
 

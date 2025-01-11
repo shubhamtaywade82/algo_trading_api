@@ -1,17 +1,19 @@
-require "faye/websocket"
-require "eventmachine"
-require "json"
+# frozen_string_literal: true
+
+require 'faye/websocket'
+require 'eventmachine'
+require 'json'
 
 class LiveOrderUpdate
   def initialize
-    @url = "wss://api-order-update.dhan.co"
+    @url = 'wss://api-order-update.dhan.co'
     @auth_message = {
       LoginReq: {
         MsgCode: 42,
-        ClientId: ENV.fetch("DHAN_CLIENT_ID"),
-        Token: ENV.fetch("DHAN_ACCESS_TOKEN")
+        ClientId: ENV.fetch('DHAN_CLIENT_ID'),
+        Token: ENV.fetch('DHAN_ACCESS_TOKEN')
       },
-      UserType: "SELF"
+      UserType: 'SELF'
     }
   end
 
@@ -21,7 +23,7 @@ class LiveOrderUpdate
 
       @ws.on(:open) do |_event|
         authenticate
-        Rails.logger.info "[LiveOrderUpdate] WebSocket connection established."
+        Rails.logger.info '[LiveOrderUpdate] WebSocket connection established.'
       end
 
       @ws.on(:message) do |event|
@@ -44,28 +46,25 @@ class LiveOrderUpdate
   def authenticate
     if @ws
       @ws.send(@auth_message.to_json)
-      Rails.logger.info "[LiveOrderUpdate] Authentication message sent."
+      Rails.logger.info '[LiveOrderUpdate] Authentication message sent.'
     else
-      Rails.logger.error "[LiveOrderUpdate] WebSocket connection not established. Cannot authenticate."
+      Rails.logger.error '[LiveOrderUpdate] WebSocket connection not established. Cannot authenticate.'
     end
   end
 
   def handle_message(data)
-    begin
-      parsed_data = JSON.parse(data)
+    parsed_data = JSON.parse(data)
 
-      # Ensure the message type is `order_alert`
-      if parsed_data["Type"] == "order_alert"
-        process_order_update(parsed_data["Data"])
-      else
-        Rails.logger.info "[LiveOrderUpdate] Unhandled message type: #{parsed_data['Type']}"
-      end
-
-    rescue JSON::ParserError => e
-      Rails.logger.error "[LiveOrderUpdate] JSON parsing failed: #{e.message}. Raw data: #{data}"
-    rescue StandardError => e
-      Rails.logger.error "[LiveOrderUpdate] Error processing message: #{e.message}. Data: #{data}"
+    # Ensure the message type is `order_alert`
+    if parsed_data['Type'] == 'order_alert'
+      process_order_update(parsed_data['Data'])
+    else
+      Rails.logger.info "[LiveOrderUpdate] Unhandled message type: #{parsed_data['Type']}"
     end
+  rescue JSON::ParserError => e
+    Rails.logger.error "[LiveOrderUpdate] JSON parsing failed: #{e.message}. Raw data: #{data}"
+  rescue StandardError => e
+    Rails.logger.error "[LiveOrderUpdate] Error processing message: #{e.message}. Data: #{data}"
   end
 
   def process_order_update(order_data)
@@ -79,14 +78,14 @@ class LiveOrderUpdate
     end
 
     # Example: Update the order in the database
-    order = Order.find_by(dhan_order_id: order_data["OrderNo"])
+    order = Order.find_by(dhan_order_id: order_data['OrderNo'])
     if order
       order.update(
-        dhan_status: order_data["Status"],
-        traded_price: order_data["TradedPrice"],
-        remaining_quantity: order_data["RemainingQuantity"],
-        traded_quantity: order_data["TradedQty"],
-        last_updated_time: order_data["LastUpdatedTime"]
+        dhan_status: order_data['Status'],
+        traded_price: order_data['TradedPrice'],
+        remaining_quantity: order_data['RemainingQuantity'],
+        traded_quantity: order_data['TradedQty'],
+        last_updated_time: order_data['LastUpdatedTime']
       )
       Rails.logger.info "[LiveOrderUpdate] Order updated successfully: OrderNo=#{order_data['OrderNo']}"
     else

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class StatementsService
   def self.fetch_ledger(from_date, to_date)
     Dhanhq::API::Statements.ledger(from_date: from_date, to_date: to_date)

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class OrdersService
   def self.fetch_orders
     Dhanhq::API::Orders.list

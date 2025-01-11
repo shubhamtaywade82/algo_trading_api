@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateMarginRequirements < ActiveRecord::Migration[8.0]
   def change
     create_table :margin_requirements do |t|

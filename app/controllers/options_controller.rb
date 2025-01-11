@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class OptionsController < ApplicationController
   def index
     strategies = Option::SuggestStrategyService.call(
@@ -13,6 +15,7 @@ class OptionsController < ApplicationController
   private
 
   def strategy_params
-    params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference, :target_profit, :max_loss)
+    params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference,
+                                   :target_profit, :max_loss)
   end
 end

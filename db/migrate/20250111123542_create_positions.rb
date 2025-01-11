@@ -1,10 +1,12 @@
+# frozen_string_literal: true
+
 class CreatePositions < ActiveRecord::Migration[8.0]
   def change
     create_table :positions do |t|
       t.references :instrument, foreign_key: true
       t.string :trading_symbol, null: false
       t.string :security_id, null: false
-      t.string :position_type, null: false      # LONG, SHORT, CLOSED
+      t.string :position_type, null: false # LONG, SHORT, CLOSED
       t.string :exchange_segment               # NSE_EQ, NSE_FNO, etc.
       t.string :product_type, null: false      # CNC, INTRADAY, etc.
       t.decimal :buy_avg, precision: 15, scale: 2

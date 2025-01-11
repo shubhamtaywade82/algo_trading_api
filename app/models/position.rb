@@ -1,5 +1,12 @@
+# frozen_string_literal: true
+
 class Position < ApplicationRecord
-  # Validations
-  validates :ticker, :action, :quantity, :entry_price, :stop_loss_price, :take_profit_price, presence: true
-  validates :quantity, numericality: { only_integer: true, greater_than: 0 }
+  # Associations
+  belongs_to :instrument
+
+  # Enums
+  enum :position_type, { long: 'LONG', short: 'SHORT', closed: 'CLOSED' }
+  enum :product_type, { cnc: 'CNC', intraday: 'INTRADAY', margin: 'MARGIN', mtf: 'MTF', co: 'CO', bo: 'BO' }
+  enum :exchange_segment,
+       { nse_eq: 'NSE_EQ', nse_fno: 'NSE_FNO', bse_eq: 'BSE_EQ', bse_fno: 'BSE_FNO', mcx_comm: 'MCX_COMM' }
 end

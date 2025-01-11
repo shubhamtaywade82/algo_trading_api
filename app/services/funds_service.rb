@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class FundsService
   def self.fetch_funds
     Dhanhq::API::Funds.balance

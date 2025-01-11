@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module MarketFeed
   class AdjustmentStrategy
     def initialize(data)

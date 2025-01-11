@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class StatementsController < ApplicationController
   def ledger
     ledger = StatementsService.fetch_ledger(params[:from_date], params[:to_date])

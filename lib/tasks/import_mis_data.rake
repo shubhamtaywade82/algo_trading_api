@@ -1,10 +1,12 @@
+# frozen_string_literal: true
+
 namespace :data do
-  desc "Import MIS Details from CSV"
+  desc 'Import MIS Details from CSV'
   task import_mis: :environment do
-    require "csv"
+    require 'csv'
 
     # Define the path to the CSV file
-    file_path = Rails.root.join("mis_data.csv")
+    file_path = Rails.root.join('mis_data.csv')
 
     # Check if the file exists
     unless File.exist?(file_path)
@@ -18,7 +20,7 @@ namespace :data do
 
       CSV.foreach(file_path, headers: true) do |row|
         # Skip rows with missing critical data
-        if row["Symbol / Scrip Name"].blank?
+        if row['Symbol / Scrip Name'].blank?
 
           puts "Skipping row due to missing critical data: #{row.to_h}"
           Rails.logger.warn "Skipping row due to missing critical data: #{row.to_h}"
@@ -26,7 +28,7 @@ namespace :data do
         end
 
         # Fetch the associated instruments
-        instruments = Instrument.where(underlying_symbol: row["Symbol / Scrip Name"], isin: row["ISIN"])
+        instruments = Instrument.where(underlying_symbol: row['Symbol / Scrip Name'], isin: row['ISIN'])
 
         if instruments.empty?
           Rails.logger.warn "No matching instruments found for Symbol: #{row['Symbol / Scrip Name']}, Exchange: #{row['Exchange ID']}, Segment: #{row['Segment Code']}"
@@ -37,10 +39,10 @@ namespace :data do
           # Update or create MIS details for the instrument
           mis_detail = MisDetail.find_or_initialize_by(instrument: instrument)
           mis_detail.assign_attributes(
-            isin: row["ISIN"],
-            mis_leverage: row["MIS(Intraday)"]&.delete("x")&.to_i,
-            bo_leverage: row["BO(Bracket)"]&.delete("x")&.to_i,
-            co_leverage: row["CO(Cover)"]&.delete("x")&.to_i
+            isin: row['ISIN'],
+            mis_leverage: row['MIS(Intraday)']&.delete('x')&.to_i,
+            bo_leverage: row['BO(Bracket)']&.delete('x')&.to_i,
+            co_leverage: row['CO(Cover)']&.delete('x')&.to_i
           )
 
           if mis_detail.save
@@ -51,11 +53,11 @@ namespace :data do
         end
       end
 
-      puts "MIS data import completed successfully!"
+      puts 'MIS data import completed successfully!'
     rescue StandardError => e
       Rails.logger.error "An error occurred during MIS data import: #{e.message}"
       Rails.logger.error e.backtrace.join("\n")
-      puts "MIS data import failed. Check the logs for details."
+      puts 'MIS data import failed. Check the logs for details.'
     end
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_11_100704) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_11_123548) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -58,6 +58,21 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_11_100704) do
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
   end
 
+  create_table "holdings", force: :cascade do |t|
+    t.string "exchange"
+    t.string "trading_symbol", null: false
+    t.string "security_id", null: false
+    t.string "isin", null: false
+    t.integer "total_qty", null: false
+    t.integer "dp_qty"
+    t.integer "t1_qty"
+    t.integer "available_qty", null: false
+    t.integer "collateral_qty"
+    t.decimal "avg_cost_price", precision: 15, scale: 2, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "instruments", force: :cascade do |t|
     t.string "security_id", null: false
     t.string "isin"
@@ -78,7 +93,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_11_100704) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["instrument"], name: "index_instruments_on_instrument"
-    t.index ["security_id"], name: "index_instruments_on_security_id", unique: true
+    t.index ["security_id"], name: "index_instruments_on_security_id"
   end
 
   create_table "margin_requirements", force: :cascade do |t|
@@ -126,31 +141,49 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_11_100704) do
   end
 
   create_table "orders", force: :cascade do |t|
-    t.string "ticker"
-    t.string "action"
-    t.integer "quantity"
-    t.decimal "price"
-    t.string "status"
-    t.string "security_id"
-    t.string "dhan_order_id"
-    t.string "dhan_status"
-    t.decimal "stop_loss_price"
-    t.decimal "take_profit_price"
+    t.string "dhan_order_id", null: false
+    t.string "correlation_id"
+    t.string "transaction_type", null: false
+    t.string "product_type", null: false
+    t.string "order_type", null: false
+    t.string "validity"
+    t.string "exchange_segment"
+    t.string "security_id", null: false
+    t.integer "quantity", null: false
+    t.integer "disclosed_quantity"
+    t.decimal "price", precision: 15, scale: 2
+    t.decimal "trigger_price", precision: 15, scale: 2
+    t.decimal "bo_profit_value", precision: 15, scale: 2
+    t.decimal "bo_stop_loss_value", precision: 15, scale: 2
+    t.decimal "ltp", precision: 15, scale: 2
+    t.string "order_status"
+    t.integer "filled_qty"
+    t.decimal "average_traded_price", precision: 15, scale: 2
+    t.bigint "alert_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["alert_id"], name: "index_orders_on_alert_id"
   end
 
   create_table "positions", force: :cascade do |t|
-    t.string "ticker"
-    t.string "action"
-    t.integer "quantity"
-    t.decimal "entry_price"
-    t.decimal "stop_loss_price"
-    t.decimal "take_profit_price"
-    t.string "security_id"
-    t.string "status"
+    t.bigint "instrument_id"
+    t.string "trading_symbol", null: false
+    t.string "security_id", null: false
+    t.string "position_type", null: false
+    t.string "exchange_segment"
+    t.string "product_type", null: false
+    t.decimal "buy_avg", precision: 15, scale: 2
+    t.decimal "sell_avg", precision: 15, scale: 2
+    t.integer "buy_qty"
+    t.integer "sell_qty"
+    t.integer "net_qty"
+    t.decimal "cost_price", precision: 15, scale: 2
+    t.decimal "realized_profit", precision: 15, scale: 2
+    t.decimal "unrealized_profit", precision: 15, scale: 2
+    t.decimal "rbi_reference_rate", precision: 15, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_positions_on_instrument_id"
   end
 
   create_table "strategies", force: :cascade do |t|
@@ -170,4 +203,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_11_100704) do
   add_foreign_key "margin_requirements", "instruments"
   add_foreign_key "mis_details", "instruments"
   add_foreign_key "order_features", "instruments"
+  add_foreign_key "orders", "alerts"
+  add_foreign_key "positions", "instruments"
 end

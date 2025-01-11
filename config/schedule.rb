@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Use this file to easily define all of your cron jobs.
 #
 # It's helpful, but not entirely necessary to understand cron before proceeding.
@@ -19,6 +21,18 @@
 
 # Learn more: http://github.com/javan/whenever
 
+set :environment, ENV['RAILS_ENV'] || 'development'
+set :output, 'log/cron.log'
+
+# Test cron job to run every minute
 every 1.minute do
-  runner "TrailingStopLossJob.perform_now"
+  command "echo 'Cron job executed at $(date)' >> log/cron_test.log"
+end
+
+every 1.minute do
+  runner 'TrailingStopLossJob.perform_now'
+end
+
+every 5.minutes do
+  runner 'Positions::PositionManager.call'
 end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 Thread.new do
   # Start Live Market Feed WebSocket
   begin

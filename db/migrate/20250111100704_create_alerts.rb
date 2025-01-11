@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateAlerts < ActiveRecord::Migration[8.0]
   def change
     create_table :alerts do |t|
@@ -18,7 +20,7 @@ class CreateAlerts < ActiveRecord::Migration[8.0]
       t.decimal :limit_price, precision: 15, scale: 2
       t.string :strategy_name, null: false
       t.string :strategy_id, null: false
-      t.string :status, default: "pending", null: false
+      t.string :status, default: 'pending', null: false
       t.text :error_message
       t.string :action
       t.string :exchange

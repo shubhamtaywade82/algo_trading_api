@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 class StrategyFactory
   STRATEGY_MAP = {
-    "Supertrend Strategy + Indicator" => Strategies::SupertrendStrategy,
-    "VWAP Strategy" => Strategies::VWAPStrategy
+    'Supertrend Strategy + Indicator' => Strategies::SupertrendStrategy,
+    'VWAP Strategy' => Strategies::VWAPStrategy
   }.freeze
 
   def self.build(strategy_name)

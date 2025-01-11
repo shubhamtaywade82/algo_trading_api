@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class PortfoliosController < ApplicationController
   def holdings
     holdings = PortfolioService.fetch_holdings

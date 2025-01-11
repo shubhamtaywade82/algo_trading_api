@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class MisDetailsController < ApplicationController
   def index
     # Use Ransack for searching
@@ -7,10 +9,10 @@ class MisDetailsController < ApplicationController
     # Prepare the response with associated instrument details
     render json: {
       mis_details: mis_details.as_json(include: {
-        instrument: {
-          only: %i[id symbol_name display_name exchange segment instrument_type]
-        }
-      }),
+                                         instrument: {
+                                           only: %i[id symbol_name display_name exchange segment instrument_type]
+                                         }
+                                       }),
       meta: {
         current_page: mis_details.current_page,
         total_pages: mis_details.total_pages,
