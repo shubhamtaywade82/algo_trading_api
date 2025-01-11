@@ -21,7 +21,7 @@ class CreateInstruments < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :instruments, :security_id, unique: true
+    add_index :instruments, :security_id
     add_index :instruments, :instrument
   end
 end

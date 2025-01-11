@@ -9,6 +9,7 @@ class CsvImporter
   VALID_INSTRUMENTS = %w[OPTIDX FUTIDX OPTSTK FUTSTK EQUITY INDEX].freeze
   VALID_BUY_SELL_INDICATOR = %w[A].freeze # A means both Buy and Sell are allowed
 
+
   def self.import
     file_path = download_csv
     csv_data = filter_csv_data(CSV.read(file_path, headers: true))
