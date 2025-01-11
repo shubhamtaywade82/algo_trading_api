@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_11_091416) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_11_100704) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,16 +29,19 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_11_091416) do
     t.decimal "stop_price", precision: 15, scale: 2
     t.decimal "take_profit", precision: 15, scale: 2
     t.decimal "trailing_stop_loss", precision: 15, scale: 2
+    t.decimal "limit_price", precision: 15, scale: 2
     t.string "strategy_name", null: false
     t.string "strategy_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.string "status", default: "pending", null: false
     t.text "error_message"
     t.string "action"
     t.string "exchange"
-    t.decimal "limit_price", precision: 15, scale: 2
     t.string "strategy_type"
+    t.decimal "stop_loss", precision: 15, scale: 2
+    t.bigint "instrument_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_alerts_on_instrument_id"
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"
     t.index ["ticker"], name: "index_alerts_on_ticker"
@@ -162,6 +165,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_11_091416) do
     t.datetime "updated_at", null: false
   end
 
+  add_foreign_key "alerts", "instruments"
   add_foreign_key "derivatives", "instruments"
   add_foreign_key "margin_requirements", "instruments"
   add_foreign_key "mis_details", "instruments"
