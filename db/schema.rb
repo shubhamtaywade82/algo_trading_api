@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_11_091416) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -26,7 +26,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
     t.decimal "volume", precision: 15, scale: 6
     t.datetime "time", null: false
     t.string "chart_interval"
-    t.decimal "stop_loss", precision: 15, scale: 2
+    t.decimal "stop_price", precision: 15, scale: 2
     t.decimal "take_profit", precision: 15, scale: 2
     t.decimal "trailing_stop_loss", precision: 15, scale: 2
     t.string "strategy_name", null: false
@@ -37,6 +37,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_02_074130) do
     t.text "error_message"
     t.string "action"
     t.string "exchange"
+    t.decimal "limit_price", precision: 15, scale: 2
+    t.string "strategy_type"
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"
     t.index ["ticker"], name: "index_alerts_on_ticker"
