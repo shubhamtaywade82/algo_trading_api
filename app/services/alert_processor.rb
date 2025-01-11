@@ -94,20 +94,6 @@ class AlertProcessor < ApplicationService
       else
         raise "Unsupported index strategy: #{strategy_suffix}"
       end
-    when "option"
-      case strategy_suffix
-      when "intraday" then Orders::Strategies::IntradayOptionsStrategy.new(alert)
-      when "swing"    then Orders::Strategies::SwingOptionsStrategy.new(alert)
-      else
-        raise "Unsupported options strategy: #{strategy_suffix}"
-      end
-    when "future"
-      case strategy_suffix
-      when "intraday" then Orders::Strategies::IntradayFuturesStrategy.new(alert)
-      when "swing"    then Orders::Strategies::SwingFuturesStrategy.new(alert)
-      else
-        raise "Unsupported futures strategy: #{strategy_suffix}"
-      end
     else
       raise "Unsupported instrument type: #{alert[:instrument_type]}"
     end
