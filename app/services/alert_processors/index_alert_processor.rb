@@ -130,7 +130,7 @@ module AlertProcessors
       max_quantity = (max_allocation / price).floor # Maximum quantity based on allocation
       adjusted_quantity = (max_quantity / lot_size) * lot_size # Adjust to nearest lot size
 
-      [adjusted_quantity, lot_size].max # Ensure at least one lot
+      [ adjusted_quantity, lot_size ].max # Ensure at least one lot
     end
   end
 end
