@@ -3,16 +3,16 @@ require "open-uri"
 
 class CsvImporter
   CSV_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv".freeze
+
   VALID_EXCHANGES = %w[NSE BSE].freeze
-  VALID_SEGMENTS = %w[C D E I].freeze
-  VALID_INSTRUMENTS = %w[FUTCUR OPTCUR OPTIDX FUTIDX OPTSTK FUTSTK EQUITY INDEX].freeze
+  VALID_SEGMENTS = %w[D E I].freeze
+  VALID_INSTRUMENTS = %w[OPTIDX FUTIDX OPTSTK FUTSTK EQUITY INDEX].freeze
   VALID_BUY_SELL_INDICATOR = %w[A].freeze # A means both Buy and Sell are allowed
 
   def self.import
     file_path = download_csv
     csv_data = filter_csv_data(CSV.read(file_path, headers: true))
 
-    debugger
     # Import Instruments
     import_instruments(csv_data)
 
@@ -142,7 +142,7 @@ class CsvImporter
   end
 
   def self.valid_instrument?(row)
-    VALID_EXCHANGES.include?(row["EXCH_ID"]) && VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive?
+    VALID_EXCHANGES.include?(row["EXCH_ID"]) && VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive? && VALID_SEGMENTS.include?(row["SEGMENT"])
   end
 
   def self.valid_buy_sell_indicator?(row)
