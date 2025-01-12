@@ -33,6 +33,26 @@ class CsvImporter
     Rails.logger.debug 'CSV Import completed successfully!'
   end
 
+  def self.import_csv_data(file_path)
+    Rails.logger.debug 'Importing filtered CSV data...'
+    csv_data = filter_csv_data(CSV.read(file_path, headers: true))
+    # Import Instruments
+    import_instruments(csv_data)
+
+    # Import Derivatives
+    import_derivatives(csv_data)
+
+    # Import Margin Requirements
+    import_margin_requirements(csv_data)
+
+    # Import Order Features
+    import_order_features(csv_data)
+
+    Rails.logger.debug 'Filtered CSV Import completed successfully!'
+    pp Instrument.count
+    pp Instrument.select(:segment).distinct
+  end
+
   def self.download_csv
     Rails.logger.debug { "Downloading CSV from #{CSV_URL}..." }
     tmp_file = Rails.root.join('tmp/api-scrip-master-detailed.csv')
@@ -58,7 +78,7 @@ class CsvImporter
       instrument = Instrument.find_or_initialize_by(security_id: row['SECURITY_ID'], symbol_name: row['SYMBOL_NAME'])
       next unless instrument
 
-      instrument.update!(
+      instrument.update(
         isin: row['ISIN'],
         instrument: row['INSTRUMENT'],
         instrument_type: row['INSTRUMENT_TYPE'],
