@@ -6,6 +6,7 @@ class Instrument < ApplicationRecord
   has_one :derivative, dependent: :destroy
   has_many :margin_requirements, dependent: :destroy
   has_many :order_features, dependent: :destroy
+  has_many :alerts, dependent: :destroy
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivative, allow_destroy: true

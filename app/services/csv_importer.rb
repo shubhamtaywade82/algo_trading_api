@@ -49,8 +49,6 @@ class CsvImporter
     import_order_features(csv_data)
 
     Rails.logger.debug 'Filtered CSV Import completed successfully!'
-    pp Instrument.count
-    pp Instrument.select(:segment).distinct
   end
 
   def self.download_csv

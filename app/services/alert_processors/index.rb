@@ -2,7 +2,7 @@
 
 module AlertProcessors
   class Index < Base
-    attr_reader :alert, :security_symbol, :exchange
+    attr_reader :alert, :exchange
 
     def call
       expiry = instrument.expiry_list.first
@@ -24,6 +24,10 @@ module AlertProcessors
 
     private
 
+    def security_symbol
+      instrument.symbol_name
+    end
+
     # Fetch the instrument record
     def instrument
       @instrument ||= Instrument.find_by!(
@@ -43,6 +47,9 @@ module AlertProcessors
     end
 
     def fetch_instrument_for_strike(strike_price, expiry_date, option_type)
+      pp strike_price
+      pp expiry_date
+      pp option_type
       Instrument.joins(:derivative)
                 .where(
                   "instruments.segment = ? AND
@@ -75,7 +82,7 @@ module AlertProcessors
         next unless data[option_type]
 
         {
-          strike_price: strike.to_f,
+          strike_price: strike.to_i,
           last_price: data[option_type]['last_price'].to_f,
           oi: data[option_type]['oi'].to_i,
           iv: data[option_type]['implied_volatility'].to_f,
