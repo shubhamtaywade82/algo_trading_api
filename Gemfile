@@ -59,8 +59,8 @@ end
 
 group :development do
   gem 'dotenv-rails' # Environment variable management
-  gem 'pry-byebug' # Debugging
-  gem 'pry-rails' # Debugging
+  # gem 'pry-byebug' # Debugging
+  # gem 'pry-rails' # Debugging
 end
 
 # Code Quality

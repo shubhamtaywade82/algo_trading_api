@@ -47,9 +47,6 @@ module AlertProcessors
     end
 
     def fetch_instrument_for_strike(strike_price, expiry_date, option_type)
-      pp strike_price
-      pp expiry_date
-      pp option_type
       Instrument.joins(:derivative)
                 .where(
                   "instruments.segment = ? AND

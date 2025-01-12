@@ -221,11 +221,8 @@ end
 
 # Prepare and import test data before tests run
 RSpec.configure do |config|
-  config.before(:suite) do
-    TestCsvImporter.prepare_test_csvs
-    TestCsvImporter.import_to_test_db
-    pp Instrument.count
-    pp Instrument.select(:segment).distinct
-    pp MisDetail.count
-  end
+  # config.before(:suite) do
+  #   TestCsvImporter.prepare_test_csvs
+  #   TestCsvImporter.import_to_test_db
+  # end
 end

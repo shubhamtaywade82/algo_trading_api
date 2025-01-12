@@ -16,7 +16,7 @@ module Webhooks
           processor = AlertProcessorFactory.build(alert)
           processor.call
 
-          render json: { message: 'Alert processed successfully', alert: alert }, status: :ok
+          render json: { message: 'Alert processed successfully', alert: alert }, status: :created
         else
           render json: { error: 'Failed to save alert', details: alert.errors.full_messages },
                  status: :unprocessable_entity

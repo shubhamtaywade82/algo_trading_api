@@ -45,6 +45,7 @@ module AlgoTradingApp
 
     config.hosts << /.*\.ngrok-free\.app/
     config.hosts << 'localhost'
+    config.hosts << /.*/
 
     config.after_initialize do
       # Update crontab on server start
