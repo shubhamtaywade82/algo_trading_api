@@ -2,24 +2,36 @@
 
 require 'rails_helper'
 
-RSpec.describe AlertProcessorFactory, type: :factory do
+RSpec.describe AlertProcessorFactory, type: :service do
+  let!(:instrument) { create(:instrument) } # Ensure the instrument exists for associated alerts
+
   describe '.build' do
-    let(:stock_alert) { build(:alert, instrument_type: 'stock') }
-    let(:index_alert) { build(:alert, instrument_type: 'index') }
+    context 'when instrument type is stock' do
+      let(:stock_alert) { build(:alert, instrument_type: 'stock', instrument_id: instrument.id) }
 
-    it 'returns a Stock processor for stock alerts' do
-      processor = described_class.build(stock_alert)
-      expect(processor).to be_a(AlertProcessors::Stock)
+      it 'returns a Stock processor' do
+        processor = described_class.build(stock_alert)
+        expect(processor).to be_a(AlertProcessors::Stock)
+      end
     end
 
-    it 'returns an Index processor for index alerts' do
-      processor = described_class.build(index_alert)
-      expect(processor).to be_a(AlertProcessors::Index)
+    context 'when instrument type is index' do
+      let(:index_alert) { build(:alert, instrument_type: 'index', instrument_id: create(:instrument, :nifty).id) }
+
+      it 'returns an Index processor' do
+        processor = described_class.build(index_alert)
+        expect(processor).to be_a(AlertProcessors::Index)
+      end
     end
 
-    it 'raises an error for unsupported instrument types' do
-      unsupported_alert = build(:alert, instrument_type: 'unsupported')
-      expect { described_class.build(unsupported_alert) }.to raise_error(NotImplementedError)
+    context 'when instrument type is unsupported' do
+      let(:unsupported_alert) { build(:alert, instrument_type: 'unsupported', instrument: instrument) }
+
+      it 'raises a NotImplementedError' do
+        expect do
+          described_class.build(unsupported_alert)
+        end.to raise_error(NotImplementedError, /Unsupported instrument type/)
+      end
     end
   end
 end

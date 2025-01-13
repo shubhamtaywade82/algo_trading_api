@@ -35,6 +35,7 @@ RSpec.describe 'Webhooks::AlertsController', type: :request do
 
     context 'when alert is invalid' do
       before { instrument }
+
       it 'returns an error for delayed alert' do
         delayed_params = params.deep_dup
         delayed_params[:alert][:time] = 2.minutes.ago

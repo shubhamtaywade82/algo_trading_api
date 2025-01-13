@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-# app/services/parsers/live_order_parser.rb
 module Parsers
   class LiveOrderParser
     REQUIRED_FIELDS = %w[

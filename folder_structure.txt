@@ -1,0 +1,227 @@
+.
+├── algo_trading_api-code_context
+├── app
+│   ├── controllers
+│   │   ├── application_controller.rb
+│   │   ├── concerns
+│   │   ├── funds_controller.rb
+│   │   ├── instruments_controller.rb
+│   │   ├── mis_details_controller.rb
+│   │   ├── options
+│   │   │   └── strategy_suggestions_controller.rb
+│   │   ├── options_controller.rb
+│   │   ├── orders_controller.rb
+│   │   ├── portfolios_controller.rb
+│   │   ├── statements_controller.rb
+│   │   └── webhooks
+│   │       └── alerts_controller.rb
+│   ├── events
+│   │   └── trailing_stop_loss_event.rb
+│   ├── exceptions
+│   │   └── instrument_not_found_error.rb
+│   ├── factories
+│   │   ├── alert_processor_factory.rb
+│   │   └── strategy_factory.rb
+│   ├── jobs
+│   │   ├── application_job.rb
+│   │   ├── csv_import_job.rb
+│   │   ├── order_manager_job.rb
+│   │   ├── position_manager_job.rb
+│   │   └── update_strategy_examples_job.rb
+│   ├── mailers
+│   │   └── application_mailer.rb
+│   ├── managers
+│   │   ├── base.rb
+│   │   ├── orders
+│   │   │   └── stop_loss_manager.rb
+│   │   ├── orders.rb
+│   │   ├── positions
+│   │   │   └── adjust_stop_loss_manager.rb
+│   │   └── positions.rb
+│   ├── models
+│   │   ├── alert.rb
+│   │   ├── application_record.rb
+│   │   ├── concerns
+│   │   ├── derivative.rb
+│   │   ├── holding.rb
+│   │   ├── instrument.rb
+│   │   ├── margin_requirement.rb
+│   │   ├── mis_detail.rb
+│   │   ├── order_feature.rb
+│   │   ├── order.rb
+│   │   ├── position.rb
+│   │   └── strategy.rb
+│   ├── presenters
+│   │   └── instrument_presenter.rb
+│   ├── repositories
+│   │   ├── instrument_repository.rb
+│   │   ├── order_repository.rb
+│   │   └── position_repository.rb
+│   ├── services
+│   │   ├── alert_processor.rb
+│   │   ├── alert_processors
+│   │   │   ├── base.rb
+│   │   │   ├── index.rb
+│   │   │   └── stock.rb
+│   │   ├── application_service.rb
+│   │   ├── csv_importer.rb
+│   │   ├── funds_service.rb
+│   │   ├── market_data
+│   │   │   ├── live_market_feed_service.rb
+│   │   │   └── option_chain_service.rb
+│   │   ├── market_feed
+│   │   │   ├── adjustment_strategy.rb
+│   │   │   ├── data_processor.rb
+│   │   │   ├── handlers
+│   │   │   │   ├── full_packet_handler.rb
+│   │   │   │   ├── quote_handler.rb
+│   │   │   │   └── ticker_handler.rb
+│   │   │   └── packet_parser.rb
+│   │   ├── market_feed_subscription_service.rb
+│   │   ├── option
+│   │   │   ├── chain_analyzer.rb
+│   │   │   ├── strategy_example_updater.rb
+│   │   │   ├── strategy_suggester.rb
+│   │   │   └── suggest_strategy_service.rb
+│   │   ├── order_factories
+│   │   ├── order_params_builder.rb
+│   │   ├── orders
+│   │   │   └── strategies
+│   │   │       ├── base_strategy.rb
+│   │   │       ├── intraday_stock_strategy.rb
+│   │   │       ├── stock_order_strategy.rb
+│   │   │       └── swing_stock_strategy.rb
+│   │   ├── orders_service.rb
+│   │   ├── parsers
+│   │   │   └── market_feed_parser.rb
+│   │   ├── portfolio
+│   │   │   ├── holdings_service.rb
+│   │   │   └── positions_service.rb
+│   │   ├── portfolio_service.rb
+│   │   ├── statements_service.rb
+│   │   ├── strategies
+│   │   │   ├── historical_data_fetcher.rb
+│   │   │   ├── index
+│   │   │   │   └── intraday_strategy.rb
+│   │   │   ├── stock
+│   │   │   │   └── intraday_strategy.rb
+│   │   │   └── supertrend_calculator.rb
+│   │   ├── strategy_factory.rb
+│   │   └── websocket_handlers
+│   │       ├── base_websocket.rb
+│   │       ├── live_market_feed.rb
+│   │       ├── live_order_update.rb
+│   │       └── websocket_manager.rb
+│   ├── utils
+│   │   ├── error_handler.rb
+│   │   ├── error_logger.rb
+│   │   ├── instrument_utils.rb
+│   │   ├── market_feed_parser.rb
+│   │   └── response_helper.rb
+│   ├── validators
+│   │   └── alert_validator.rb
+│   └── views
+│       └── layouts
+│           ├── mailer.html.erb
+│           └── mailer.text.erb
+├── CleanUp.md
+├── config
+│   ├── application.rb
+│   ├── boot.rb
+│   ├── cable.yml
+│   ├── cache.yml
+│   ├── credentials.yml.enc
+│   ├── database.yml
+│   ├── deploy.yml
+│   ├── environment.rb
+│   ├── environments
+│   │   ├── development.rb
+│   │   ├── production.rb
+│   │   └── test.rb
+│   ├── initializers
+│   │   ├── cors.rb
+│   │   ├── delayed_job_config.rb
+│   │   ├── dhanhq_mappings.rb
+│   │   ├── dhanhq.rb
+│   │   ├── filter_parameter_logging.rb
+│   │   ├── inflections.rb
+│   │   └── websockets.rb
+│   ├── locales
+│   │   └── en.yml
+│   ├── master.key
+│   ├── puma.rb
+│   ├── queue.yml
+│   ├── recurring.yml
+│   ├── routes.rb
+│   ├── schedule.rb
+│   └── storage.yml
+├── config.ru
+├── Dockerfile
+├── folder_structure.txt
+├── Gemfile
+├── Gemfile.lock
+├── get_code_context_dhan_rails.sh
+├── lib
+│   └── tasks
+│       ├── csv_import.rake
+│       ├── import_mis_data.rake
+│       ├── schedule_jobs.rake
+│       └── strategy_example_updater.rake
+├── mis_data.csv
+├── Procfile.dev
+├── public
+│   └── robots.txt
+├── rails_best_practices_output.html
+├── Rakefile
+├── README.md
+├── script
+├── spec
+│   ├── controllers
+│   │   └── webhooks
+│   │       └── alerts_controller_spec.rb
+│   ├── factories
+│   │   ├── alerts.rb
+│   │   ├── derivatives.rb
+│   │   ├── instruments.rb
+│   │   ├── margin_requirements.rb
+│   │   ├── mis_details.rb
+│   │   └── order_features.rb
+│   ├── fixtures
+│   │   ├── files
+│   │   └── sample_csv.csv
+│   ├── jobs
+│   │   ├── adjust_stop_loss_manager_job_spec.rb
+│   │   ├── order_manager_job_spec.rb
+│   │   ├── position_manager_job_spec.rb
+│   │   ├── stop_loss_manager_job_spec.rb
+│   │   └── test_job_spec.rb
+│   ├── models
+│   │   └── instrument_spec.rb
+│   ├── rails_helper.rb
+│   ├── services
+│   │   ├── alert_processors
+│   │   │   ├── index_spec.rb
+│   │   │   └── stock_spec.rb
+│   │   ├── csv_importer_spec.rb
+│   │   ├── factories
+│   │   │   └── alert_processor_factory_spec.rb
+│   │   ├── option
+│   │   │   └── chain_analyzer_spec.rb
+│   │   └── orders
+│   │       └── strategies_spec.rb
+│   ├── spec_helper.rb
+│   ├── support
+│   │   ├── alert_params_helper.rb
+│   │   ├── database_cleaner.rb
+│   │   ├── factory_bot.rb
+│   │   ├── mocks
+│   │   ├── shoulda_matcher.rb
+│   │   ├── test_csv_importer.rb
+│   │   └── vcr_setup.rb
+│   └── vcr_cassettes
+├── start_server.sh
+├── storage
+├── TAGS
+└── vendor
+
+62 directories, 162 files

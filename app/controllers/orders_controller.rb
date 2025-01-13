@@ -3,7 +3,9 @@
 class OrdersController < ApplicationController
   def index
     orders = OrdersService.fetch_orders
-    render json: orders
+    render json: ResponseHelper.success_response(orders)
+  rescue StandardError => e
+    render json: ResponseHelper.error_response(e.message), status: :unprocessable_entity
   end
 
   def trades

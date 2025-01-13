@@ -1,56 +1,41 @@
-# File: app/commands/order/cancel_order_command.rb
+# File: app/controllers/application_controller.rb
+# frozen_string_literal: true
 
+class ApplicationController < ActionController::API
+  rescue_from StandardError, with: :handle_internal_error
 
-# File: app/commands/order/modify_order_command.rb
+  private
 
-
-# File: app/commands/order/place_order_command.rb
-module Order
-  class PlaceOrderCommand < ApplicationService
-    def initialize(order_params)
-      @order_params = order_params
-    end
-
-    def call
-      response = Dhanhq::API::Orders.place(@order_params)
-      raise "Order placement failed: #{response['error']}" unless response["status"] == "success"
-
-      Order.create!(response.slice("orderId", "status", "quantity", "price"))
-    rescue StandardError => e
-      Rails.logger.error("Failed to place order: #{e.message}")
-      raise
-    end
+  def handle_internal_error(exception)
+    ErrorLogger.log_error('Internal server error', exception)
+    render json: { error: 'Internal server error' }, status: :internal_server_error
   end
 end
 
 
-# File: app/commands/position/adjust_stop_loss_command.rb
-
-
-# File: app/commands/position/close_position_command.rb
-
-
-# File: app/controllers/application_controller.rb
-class ApplicationController < ActionController::API
-end
-
-
 # File: app/controllers/funds_controller.rb
+# frozen_string_literal: true
+
 class FundsController < ApplicationController
   def index
     funds = FundsService.fetch_funds
     render json: funds.except(:dhanClientId)
+  rescue StandardError => e
+    render json: ErrorHandler.handle_error(
+      context: 'FundsController#index',
+      exception: e
+    ), status: :unprocessable_entity
   end
 end
 
 
 # File: app/controllers/instruments_controller.rb
+# frozen_string_literal: true
+
 class InstrumentsController < ApplicationController
   def index
     # Initialize the Ransack search object
     q = Instrument.ransack(params[:q])
-
-    # instruments = Instrument.all.page(params[:page]).per(params[:per_page] || 20)
 
     # Perform search and paginate results
     instruments = q.result.page(params[:page]).per(params[:per_page] || 20)
@@ -78,6 +63,8 @@ end
 
 
 # File: app/controllers/mis_details_controller.rb
+# frozen_string_literal: true
+
 class MisDetailsController < ApplicationController
   def index
     # Use Ransack for searching
@@ -87,10 +74,10 @@ class MisDetailsController < ApplicationController
     # Prepare the response with associated instrument details
     render json: {
       mis_details: mis_details.as_json(include: {
-        instrument: {
-          only: %i[id symbol_name display_name exchange segment instrument_type]
-        }
-      }),
+                                         instrument: {
+                                           only: %i[id symbol_name display_name exchange segment instrument_type]
+                                         }
+                                       }),
       meta: {
         current_page: mis_details.current_page,
         total_pages: mis_details.total_pages,
@@ -137,27 +124,34 @@ end
 
 
 # File: app/controllers/options/strategy_suggestions_controller.rb
-class Options::StrategySuggestionsController < ApplicationController
-  def index
-    strategies = Option::SuggestStrategyService.call(
-      index_symbol: strategy_params[:index_symbol],
-      expiry_date: strategy_params[:expiry_date],
-      params: strategy_params
-    )
-    render json: { strategies: strategies }
-  rescue StandardError => e
-    render json: { error: e.message }, status: :unprocessable_entity
-  end
+# frozen_string_literal: true
 
-  private
+module Options
+  class StrategySuggestionsController < ApplicationController
+    def index
+      strategies = Option::SuggestStrategyService.call(
+        index_symbol: strategy_params[:index_symbol],
+        expiry_date: strategy_params[:expiry_date],
+        params: strategy_params
+      )
+      render json: { strategies: strategies }
+    rescue StandardError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
 
-  def strategy_params
-    params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference, :target_profit, :max_loss)
+    private
+
+    def strategy_params
+      params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference,
+                                     :target_profit, :max_loss)
+    end
   end
 end
 
 
 # File: app/controllers/options_controller.rb
+# frozen_string_literal: true
+
 class OptionsController < ApplicationController
   def index
     strategies = Option::SuggestStrategyService.call(
@@ -173,16 +167,21 @@ class OptionsController < ApplicationController
   private
 
   def strategy_params
-    params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference, :target_profit, :max_loss)
+    params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference,
+                                   :target_profit, :max_loss)
   end
 end
 
 
 # File: app/controllers/orders_controller.rb
+# frozen_string_literal: true
+
 class OrdersController < ApplicationController
   def index
     orders = OrdersService.fetch_orders
-    render json: orders
+    render json: ResponseHelper.success_response(orders)
+  rescue StandardError => e
+    render json: ResponseHelper.error_response(e.message), status: :unprocessable_entity
   end
 
   def trades
@@ -193,6 +192,8 @@ end
 
 
 # File: app/controllers/portfolios_controller.rb
+# frozen_string_literal: true
+
 class PortfoliosController < ApplicationController
   def holdings
     holdings = PortfolioService.fetch_holdings
@@ -207,6 +208,8 @@ end
 
 
 # File: app/controllers/statements_controller.rb
+# frozen_string_literal: true
+
 class StatementsController < ApplicationController
   def ledger
     ledger = StatementsService.fetch_ledger(params[:from_date], params[:to_date])
@@ -239,7 +242,7 @@ module Webhooks
           processor = AlertProcessorFactory.build(alert)
           processor.call
 
-          render json: { message: 'Alert processed successfully', alert: alert }, status: :ok
+          render json: { message: 'Alert processed successfully', alert: alert }, status: :created
         else
           render json: { error: 'Failed to save alert', details: alert.errors.full_messages },
                  status: :unprocessable_entity
@@ -252,8 +255,7 @@ module Webhooks
     private
 
     def instrument
-      # Fetch the instrument based on the provided params
-      Instrument.find_by(
+      @instrument ||= Instrument.find_by(
         underlying_symbol: alert_params[:ticker],
         segment: segment_from_alert_type(alert_params[:instrument_type]),
         exchange: alert_params[:exchange]
@@ -303,17 +305,6 @@ module Webhooks
 end
 
 
-# File: app/decorators/instrument_decorator.rb
-class InstrumentDecorator < SimpleDelegator
-  def formatted_name
-    "[#{exchange}] #{symbol_name} - #{segment}"
-  end
-end
-
-
-# File: app/decorators/position_decorator.rb
-
-
 # File: app/events/trailing_stop_loss_event.rb
 # frozen_string_literal: true
 
@@ -322,6 +313,12 @@ class TrailingStopLossEvent
     ActiveSupport::Notifications.instrument('order.stop_loss_updated', order_id: order_id, new_stop_loss: new_stop_loss)
   end
 end
+
+
+# File: app/exceptions/instrument_not_found_error.rb
+# frozen_string_literal: true
+
+class InstrumentNotFoundError < StandardError; end
 
 
 # File: app/factories/alert_processor_factory.rb
@@ -372,22 +369,31 @@ end
 
 
 # File: app/jobs/application_job.rb
+# frozen_string_literal: true
+
 class ApplicationJob < ActiveJob::Base
   # Automatically retry jobs that encountered a deadlock
-  # retry_on ActiveRecord::Deadlocked
+  retry_on StandardError, attempts: 5, wait: :exponentially_longer
 
   # Most jobs are safe to ignore if the underlying records are no longer available
   # discard_on ActiveJob::DeserializationError
+
+  rescue_from(StandardError) do |exception|
+    ErrorLogger.log_error('Job failed', exception)
+    raise exception
+  end
 end
 
 
 # File: app/jobs/csv_import_job.rb
+# frozen_string_literal: true
+
 class CsvImportJob < ApplicationJob
   queue_as :default
 
-  require "open-uri"
+  require 'open-uri'
 
-  def perform(*args)
+  def perform(*_args)
     file_path = download_file(file_url)
     CsvImporter.import(file_path)
     cleanup_file(file_path)
@@ -396,62 +402,46 @@ class CsvImportJob < ApplicationJob
   private
 
   # Downloads the file from the given URL
-  def download_file(url = ENV["CSV_FILE_URL"])
-    file_path = Rails.root.join("tmp", "api-scrip-master-detailed.csv")
+  def download_file(url = ENV.fetch('CSV_FILE_URL', nil))
+    file_path = Rails.root.join('tmp/api-scrip-master-detailed.csv')
     File.write(file_path, URI.open(url).read)
     file_path
   end
 
   # Deletes the file after import
   def cleanup_file(file_path)
-    File.delete(file_path) if File.exist?(file_path)
+    FileUtils.rm_f(file_path)
   end
 end
 
 
-# File: app/jobs/trailing_stop_loss_job.rb
-class TrailingStopLossJob < ApplicationJob
+# File: app/jobs/order_manager_job.rb
+# frozen_string_literal: true
+
+class OrderManagerJob < ApplicationJob
   queue_as :default
 
   def perform
-    positions = Dhanhq::API::Portfolio.positions
-
-    positions.each do |position|
-      next if position["positionType"] == "CLOSED"
-
-      new_stop_loss = calculate_new_stop_loss(position)
-
-      update_stop_loss_order(position, new_stop_loss) if new_stop_loss != position["stopLoss"]
-    end
-  rescue StandardError => e
-    Rails.logger.error("TrailingStopLossJob failed: #{e.message}")
+    Managers::Orders.call
   end
+end
 
-  private
 
-  def fetch_latest_price(ticker)
-    # Fetch from WebSocket or other market feed
-  end
+# File: app/jobs/position_manager_job.rb
+# frozen_string_literal: true
 
-  def calculate_new_stop_loss(position)
-    entry_price = position["entryPrice"].to_f
-    current_price = position["lastTradedPrice"].to_f
-    trailing_amount = position["trailingStopLoss"].to_f
+class PositionsManagerJob < ApplicationJob
+  queue_as :default
 
-    return position["stopLoss"] if current_price <= entry_price
-
-    position["positionType"] == "LONG" ? current_price - trailing_amount : current_price + trailing_amount
-  end
-
-  def update_stop_loss_order(position, new_stop_loss)
-    Dhanhq::API::Orders.modify(position["orderId"], triggerPrice: new_stop_loss)
-  rescue StandardError => e
-    Rails.logger.error("Failed to update stop-loss for position #{position['tradingSymbol']}: #{e.message}")
+  def perform
+    Managers::Positions.call
   end
 end
 
 
 # File: app/jobs/update_strategy_examples_job.rb
+# frozen_string_literal: true
+
 class UpdateStrategyExamplesJob < ApplicationJob
   queue_as :default
 
@@ -462,141 +452,467 @@ end
 
 
 # File: app/mailers/application_mailer.rb
+# frozen_string_literal: true
+
 class ApplicationMailer < ActionMailer::Base
-  default from: "from@example.com"
-  layout "mailer"
+  default from: 'from@example.com'
+  layout 'mailer'
 end
 
 
-# File: app/managers/alert_processor_manager.rb
-
-
-# File: app/managers/websocket_manager.rb
+# File: app/managers/base.rb
 # frozen_string_literal: true
 
-class WebSocketManager
-  def initialize(url, auth_message)
-    @url = url
-    @auth_message = auth_message
-    @websocket = nil
-  end
+module Managers
+  class Base
+    def self.call(*args)
+      new(*args).call
+    end
 
-  def connect
-    EM.run do
-      @websocket = Faye::WebSocket::Client.new(@url)
+    def log_info(message)
+      Rails.logger.info(message)
+    end
 
-      @websocket.on(:open) { |event| handle_open(event) }
-      @websocket.on(:message) { |event| handle_message(event) }
-      @websocket.on(:close) { |event| handle_close(event) }
-      @websocket.on(:error) { |event| handle_error(event) }
+    def log_error(message, exception = nil)
+      Rails.logger.error("#{message}: #{exception&.message}")
+    end
+
+    def execute_safely
+      yield
+    rescue StandardError => e
+      log_error('Error during execution', e)
+      raise e
     end
   end
+end
 
-  def send_message(message)
-    @websocket&.send(message.to_json)
+
+# File: app/managers/orders/stop_loss_manager.rb
+# frozen_string_literal: true
+
+module Managers
+  module Orders
+    class StopLossManager < Managers::Base
+      def initialize(order, market_price)
+        @order = order
+        @market_price = market_price
+      end
+
+      def call
+        execute_safely do
+          adjust_stop_loss
+        end
+      end
+
+      private
+
+      def adjust_stop_loss
+        new_stop_loss = calculate_new_stop_loss
+        if new_stop_loss == @order.stop_loss_price
+          log_info("No adjustment needed for order #{@order.id}")
+        else
+          update_stop_loss_order(new_stop_loss)
+        end
+      end
+
+      def calculate_new_stop_loss
+        (@market_price * 0.98).round(2) # Adjust to 2% below the current market price
+      end
+
+      def update_stop_loss_order(new_stop_loss)
+        response = Dhanhq::API::Orders.modify(order_id: @order.dhan_order_id, stop_loss_price: new_stop_loss)
+        if response['status'] == 'success'
+          @order.update(stop_loss_price: new_stop_loss)
+          log_info("Stop-loss updated for order #{@order.id} to #{new_stop_loss}")
+        else
+          log_error("Failed to update stop-loss for order #{@order.id}", response['error'])
+        end
+      end
+    end
   end
+end
 
-  private
 
-  def handle_open(_event)
-    Rails.logger.info('WebSocket connection opened.')
-    send_message(@auth_message)
+# File: app/managers/orders.rb
+# frozen_string_literal: true
+
+module Managers
+  class Orders < Base
+    def call
+      execute_safely do
+        process_pending_orders
+      end
+    end
+
+    def fetch_orders
+      execute_safely do
+        Dhanhq::API::Orders.list
+      rescue StandardError => e
+        log_error('Error fetching orders', e)
+        { error: e.message }
+      end
+    end
+
+    def fetch_trades
+      execute_safely do
+        Dhanhq::API::Orders.trades
+      rescue StandardError => e
+        log_error('Error fetching trades', e)
+        { error: e.message }
+      end
+    end
+
+    def place_order(ticker:, action:, quantity:, price:, security_id:, trailing_stop_loss: nil)
+      execute_safely do
+        response = Dhanhq::API::Orders.place(
+          transactionType: action.upcase,
+          exchangeSegment: 'NSE_EQ',
+          productType: 'CNC',
+          orderType: 'MARKET',
+          securityId: security_id,
+          quantity: quantity,
+          price: price
+        )
+
+        Order.create(
+          ticker: ticker,
+          action: action,
+          quantity: quantity,
+          price: price,
+          dhan_order_id: response['orderId'],
+          dhan_status: response['orderStatus'],
+          security_id: security_id,
+          stop_loss_price: calculate_stop_loss(price, action, trailing_stop_loss),
+          take_profit_price: calculate_take_profit(price)
+        )
+      rescue StandardError => e
+        log_error('Failed to place order', e)
+        raise
+      end
+    end
+
+    def calculate_stop_loss(price, action, trailing_stop_loss)
+      return unless trailing_stop_loss
+
+      action == 'BUY' ? price - trailing_stop_loss : price + trailing_stop_loss
+    end
+
+    private
+
+    def process_pending_orders
+      Order.where(order_status: %w[pending transit]).find_each do |order|
+        if order.valid?
+          place_order(order)
+        else
+          cancel_order(order)
+        end
+      rescue StandardError => e
+        log_error("Failed to process order #{order.id}", e)
+      end
+    end
+
+    def place_order(order)
+      response = Dhanhq::API::Orders.place(order.to_api_params)
+      if response['status'] == 'success'
+        order.update(
+          order_status: :traded,
+          dhan_order_id: response['orderId'],
+          traded_quantity: response['data']&.[]('tradedQuantity'),
+          traded_price: response['data']&.[]('tradedPrice')
+        )
+        log_info("Order placed successfully: #{order.id}")
+      else
+        order.update(order_status: :failed, error_message: response['error'])
+        log_error("Failed to place order: #{order.id}", response['error'])
+      end
+    rescue StandardError => e
+      log_error("Error placing order #{order.id}", e)
+    end
+
+    def cancel_order(order)
+      order.update(order_status: :cancelled)
+      log_info("Order cancelled: #{order.id}")
+    end
+
+    def update_order_status(order)
+      response = Dhanhq::API::Orders.status(order.dhan_order_id)
+      return unless response['status'] == 'success'
+
+      order.update(
+        order_status: response['data']['status'],
+        traded_quantity: response['data']['tradedQuantity'],
+        traded_price: response['data']['tradedPrice']
+      )
+      log_info("Order status updated for #{order.id}")
+    rescue StandardError => e
+      log_error("Failed to update order status for #{order.dhan_order_id}", e)
+    end
   end
+end
 
-  def handle_message(event)
-    # Process incoming WebSocket messages
+
+# File: app/managers/positions/adjust_stop_loss_manager.rb
+# frozen_string_literal: true
+
+module Managers
+  module Positions
+    class AdjustStopLossManager < Managers::Base
+      def call
+        execute_safely do
+          adjust_stop_loss_for_positions
+        end
+      end
+
+      private
+
+      def adjust_stop_loss_for_positions
+        Position.open.each do |position|
+          adjust_stop_loss_for_position(position)
+        end
+      end
+
+      def adjust_stop_loss_for_position(position)
+        new_stop_loss = calculate_new_stop_loss(position)
+        if new_stop_loss > position.stop_loss_price
+          update_stop_loss(position, new_stop_loss)
+        else
+          log_info("No adjustment needed for position #{position.id}")
+        end
+      end
+
+      def calculate_new_stop_loss(position)
+        current_price = position.current_market_price
+        trailing_amount = position.trailing_stop_loss
+
+        if position.position_type == 'LONG'
+          [current_price - trailing_amount, position.stop_loss_price].max
+        else
+          [current_price + trailing_amount, position.stop_loss_price].min
+        end.round(2)
+      end
+
+      def update_stop_loss(position, new_stop_loss)
+        response = Dhanhq::API::Orders.modify(
+          order_id: position.order_id,
+          stop_loss_price: new_stop_loss
+        )
+        if response['status'] == 'success'
+          position.update(stop_loss_price: new_stop_loss)
+          log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
+        else
+          log_error("Failed to update stop-loss for position #{position.id}", response['error'])
+        end
+      end
+    end
   end
+end
 
-  def handle_close(event)
-    Rails.logger.warn("WebSocket connection closed: #{event.code} - #{event.reason}")
-    EM.stop
-  end
 
-  def handle_error(event)
-    Rails.logger.error("WebSocket error: #{event.message}")
+# File: app/managers/positions.rb
+# frozen_string_literal: true
+
+module Positions
+  class Manager < Managers::Base
+    def call
+      execute_safely do
+        manage_positions
+        adjust_stop_loss_for_positions
+      end
+    end
+
+    private
+
+    def manage_positions
+      Position.open.each do |position|
+        close_position_if_profitable(position)
+      end
+    end
+
+    def close_position_if_profitable(position)
+      if profitable?(position)
+        close_position(position)
+      else
+        log_info("Position not profitable: #{position.id}")
+      end
+    end
+
+    def profitable?(position)
+      position.unrealized_profit >= position.entry_price * 0.02 # Example: 2% profit threshold
+    end
+
+    def close_position(position)
+      response = Dhanhq::API::Orders.place(close_order_params(position))
+      if response['status'] == 'success'
+        position.update(status: :closed)
+        log_info("Position closed: #{position.id}")
+      else
+        log_error("Failed to close position: #{position.id}")
+      end
+    end
+
+    def close_order_params(position)
+      {
+        transactionType: position.position_type == 'LONG' ? 'SELL' : 'BUY',
+        orderType: 'MARKET',
+        productType: position.product_type,
+        securityId: position.security_id,
+        quantity: position.net_qty
+      }
+    end
+
+    def adjust_stop_loss_for_positions
+      Position.open.each do |position|
+        adjust_stop_loss_for_position(position)
+      end
+    end
+
+    def adjust_stop_loss_for_position(position)
+      new_stop_loss = calculate_new_stop_loss(position)
+      if new_stop_loss > position.stop_loss_price
+        update_stop_loss(position, new_stop_loss)
+      else
+        log_info("No adjustment needed for position #{position.id}")
+      end
+    end
+
+    def calculate_new_stop_loss(position)
+      current_price = position.current_market_price
+      trailing_amount = position.trailing_stop_loss
+
+      if position.position_type == 'LONG'
+        [current_price - trailing_amount, position.stop_loss_price].max
+      else
+        [current_price + trailing_amount, position.stop_loss_price].min
+      end.round(2)
+    end
+
+    def update_stop_loss(position, new_stop_loss)
+      response = Dhanhq::API::Orders.modify(
+        order_id: position.order_id,
+        stop_loss_price: new_stop_loss
+      )
+      if response['status'] == 'success'
+        position.update(stop_loss_price: new_stop_loss)
+        log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
+      else
+        log_error("Failed to update stop-loss for position #{position.id}", response['error'])
+      end
+    end
+
+    def trail_stop_loss_for_positions
+      Position.open.each do |position|
+        new_stop_loss = calculate_trailing_stop_loss(position)
+        update_stop_loss(position, new_stop_loss) if new_stop_loss != position.stop_loss_price
+      end
+    end
+
+    def calculate_trailing_stop_loss(position)
+      entry_price = position.entry_price
+      current_price = position.current_market_price
+      trailing_amount = position.trailing_stop_loss
+
+      return position.stop_loss_price if current_price <= entry_price
+
+      if position.position_type == 'LONG'
+        current_price - trailing_amount
+      else
+        current_price + trailing_amount
+      end.round(2)
+    end
   end
 end
 
 
 # File: app/models/alert.rb
+# frozen_string_literal: true
+
 class Alert < ApplicationRecord
   validates :ticker, :instrument_type, :order_type, :current_price, :time, :strategy_name, :strategy_id, presence: true
   validates :order_type, inclusion: { in: %w[market limit stop] }
-  validates :current_price, :high, :low, :volume, :stop_loss, :take_profit, :trailing_stop_loss, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :current_price, :high, :low, :volume, :stop_loss, :take_profit, :trailing_stop_loss,
+            numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
 
   enum :instrument_type, {
-    stock: "stock",
-    fund: "fund",
-    dr: "dr",
-    right: "right",
-    bond: "bond",
-    warrant: "warrant",
-    structured: "structured",
-    index: "index",
-    forex: "forex",
-    futures: "futures",
-    spread: "spread",
-    economic: "economic",
-    fundamental: "fundamental",
-    crypto: "crypto",
-    spot: "spot",
-    swap: "swap",
-    option: "option",
-    commodity: "commodity"
+    stock: 'stock',
+    fund: 'fund',
+    dr: 'dr',
+    right: 'right',
+    bond: 'bond',
+    warrant: 'warrant',
+    structured: 'structured',
+    index: 'index',
+    forex: 'forex',
+    futures: 'futures',
+    spread: 'spread',
+    economic: 'economic',
+    fundamental: 'fundamental',
+    crypto: 'crypto',
+    spot: 'spot',
+    swap: 'swap',
+    option: 'option',
+    commodity: 'commodity'
   }, prefix: :instrument
 
-  enum :status, { pending: "pending", processed: "processed", failed: "failed" }
+  enum :status, { pending: 'pending', processed: 'processed', failed: 'failed' }
 end
 
 
 # File: app/models/application_record.rb
+# frozen_string_literal: true
+
 class ApplicationRecord < ActiveRecord::Base
   primary_abstract_class
 end
 
 
 # File: app/models/derivative.rb
+# frozen_string_literal: true
+
 class Derivative < ApplicationRecord
   # Associations
   belongs_to :instrument
 
   # Validations
-  validates :instrument, presence: true
   validates :strike_price, :option_type, :expiry_date, presence: true
 end
 
 
 # File: app/models/holding.rb
+# frozen_string_literal: true
+
 class Holding < ApplicationRecord
   # Enums
-  enum :exchange, { nse: "NSE", bse: "BSE", mcx: "MCX", all: "ALL" }
+  enum :exchange, { nse: 'NSE', bse: 'BSE', mcx: 'MCX', all: 'ALL' }
 end
 
 
 # File: app/models/instrument.rb
+# frozen_string_literal: true
+
 class Instrument < ApplicationRecord
   # Associations
   has_one :mis_detail, dependent: :destroy
-  has_one :derivative, foreign_key: :instrument_id, dependent: :destroy
+  has_one :derivative, dependent: :destroy
   has_many :margin_requirements, dependent: :destroy
   has_many :order_features, dependent: :destroy
+  has_many :alerts, dependent: :destroy
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivative, allow_destroy: true
   accepts_nested_attributes_for :margin_requirements, allow_destroy: true
   accepts_nested_attributes_for :order_features, allow_destroy: true
 
-  enum :exchange, { nse: "NSE", bse: "BSE" }
-  enum :segment, { index: "I", equity: "E", currency: "C", derivatives: "D" }, prefix: true
+  enum :exchange, { nse: 'NSE', bse: 'BSE' }
+  enum :segment, { index: 'I', equity: 'E', currency: 'C', derivatives: 'D' }, prefix: true
   enum :instrument, {
-    index: "INDEX",
-    futures_index: "FUTIDX",
-    options_index: "OPTIDX",
-    equity: "EQUITY",
-    futures_stock: "FUTSTK",
-    options_stock: "OPTSTK",
-    futures_currency: "FUTCUR",
-    options_currency: "OPTCUR"
+    index: 'INDEX',
+    futures_index: 'FUTIDX',
+    options_index: 'OPTIDX',
+    equity: 'EQUITY',
+    futures_stock: 'FUTSTK',
+    options_stock: 'OPTSTK',
+    futures_currency: 'FUTCUR',
+    options_currency: 'OPTCUR'
   }, prefix: true
 
   # Validations
@@ -606,12 +922,12 @@ class Instrument < ApplicationRecord
   # scope :equities, -> { where(instrument: equities) }
   # scope :indices, -> { where(instrument: :index) }
   # scope :currencies, -> { where(segment: "C") }
-  scope :expiring_soon, -> { where(expiry_flag: "1") }
+  scope :expiring_soon, -> { where(expiry_flag: '1') }
 
   # API Methods
   def ltp
     response = Dhanhq::API::MarketFeed.ltp(exch_segment_enum)
-    response["status"] == "success" ? response.dig("data", exchange_segment, security_id.to_s, "last_price") : nil
+    response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s, 'last_price') : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch LTP for Instrument #{id}: #{e.message}")
     nil
@@ -619,7 +935,7 @@ class Instrument < ApplicationRecord
 
   def ohlc
     response = Dhanhq::API::MarketFeed.ohlc(exch_segment_enum)
-    response["status"] == "success" ? response.dig("data", exchange_segment, security_id.to_s) : nil
+    response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch OHLC for Instrument #{id}: #{e.message}")
     nil
@@ -627,33 +943,37 @@ class Instrument < ApplicationRecord
 
   def depth
     response = Dhanhq::API::MarketFeed.quote(exch_segment_enum)
-    response["status"] == "success" ? response.dig("data", exchange_segment, security_id.to_s) : nil
+    response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Depth for Instrument #{id}: #{e.message}")
     nil
   end
 
   def fetch_option_chain(expiry = nil)
-    expiry = expiry ? expiry : expiry_list.first
+    expiry ||= expiry_list.first
     response = Dhanhq::API::Option.chain(
       UnderlyingScrip: security_id.to_i,
       UnderlyingSeg: exchange_segment,
       Expiry: expiry
     )
-    data = response["data"]
+    data = response['data']
     return nil unless data
 
-    filtered_data = data["oc"].select do |strike, option_data|
-      call_data = option_data["ce"]
-      put_data = option_data["pe"]
+    filtered_data = data['oc'].select do |_strike, option_data|
+      call_data = option_data['ce']
+      put_data = option_data['pe']
 
-      has_call_values = call_data && call_data.except("implied_volatility").values.any? { |v| numeric_value?(v) && v.to_f > 0 }
-      has_put_values = put_data && put_data.except("implied_volatility").values.any? { |v| numeric_value?(v) && v.to_f > 0 }
+      has_call_values = call_data && call_data.except('implied_volatility').values.any? do |v|
+        numeric_value?(v) && v.to_f.positive?
+      end
+      has_put_values = put_data && put_data.except('implied_volatility').values.any? do |v|
+        numeric_value?(v) && v.to_f.positive?
+      end
 
       has_call_values || has_put_values
     end
 
-    { last_price: data["last_price"], oc: filtered_data }
+    { last_price: data['last_price'], oc: filtered_data }
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Option Chain for Instrument #{id}: #{e.message}")
     nil
@@ -667,98 +987,107 @@ class Instrument < ApplicationRecord
   def expiry_list
     response = Dhanhq::API::Option.expiry_list(
       UnderlyingScrip: security_id,
-      UnderlyingSeg: exchange_segment,
+      UnderlyingSeg: exchange_segment
     )
-    response["data"]
+    response['data']
   end
 
   # Generate `exchange_segment` dynamically
   def exchange_segment
-    case [ exchange.to_sym, segment.to_sym ]
-    when [ :nse, :index ] then "IDX_I"
-    when [ :bse, :index ] then "IDX_I"
-    when [ :nse, :equity ] then "NSE_EQ"
-    when [ :bse, :equity ] then "BSE_EQ"
-    when [ :nse, :derivatives ] then "NSE_FNO"
-    when [ :bse, :derivatives ] then "BSE_FNO"
-    when [ :nse, :currency ] then "NSE_CURRENCY"
-    when [ :bse, :currency ] then "BSE_CURRENCY"
+    case [exchange.to_sym, segment.to_sym]
+    when %i[nse index] then 'IDX_I'
+    when %i[bse index] then 'IDX_I'
+    when %i[nse equity] then 'NSE_EQ'
+    when %i[bse equity] then 'BSE_EQ'
+    when %i[nse derivatives] then 'NSE_FNO'
+    when %i[bse derivatives] then 'BSE_FNO'
+    when %i[nse currency] then 'NSE_CURRENCY'
+    when %i[bse currency] then 'BSE_CURRENCY'
     else
       raise "Unsupported exchange and segment combination: #{exchange}, #{segment}"
     end
   end
 
   # Define searchable attributes for Ransack
-  def self.ransackable_attributes(auth_object = nil)
-    [
-      "instrument",
-      "instrument_type",
-      "underlying_symbol",
-      "symbol_name",
-      "display_name",
-      "exchange",
-      "segment",
-      "created_at",
-      "updated_at"
+  def self.ransackable_attributes(_auth_object = nil)
+    %w[
+      instrument
+      instrument_type
+      underlying_symbol
+      symbol_name
+      display_name
+      exchange
+      segment
+      created_at
+      updated_at
     ]
   end
 
   # Define searchable associations for Ransack
-  def self.ransackable_associations(auth_object = nil)
-    [ "derivatives", "margin_requirement", "mis_detail", "order_feature" ]
+  def self.ransackable_associations(_auth_object = nil)
+    %w[derivatives margin_requirement mis_detail order_feature]
   end
 
   private
 
   def exch_segment_enum
-    { exchange_segment => [ security_id.to_i ] }
+    { exchange_segment => [security_id.to_i] }
   end
 end
 
 
 # File: app/models/margin_requirement.rb
+# frozen_string_literal: true
+
 class MarginRequirement < ApplicationRecord
   # Associations
   belongs_to :instrument
 
   # Validations
-  validates :instrument, presence: true
-  validates :buy_co_min_margin_per, :sell_co_min_margin_per, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :buy_co_min_margin_per, :sell_co_min_margin_per, numericality: { greater_than_or_equal_to: 0 },
+                                                             allow_nil: true
 end
 
 
 # File: app/models/mis_detail.rb
+# frozen_string_literal: true
+
 class MisDetail < ApplicationRecord
   belongs_to :instrument
 
   validates :mis_leverage, presence: true
 
   # Ransack attributes
-  def self.ransackable_attributes(auth_object = nil)
+  def self.ransackable_attributes(_auth_object = nil)
     %w[id mis_leverage co_leverage bo_leverage instrument_id created_at updated_at]
   end
 end
 
 
 # File: app/models/order_feature.rb
+# frozen_string_literal: true
+
 class OrderFeature < ApplicationRecord
   # Associations
   belongs_to :instrument
 
   # Validations
-  validates :instrument, presence: true
-  validates :bracket_flag, :cover_flag, inclusion: { in: [ "Y", "N" ] }, allow_nil: true
+  validates :bracket_flag, :cover_flag, inclusion: { in: %w[Y N] }, allow_nil: true
 end
 
 
 # File: app/models/order.rb
+# frozen_string_literal: true
+
 class Order < ApplicationRecord
   # Enums
-  enum :transaction_type, { buy: "BUY", sell: "SELL" }
-  enum :product_type, { cnc: "CNC", intraday: "INTRADAY", margin: "MARGIN", mtf: "MTF", co: "CO", bo: "BO" }
-  enum :order_type, { limit: "LIMIT", market: "MARKET", stop_loss: "STOP_LOSS", stop_loss_market: "STOP_LOSS_MARKET" }
-  enum :validity, { day: "DAY", ioc: "IOC" }
-  enum :order_status, { transit: "TRANSIT", pending: "PENDING", rejected: "REJECTED", cancelled: "CANCELLED", traded: "TRADED", expired: "EXPIRED" }
+  enum :transaction_type, { buy: 'BUY', sell: 'SELL' }
+  enum :product_type, { cnc: 'CNC', intraday: 'INTRADAY', margin: 'MARGIN', mtf: 'MTF', co: 'CO', bo: 'BO' }
+  enum :order_type, { limit: 'LIMIT', market: 'MARKET', stop_loss: 'STOP_LOSS', stop_loss_market: 'STOP_LOSS_MARKET' }
+  enum :validity, { day: 'DAY', ioc: 'IOC' }
+  enum :order_status,
+       { transit: 'TRANSIT', pending: 'PENDING', rejected: 'REJECTED', cancelled: 'CANCELLED', traded: 'TRADED',
+         expired: 'EXPIRED' }
 
   # Associations
   belongs_to :alert, optional: true
@@ -766,18 +1095,23 @@ end
 
 
 # File: app/models/position.rb
+# frozen_string_literal: true
+
 class Position < ApplicationRecord
   # Associations
   belongs_to :instrument
 
   # Enums
-  enum :position_type, { long: "LONG", short: "SHORT", closed: "CLOSED" }
-  enum :product_type, { cnc: "CNC", intraday: "INTRADAY", margin: "MARGIN", mtf: "MTF", co: "CO", bo: "BO" }
-  enum :exchange_segment, { nse_eq: "NSE_EQ", nse_fno: "NSE_FNO", bse_eq: "BSE_EQ", bse_fno: "BSE_FNO", mcx_comm: "MCX_COMM" }
+  enum :position_type, { long: 'LONG', short: 'SHORT', closed: 'CLOSED' }
+  enum :product_type, { cnc: 'CNC', intraday: 'INTRADAY', margin: 'MARGIN', mtf: 'MTF', co: 'CO', bo: 'BO' }
+  enum :exchange_segment,
+       { nse_eq: 'NSE_EQ', nse_fno: 'NSE_FNO', bse_eq: 'BSE_EQ', bse_fno: 'BSE_FNO', mcx_comm: 'MCX_COMM' }
 end
 
 
 # File: app/models/strategy.rb
+# frozen_string_literal: true
+
 class Strategy < ApplicationRecord
   validates :name, presence: true, uniqueness: true
 end
@@ -787,6 +1121,8 @@ end
 
 
 # File: app/repositories/instrument_repository.rb
+# frozen_string_literal: true
+
 class InstrumentRepository
   def self.find_by_symbol(symbol)
     Instrument.find_by(symbol_name: symbol)
@@ -805,6 +1141,8 @@ end
 
 
 # File: app/services/alert_processor.rb
+# frozen_string_literal: true
+
 class AlertProcessor < ApplicationService
   def initialize(alert)
     @alert = alert
@@ -820,9 +1158,9 @@ class AlertProcessor < ApplicationService
 
     # setup_trailing_stop_loss(order_response) if order_response&.dig("orderId")
 
-    @alert.update(status: "processed")
+    @alert.update(status: 'processed')
   rescue StandardError => e
-    @alert.update(status: "failed", error_message: e.message)
+    @alert.update(status: 'failed', error_message: e.message)
     Rails.logger.error("Failed to process alert #{@alert.id}: #{e}")
   end
 
@@ -836,45 +1174,44 @@ class AlertProcessor < ApplicationService
 
     return unless position && position_profitable?(position)
 
-    if opposite_signal?(position)
-      if position_profitable?(position)
-        close_position(position)
-      elsif risk_reward_hit?(position)
-        close_position(position)
-      end
+    return unless opposite_signal?(position)
+
+    if position_profitable?(position)
+      close_position(position)
+    elsif risk_reward_hit?(position)
+      close_position(position)
     end
   end
 
   def fetch_open_position
     positions = Dhanhq::API::Portfolio.positions
-    positions.find { |pos| pos["tradingSymbol"] == alert[:ticker] && pos["positionType"] != "CLOSED" }
+    positions.find { |pos| pos['tradingSymbol'] == alert[:ticker] && pos['positionType'] != 'CLOSED' }
   end
 
-
   def position_profitable?(position)
-    position["unrealizedProfit"].to_f > 20.00
+    position['unrealizedProfit'].to_f > 20.00
   end
 
   def risk_reward_hit?(position)
-    entry_price = position["entryPrice"].to_f
-    target_price = entry_price + (entry_price - position["stopLoss"].to_f) * 2
-    current_price = position["lastTradedPrice"].to_f
+    entry_price = position['entryPrice'].to_f
+    target_price = entry_price + ((entry_price - position['stopLoss'].to_f) * 2)
+    current_price = position['lastTradedPrice'].to_f
     current_price >= target_price
   end
 
   def opposite_signal?(position)
-    alert[:action].upcase != position["positionType"]
+    alert[:action].upcase != position['positionType']
   end
 
   def close_position(position)
     order_data = {
-      transactionType: position["positionType"] == "LONG" ? "SELL" : "BUY",
-      exchangeSegment: position["exchangeSegment"],
-      productType: position["productType"],
-      orderType: "MARKET",
-      validity: "DAY",
-      securityId: position["securityId"],
-      quantity: position["netQty"]
+      transactionType: position['positionType'] == 'LONG' ? 'SELL' : 'BUY',
+      exchangeSegment: position['exchangeSegment'],
+      productType: position['productType'],
+      orderType: 'MARKET',
+      validity: 'DAY',
+      securityId: position['securityId'],
+      quantity: position['netQty']
     }
 
     Dhanhq::API::Orders.place(order_data)
@@ -883,21 +1220,21 @@ class AlertProcessor < ApplicationService
   end
 
   def select_strategy
-    strategy_suffix = alert[:strategy_id]&.split("_")&.last
+    strategy_suffix = alert[:strategy_id]&.split('_')&.last
 
     case alert[:instrument_type].downcase
-    when "stock"
+    when 'stock'
       case strategy_suffix
-      when "intraday" then Orders::Strategies::IntradayStockStrategy.new(alert)
-      when "swing"    then Orders::Strategies::SwingStockStrategy.new(alert)
-      when "long_term" then Orders::Strategies::StockOrderStrategy.new(alert)
+      when 'intraday' then Orders::Strategies::IntradayStockStrategy.new(alert)
+      when 'swing'    then Orders::Strategies::SwingStockStrategy.new(alert)
+      when 'long_term' then Orders::Strategies::StockOrderStrategy.new(alert)
       else
         raise "Unsupported stock strategy: #{strategy_suffix}"
       end
-    when "index"
+    when 'index'
       case strategy_suffix
-      when "intraday" then Orders::Strategies::IntradayIndexStrategy.new(alert)
-      when "swing"    then Orders::Strategies::SwingIndexStrategy.new(alert)
+      when 'intraday' then Orders::Strategies::IntradayIndexStrategy.new(alert)
+      when 'swing'    then Orders::Strategies::SwingIndexStrategy.new(alert)
       else
         raise "Unsupported index strategy: #{strategy_suffix}"
       end
@@ -917,12 +1254,31 @@ module AlertProcessors
 
     def initialize(alert)
       @alert = alert
-      @security_symbol = alert[:ticker]
-      @exchange = alert[:exchange]
+      @instrument = fetch_instrument
     end
 
     def call
       raise NotImplementedError, "#{self.class} must implement #call"
+    end
+
+    private
+
+    def fetch_instrument
+      Instrument.find_by!(
+        underlying_symbol: alert[:ticker],
+        segment: segment_from_alert_type(alert[:instrument_type]),
+        exchange: alert[:exchange]
+      )
+    rescue ActiveRecord::RecordNotFound
+      raise "Instrument not found for #{alert[:ticker]}"
+    end
+
+    def segment_from_alert_type(instrument_type)
+      case instrument_type
+      when 'index' then 'index'
+      when 'stock' then 'equity'
+      else instrument_type
+      end
     end
   end
 end
@@ -933,7 +1289,7 @@ end
 
 module AlertProcessors
   class Index < Base
-    attr_reader :alert, :security_symbol, :exchange
+    attr_reader :alert, :exchange
 
     def call
       expiry = instrument.expiry_list.first
@@ -954,6 +1310,10 @@ module AlertProcessors
     end
 
     private
+
+    def security_symbol
+      instrument.symbol_name
+    end
 
     # Fetch the instrument record
     def instrument
@@ -1006,7 +1366,7 @@ module AlertProcessors
         next unless data[option_type]
 
         {
-          strike_price: strike.to_f,
+          strike_price: strike.to_i,
           last_price: data[option_type]['last_price'].to_f,
           oi: data[option_type]['oi'].to_i,
           iv: data[option_type]['implied_volatility'].to_f,
@@ -1068,99 +1428,59 @@ end
 module AlertProcessors
   class Stock < Base
     def call
-      strategy = StrategyFactory.for_stock(@alert)
-      strategy.execute
+      strategy = determine_strategy
+      execute_strategy(strategy)
+      alert.update!(status: 'processed')
     rescue StandardError => e
-      @alert.update(status: 'failed', error_message: e.message)
+      alert.update!(status: 'failed', error_message: e.message)
       Rails.logger.error("Failed to process stock alert: #{e.message}")
     end
-  end
-end
 
+    private
 
-# File: app/services/algo_trading/order_manager.rb
-# frozen_string_literal: true
-
-# app/services/algo_trading/order_manager.rb
-module AlgoTrading
-  class OrderManager
-    def initialize
-      @market_feed_handler = WebsocketHandlers::MarketFeedHandler.new
-      @order_update_handler = WebsocketHandlers::OrderUpdateHandler.new
+    def determine_strategy
+      case alert[:strategy_type]
+      when 'intraday'
+        Orders::Strategies::IntradayStockStrategy.new(alert)
+      when 'swing'
+        Orders::Strategies::SwingStockStrategy.new(alert)
+      when 'long_term'
+        Orders::Strategies::StockOrderStrategy.new(alert)
+      else
+        raise "Unsupported strategy type: #{alert[:strategy_type]}"
+      end
     end
 
-    def start
-      Thread.new { @market_feed_handler.listen }
-      Thread.new { @order_update_handler.listen }
-    end
-
-    def place_order(alert, market_data)
-      order_params = {
-        transactionType: alert[:action].upcase,
-        orderType: 'LIMIT',
-        price: calculate_limit_price(market_data),
-        securityId: alert[:security_id],
-        quantity: calculate_quantity(alert[:current_price]),
-        productType: 'INTRA'
-      }
-      Dhanhq::API::Orders.place(order_params)
-    end
-
-    def calculate_limit_price(market_data)
-      # Use precision of 0.05 for limit orders
-      (market_data['last_price'] * 0.95).round(2)
-    end
-
-    def calculate_quantity(price)
-      available_funds = Dhanhq::API::Funds.balance['availabelBalance'].to_f
-      (available_funds * 0.3 / price).floor
-    end
-  end
-end
-
-
-# File: app/services/algo_trading/stop_loss_manager.rb
-# frozen_string_literal: true
-
-# app/services/algo_trading/stop_loss_manager.rb
-module AlgoTrading
-  class StopLossManager
-    def initialize
-      @order_update_handler = WebsocketHandlers::OrderUpdateHandler.new
-    end
-
-    def adjust_stop_loss(order, market_data)
-      new_stop_loss = calculate_stop_loss(market_data['last_price'])
-      Dhanhq::API::Orders.modify(order_id: order[:id], stop_loss_price: new_stop_loss)
-    end
-
-    def calculate_stop_loss(current_price)
-      (current_price * 0.98).round(2) # 2% below current price
+    def execute_strategy(strategy)
+      strategy.execute
     end
   end
 end
 
 
 # File: app/services/application_service.rb
+# frozen_string_literal: true
+
 class ApplicationService
-  def self.call(*args, &block)
-    new(*args, &block).call
+  def self.call(...)
+    new(...).call
   end
 end
 
 
 # File: app/services/csv_importer.rb
-require "csv"
-require "open-uri"
+# frozen_string_literal: true
+
+require 'csv'
+require 'open-uri'
 
 class CsvImporter
-  CSV_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv".freeze
+  CSV_URL = 'https://images.dhan.co/api-data/api-scrip-master-detailed.csv'
 
   VALID_EXCHANGES = %w[NSE BSE].freeze
   VALID_SEGMENTS = %w[D E I].freeze
   VALID_INSTRUMENTS = %w[OPTIDX FUTIDX OPTSTK FUTSTK EQUITY INDEX].freeze
   VALID_BUY_SELL_INDICATOR = %w[A].freeze # A means both Buy and Sell are allowed
-
 
   def self.import
     file_path = download_csv
@@ -1181,147 +1501,175 @@ class CsvImporter
     # Cleanup temporary file
     # File.delete(file_path) if File.exist?(file_path)
 
-    puts "CSV Import completed successfully!"
+    Rails.logger.debug 'CSV Import completed successfully!'
   end
 
+  def self.import_csv_data(file_path)
+    Rails.logger.debug 'Importing filtered CSV data...'
+    csv_data = filter_csv_data(CSV.read(file_path, headers: true))
+    # Import Instruments
+    import_instruments(csv_data)
+
+    # Import Derivatives
+    import_derivatives(csv_data)
+
+    # Import Margin Requirements
+    import_margin_requirements(csv_data)
+
+    # Import Order Features
+    import_order_features(csv_data)
+
+    Rails.logger.debug 'Filtered CSV Import completed successfully!'
+  end
 
   def self.download_csv
-    puts "Downloading CSV from #{CSV_URL}..."
-    tmp_file = Rails.root.join("tmp", "api-scrip-master-detailed.csv")
-    File.open(tmp_file, "wb") do |file|
-      file.write(URI.open(CSV_URL).read)
-    end
-    puts "CSV downloaded to #{tmp_file}"
+    Rails.logger.debug { "Downloading CSV from #{CSV_URL}..." }
+    tmp_file = Rails.root.join('tmp/api-scrip-master-detailed.csv')
+    File.binwrite(tmp_file, URI.open(CSV_URL).read)
+    Rails.logger.debug { "CSV downloaded to #{tmp_file}" }
     tmp_file
   end
 
   def self.filter_csv_data(csv_data)
-    puts "Filtering CSV data..."
+    Rails.logger.debug 'Filtering CSV data...'
     csv_data.select do |row|
       valid_instrument?(row) && valid_buy_sell_indicator?(row) && valid_expiry_date?(row)
     end
   end
 
   def self.import_instruments(csv_data)
-    puts "Importing Instruments..."
+    Rails.logger.debug 'Importing Instruments...'
     csv_data.each do |row|
-      next if Instrument.find_by(security_id: row["SECURITY_ID"], symbol_name: row["SYMBOL_NAME"])
+      next if Instrument.find_by(security_id: row['SECURITY_ID'], symbol_name: row['SYMBOL_NAME'])
 
-      puts "Importing Instrument: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]})"
+      Rails.logger.debug { "Importing Instrument: #{row['DISPLAY_NAME']} (#{row['INSTRUMENT']})" }
 
-      instrument = Instrument.find_or_initialize_by(security_id: row["SECURITY_ID"], symbol_name: row["SYMBOL_NAME"])
-      instrument.update!(
-        isin: row["ISIN"],
-        instrument: row["INSTRUMENT"],
-        instrument_type: row["INSTRUMENT_TYPE"],
-        underlying_symbol: row["UNDERLYING_SYMBOL"],
-        underlying_security_id: row["UNDERYLING_SECURITY_ID"],
-        display_name: row["DISPLAY_NAME"],
-        series: row["SERIES"],
-        lot_size: row["LOT_SIZE"].to_i.positive? ? row["LOT_SIZE"].to_i : nil,
-        tick_size: row["TICK_SIZE"],
-        asm_gsm_flag: row["ASM_GSM_FLAG"],
-        asm_gsm_category: row["ASM_GSM_CATEGORY"],
-        mtf_leverage: row["MTF_LEVERAGE"],
-        exchange: row["EXCH_ID"],
-        segment: row["SEGMENT"]
-      ) if instrument
+      instrument = Instrument.find_or_initialize_by(security_id: row['SECURITY_ID'], symbol_name: row['SYMBOL_NAME'])
+      next unless instrument
+
+      instrument.update(
+        isin: row['ISIN'],
+        instrument: row['INSTRUMENT'],
+        instrument_type: row['INSTRUMENT_TYPE'],
+        underlying_symbol: row['UNDERLYING_SYMBOL'],
+        underlying_security_id: row['UNDERYLING_SECURITY_ID'],
+        display_name: row['DISPLAY_NAME'],
+        series: row['SERIES'],
+        lot_size: row['LOT_SIZE'].to_i.positive? ? row['LOT_SIZE'].to_i : nil,
+        tick_size: row['TICK_SIZE'],
+        asm_gsm_flag: row['ASM_GSM_FLAG'],
+        asm_gsm_category: row['ASM_GSM_CATEGORY'],
+        mtf_leverage: row['MTF_LEVERAGE'],
+        exchange: row['EXCH_ID'],
+        segment: row['SEGMENT']
+      )
     end
   end
 
   def self.import_derivatives(csv_data)
-    puts "Importing Derivatives..."
+    Rails.logger.debug 'Importing Derivatives...'
     csv_data.each do |row|
-      next unless row["STRIKE_PRICE"] && row["OPTION_TYPE"]
+      next unless row['STRIKE_PRICE'] && row['OPTION_TYPE']
 
-      puts "Importing Derivatives: #{row["DISPLAY_NAME"]} (#{row["INSTRUMENT"]}) #{row["STRIKE_PRICE"]} #{row["OPTION_TYPE"]}"
-      expiry_date = parse_date(row["SM_EXPIRY_DATE"])
-      next unless expiry_date && expiry_date >= Date.today # Only upcoming expiries
+      Rails.logger.debug do
+        "Importing Derivatives: #{row['DISPLAY_NAME']} (#{row['INSTRUMENT']}) #{row['STRIKE_PRICE']} #{row['OPTION_TYPE']}"
+      end
+      expiry_date = parse_date(row['SM_EXPIRY_DATE'])
+      next unless expiry_date && expiry_date >= Time.zone.today # Only upcoming expiries
 
-      instrument = Instrument.find_by(security_id: row["SECURITY_ID"], underlying_symbol: row["UNDERLYING_SYMBOL"])
+      instrument = Instrument.find_by(security_id: row['SECURITY_ID'], underlying_symbol: row['UNDERLYING_SYMBOL'])
       next unless instrument
 
       derivative = Derivative.find_or_initialize_by(
         instrument: instrument,
-        strike_price: row["STRIKE_PRICE"],
-        option_type: row["OPTION_TYPE"],
+        strike_price: row['STRIKE_PRICE'],
+        option_type: row['OPTION_TYPE'],
         expiry_date: expiry_date
       )
-      derivative.update!(expiry_flag: row["EXPIRY_FLAG"])
+      derivative.update!(expiry_flag: row['EXPIRY_FLAG'])
     end
   end
 
   def self.import_margin_requirements(csv_data)
-    puts "Importing Margin Requirements..."
+    Rails.logger.debug 'Importing Margin Requirements...'
     csv_data.each do |row|
-      instrument = Instrument.find_by(security_id: row["SECURITY_ID"])
+      instrument = Instrument.find_by(security_id: row['SECURITY_ID'])
       next unless instrument
 
       margin = MarginRequirement.find_or_initialize_by(instrument: instrument)
       margin.update!(
-        buy_co_min_margin_per: row["BUY_CO_MIN_MARGIN_PER"],
-        sell_co_min_margin_per: row["SELL_CO_MIN_MARGIN_PER"],
-        buy_bo_min_margin_per: row["BUY_BO_MIN_MARGIN_PER"],
-        sell_bo_min_margin_per: row["SELL_BO_MIN_MARGIN_PER"],
-        buy_co_sl_range_max_perc: row["BUY_CO_SL_RANGE_MAX_PERC"],
-        sell_co_sl_range_max_perc: row["SELL_CO_SL_RANGE_MAX_PERC"],
-        buy_co_sl_range_min_perc: row["BUY_CO_SL_RANGE_MIN_PERC"],
-        sell_co_sl_range_min_perc: row["SELL_CO_SL_RANGE_MIN_PERC"],
-        buy_bo_sl_range_max_perc: row["BUY_BO_SL_RANGE_MAX_PERC"],
-        sell_bo_sl_range_max_perc: row["SELL_BO_SL_RANGE_MAX_PERC"],
-        buy_bo_sl_range_min_perc: row["BUY_BO_SL_RANGE_MIN_PERC"],
-        sell_bo_sl_min_range: row["SELL_BO_SL_MIN_RANGE"],
-        buy_bo_profit_range_max_perc: row["BUY_BO_PROFIT_RANGE_MAX_PERC"],
-        sell_bo_profit_range_max_perc: row["SELL_BO_PROFIT_RANGE_MAX_PERC"],
-        buy_bo_profit_range_min_perc: row["BUY_BO_PROFIT_RANGE_MIN_PERC"],
-        sell_bo_profit_range_min_perc: row["SELL_BO_PROFIT_RANGE_MIN_PERC"]
+        buy_co_min_margin_per: row['BUY_CO_MIN_MARGIN_PER'],
+        sell_co_min_margin_per: row['SELL_CO_MIN_MARGIN_PER'],
+        buy_bo_min_margin_per: row['BUY_BO_MIN_MARGIN_PER'],
+        sell_bo_min_margin_per: row['SELL_BO_MIN_MARGIN_PER'],
+        buy_co_sl_range_max_perc: row['BUY_CO_SL_RANGE_MAX_PERC'],
+        sell_co_sl_range_max_perc: row['SELL_CO_SL_RANGE_MAX_PERC'],
+        buy_co_sl_range_min_perc: row['BUY_CO_SL_RANGE_MIN_PERC'],
+        sell_co_sl_range_min_perc: row['SELL_CO_SL_RANGE_MIN_PERC'],
+        buy_bo_sl_range_max_perc: row['BUY_BO_SL_RANGE_MAX_PERC'],
+        sell_bo_sl_range_max_perc: row['SELL_BO_SL_RANGE_MAX_PERC'],
+        buy_bo_sl_range_min_perc: row['BUY_BO_SL_RANGE_MIN_PERC'],
+        sell_bo_sl_min_range: row['SELL_BO_SL_MIN_RANGE'],
+        buy_bo_profit_range_max_perc: row['BUY_BO_PROFIT_RANGE_MAX_PERC'],
+        sell_bo_profit_range_max_perc: row['SELL_BO_PROFIT_RANGE_MAX_PERC'],
+        buy_bo_profit_range_min_perc: row['BUY_BO_PROFIT_RANGE_MIN_PERC'],
+        sell_bo_profit_range_min_perc: row['SELL_BO_PROFIT_RANGE_MIN_PERC']
       )
     end
   end
 
   def self.import_order_features(csv_data)
-    puts "Importing Order Features..."
+    Rails.logger.debug 'Importing Order Features...'
     csv_data.each do |row|
-      instrument = Instrument.find_by(security_id: row["SECURITY_ID"])
+      instrument = Instrument.find_by(security_id: row['SECURITY_ID'])
       next unless instrument
 
       feature = OrderFeature.find_or_initialize_by(instrument: instrument)
       feature.update!(
-        bracket_flag: row["BRACKET_FLAG"],
-        cover_flag: row["COVER_FLAG"],
-        buy_sell_indicator: row["BUY_SELL_INDICATOR"]
+        bracket_flag: row['BRACKET_FLAG'],
+        cover_flag: row['COVER_FLAG'],
+        buy_sell_indicator: row['BUY_SELL_INDICATOR']
       )
     end
   end
 
   def self.valid_instrument?(row)
-    VALID_EXCHANGES.include?(row["EXCH_ID"]) && VALID_INSTRUMENTS.include?(row["INSTRUMENT"]) && row["LOT_SIZE"].to_i.positive? && VALID_SEGMENTS.include?(row["SEGMENT"])
+    VALID_EXCHANGES.include?(row['EXCH_ID']) && VALID_INSTRUMENTS.include?(row['INSTRUMENT']) && row['LOT_SIZE'].to_i.positive? && VALID_SEGMENTS.include?(row['SEGMENT'])
   end
 
   def self.valid_buy_sell_indicator?(row)
-    VALID_BUY_SELL_INDICATOR.include?(row["BUY_SELL_INDICATOR"])
+    VALID_BUY_SELL_INDICATOR.include?(row['BUY_SELL_INDICATOR'])
   end
 
   def self.valid_expiry_date?(row)
-    return true unless row["SM_EXPIRY_DATE"]
+    return true unless row['SM_EXPIRY_DATE']
 
-    expiry_date = parse_date(row["SM_EXPIRY_DATE"])
-    expiry_date.nil? || expiry_date >= Date.today
+    expiry_date = parse_date(row['SM_EXPIRY_DATE'])
+    expiry_date.nil? || expiry_date >= Time.zone.today
   end
 
   def self.parse_date(date_string)
-    Date.parse(date_string) rescue nil
+    Date.parse(date_string)
+  rescue StandardError
+    nil
   end
 end
 
 
 # File: app/services/funds_service.rb
+# frozen_string_literal: true
+
 class FundsService
   def self.fetch_funds
+    retries ||= 0
     Dhanhq::API::Funds.balance
   rescue StandardError => e
-    Rails.logger.error("Error fetching funds: #{e.message}")
-    { error: e.message }
+    ErrorHandler.handle_error(
+      context: 'Fetching funds',
+      exception: e,
+      retries: retries + 1,
+      retry_logic: -> { fetch_funds }
+    )
   end
 end
 
@@ -1333,6 +1681,8 @@ end
 
 
 # File: app/services/market_feed/adjustment_strategy.rb
+# frozen_string_literal: true
+
 module MarketFeed
   class AdjustmentStrategy
     def initialize(data)
@@ -1348,6 +1698,8 @@ end
 
 
 # File: app/services/market_feed/data_processor.rb
+# frozen_string_literal: true
+
 module MarketFeed
   class DataProcessor
     def initialize(data)
@@ -1363,7 +1715,7 @@ module MarketFeed
 
     def significant_movement?
       # Implement logic to detect significant price changes
-      @data["priceChange"] > 1.0
+      @data['priceChange'] > 1.0
     end
 
     def update_strategy
@@ -1374,6 +1726,8 @@ end
 
 
 # File: app/services/market_feed/handlers/full_packet_handler.rb
+# frozen_string_literal: true
+
 module MarketFeed
   module Handlers
     class FullPacketHandler
@@ -1383,14 +1737,14 @@ module MarketFeed
 
       def parse_payload
         {
-          last_traded_price: @io.read(4).unpack1("F"),
-          last_traded_quantity: @io.read(2).unpack1("n"),
-          last_traded_time: @io.read(4).unpack1("N"),
-          average_trade_price: @io.read(4).unpack1("F"),
-          volume: @io.read(4).unpack1("N"),
-          open_interest: @io.read(4).unpack1("N"),
-          day_high: @io.read(4).unpack1("F"),
-          day_low: @io.read(4).unpack1("F"),
+          last_traded_price: @io.read(4).unpack1('F'),
+          last_traded_quantity: @io.read(2).unpack1('n'),
+          last_traded_time: @io.read(4).unpack1('N'),
+          average_trade_price: @io.read(4).unpack1('F'),
+          volume: @io.read(4).unpack1('N'),
+          open_interest: @io.read(4).unpack1('N'),
+          day_high: @io.read(4).unpack1('F'),
+          day_low: @io.read(4).unpack1('F'),
           market_depth: parse_market_depth
         }
       end
@@ -1400,12 +1754,12 @@ module MarketFeed
       def parse_market_depth
         Array.new(5) do
           {
-            bid_quantity: @io.read(4).unpack1("N"),
-            ask_quantity: @io.read(4).unpack1("N"),
-            bid_orders: @io.read(2).unpack1("n"),
-            ask_orders: @io.read(2).unpack1("n"),
-            bid_price: @io.read(4).unpack1("F"),
-            ask_price: @io.read(4).unpack1("F")
+            bid_quantity: @io.read(4).unpack1('N'),
+            ask_quantity: @io.read(4).unpack1('N'),
+            bid_orders: @io.read(2).unpack1('n'),
+            ask_orders: @io.read(2).unpack1('n'),
+            bid_price: @io.read(4).unpack1('F'),
+            ask_price: @io.read(4).unpack1('F')
           }
         end
       end
@@ -1415,6 +1769,8 @@ end
 
 
 # File: app/services/market_feed/handlers/quote_handler.rb
+# frozen_string_literal: true
+
 module MarketFeed
   module Handlers
     class QuoteHandler
@@ -1424,16 +1780,16 @@ module MarketFeed
 
       def parse_payload
         {
-          last_traded_price: @io.read(4).unpack1("F"),
-          last_traded_quantity: @io.read(2).unpack1("n"),
-          last_traded_time: @io.read(4).unpack1("N"),
-          average_trade_price: @io.read(4).unpack1("F"),
-          volume: @io.read(4).unpack1("N"),
-          total_sell_quantity: @io.read(4).unpack1("N"),
-          total_buy_quantity: @io.read(4).unpack1("N"),
-          day_open: @io.read(4).unpack1("F"),
-          day_high: @io.read(4).unpack1("F"),
-          day_low: @io.read(4).unpack1("F")
+          last_traded_price: @io.read(4).unpack1('F'),
+          last_traded_quantity: @io.read(2).unpack1('n'),
+          last_traded_time: @io.read(4).unpack1('N'),
+          average_trade_price: @io.read(4).unpack1('F'),
+          volume: @io.read(4).unpack1('N'),
+          total_sell_quantity: @io.read(4).unpack1('N'),
+          total_buy_quantity: @io.read(4).unpack1('N'),
+          day_open: @io.read(4).unpack1('F'),
+          day_high: @io.read(4).unpack1('F'),
+          day_low: @io.read(4).unpack1('F')
         }
       end
     end
@@ -1442,6 +1798,8 @@ end
 
 
 # File: app/services/market_feed/handlers/ticker_handler.rb
+# frozen_string_literal: true
+
 module MarketFeed
   module Handlers
     class TickerHandler
@@ -1451,8 +1809,8 @@ module MarketFeed
 
       def parse_payload
         {
-          last_traded_price: @io.read(4).unpack1("F"), # Float
-          last_traded_time: @io.read(4).unpack1("N")   # Unsigned 32-bit
+          last_traded_price: @io.read(4).unpack1('F'), # Float
+          last_traded_time: @io.read(4).unpack1('N')   # Unsigned 32-bit
         }
       end
     end
@@ -1461,6 +1819,8 @@ end
 
 
 # File: app/services/market_feed/packet_parser.rb
+# frozen_string_literal: true
+
 module MarketFeed
   class PacketParser
     def self.parse(binary_data)
@@ -1468,14 +1828,14 @@ module MarketFeed
       io = StringIO.new(binary_data)
 
       # Parse the Response Header
-      response_code = io.read(1).unpack1("C") # Unsigned char
-      message_length = io.read(2).unpack1("n") # Unsigned 16-bit (big-endian)
-      exchange_segment = io.read(1).unpack1("C") # Unsigned char
-      security_id = io.read(4).unpack1("N") # Unsigned 32-bit (big-endian)
+      response_code = io.read(1).unpack1('C') # Unsigned char
+      message_length = io.read(2).unpack1('n') # Unsigned 16-bit (big-endian)
+      exchange_segment = io.read(1).unpack1('C') # Unsigned char
+      security_id = io.read(4).unpack1('N') # Unsigned 32-bit (big-endian)
 
       # Fetch Payload Handler
       handler = handler_for_response_code(response_code)
-      payload = handler ? handler.new(io).parse_payload : nil
+      payload = handler&.new(io)&.parse_payload
 
       {
         response_code: response_code,
@@ -1503,6 +1863,8 @@ end
 
 
 # File: app/services/market_feed_subscription_service.rb
+# frozen_string_literal: true
+
 class MarketFeedSubscriptionService
   def self.subscribe_to_equities
     instruments = Instrument.equities.limit(1000).pluck(:exchange_segment, :security_id)
@@ -1971,84 +2333,38 @@ module Option
 end
 
 
-# File: app/services/orders/intraday_order_manager.rb
-class Orders::IntradayOrderManager < Orders::BaseOrderManager
-  def call
-    instrument = fetch_instrument
-    funds = fetch_funds
-    margin = fetch_margin_details(instrument[:id])
-    quantity = calculate_quantity(funds, margin, @alert.current_price)
+# File: app/services/order_params_builder.rb
+# frozen_string_literal: true
 
-    place_order(order_params(instrument[:id], quantity))
-  end
-
-  private
-
-  def order_params(instrument_id, quantity)
+class OrderParamsBuilder
+  def self.build(alert:, instrument:, funds:, leverage: 1.0, utilization: 0.3)
+    quantity = calculate_quantity(instrument, funds, leverage, utilization)
     {
-      dhanClientId: ENV["DHAN_CLIENT_ID"],
-      transactionType: @alert.action.upcase,
-      productType: "INTRADAY",
-      orderType: @alert.order_type.upcase,
-      securityId: instrument_id,
+      transactionType: alert[:action].upcase,
+      orderType: alert[:order_type].upcase,
+      productType: alert[:strategy_type] == 'intraday' ? 'INTRADAY' : 'CNC',
+      validity: 'DAY',
+      securityId: instrument.security_id,
+      exchangeSegment: instrument.exchange_segment,
       quantity: quantity,
-      price: @alert.limit_price
+      price: alert[:current_price]
     }
   end
 
-  def fetch_margin_details(instrument_id)
-    # Call Margin Calculator API
-  end
-end
-
-
-# File: app/services/orders/manager.rb
-module Orders
-  class Manager < ApplicationService
-    def self.place(params)
-      response = Dhanhq::API::Orders.place(params)
-      raise "Order placement failed: #{response['error']}" unless response["status"] == "success"
-
-      response
-    end
-  end
-end
-
-
-# File: app/services/orders/stop_loss_manager.rb
-module Orders
-  class StopLossManager < ApplicationService
-    def initialize(order, market_price)
-      @order = order
-      @market_price = market_price
-    end
-
-    def call
-      new_stop_loss = calculate_stop_loss
-      update_order_stop_loss(new_stop_loss)
-    rescue StandardError => e
-      Rails.logger.error("Failed to update stop-loss: #{e.message}")
-    end
-
-    private
-
-    def calculate_stop_loss
-      (@market_price * 0.98).round(2) # 2% below current market price
-    end
-
-    def update_order_stop_loss(new_stop_loss)
-      response = Dhanhq::API::Orders.modify(order_id: @order.id, stop_loss_price: new_stop_loss)
-      raise "Failed to update stop-loss: #{response['error']}" unless response["status"] == "success"
-    end
+  def self.calculate_quantity(instrument, funds, leverage, utilization)
+    max_funds = funds * utilization * leverage
+    (max_funds / instrument.lot_size).floor
   end
 end
 
 
 # File: app/services/orders/strategies/base_strategy.rb
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class BaseStrategy
-      attr_reader :alert, :instrument, :security_symbol, :exchange
+      attr_reader :alert, :security_symbol, :exchange
 
       def initialize(alert)
         @alert = alert
@@ -2062,12 +2378,12 @@ module Orders
 
       private
 
-      # Fetch the instrument record
+      # Fetch the instrument record for stock type
       def instrument
         @instrument ||= Instrument.find_by!(
           exchange: exchange,
           underlying_symbol: security_symbol,
-          instrument_type: alert[:instrument_type] == "stock" ? "ES" : "INDEX"
+          segment: 'equity' # Only process stocks
         )
       rescue ActiveRecord::RecordNotFound
         raise "Instrument not found for #{security_symbol} in #{exchange}"
@@ -2075,18 +2391,20 @@ module Orders
 
       # Fetch available funds
       def fetch_funds
-        Dhanhq::API::Funds.balance["availabelBalance"].to_f
+        Dhanhq::API::Funds.balance['availabelBalance'].to_f
+      rescue StandardError => e
+        raise "Failed to fetch funds: #{e.message}"
       end
 
-      # Prepare common order parameters
+      # Prepare common order parameters for stock
       def dhan_order_params
         {
           transactionType: alert[:action].upcase,
-          orderType: Dhanhq::Constants::MARKET,
+          orderType: alert[:order_type].upcase,
           productType: default_product_type,
           validity: Dhanhq::Constants::DAY,
           securityId: instrument.security_id,
-          exchangeSegment: map_exchange_segment(instrument.exchange_segment),
+          exchangeSegment: instrument.exchange_segment,
           quantity: calculate_quantity(alert[:current_price])
         }
       end
@@ -2099,12 +2417,8 @@ module Orders
 
       def calculate_quantity(price)
         utilized_funds = fetch_funds * funds_utilization * leverage_factor
-
-        lot_size = instrument.lot_size || 1
         max_quantity = (utilized_funds / price).floor
-
-        quantity = (max_quantity / lot_size) * lot_size
-        [ quantity, lot_size ].max
+        [max_quantity, 1].max
       end
 
       def leverage_factor
@@ -2122,7 +2436,7 @@ module Orders
 
       # Place an order using Dhan API
       def place_order(params)
-        pp params
+        Rails.logger.debug params
         Dhanhq::API::Orders.place(params)
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"
@@ -2132,149 +2446,27 @@ module Orders
 end
 
 
-# File: app/services/orders/strategies/intraday_index_strategy.rb
-module Orders
-  module Strategies
-    class IntradayIndexStrategy < IntradayOptionsStrategy
-      private
-
-      def determine_option_type(action)
-        # Index uses CALL/PUT
-        super
-      end
-    end
-  end
-end
-
-
-# File: app/services/orders/strategies/intraday_options_strategy.rb
-module Orders
-  module Strategies
-    class IntradayOptionsStrategy < BaseStrategy
-      def execute
-        strike_price = calculate_strike_price(alert[:current_price])
-        option_type = determine_option_type(alert[:action].upcase)
-
-        place_order(
-          dhan_order_params.merge(
-            productType: Dhanhq::Constants::INTRA,
-            strikePrice: strike_price,
-            optionType: option_type,
-            expiryDate: nearest_expiry_date
-          )
-        )
-      end
-
-      private
-
-      def calculate_strike_price(price)
-        step = instrument.tick_size || 50
-        (price / step).round * step
-      end
-
-      def determine_option_type(action)
-        case action
-        when Dhanhq::Constants::BUY then "CE" # Call Option
-        when Dhanhq::Constants::SELL then "PE" # Put Option
-        else
-          raise "Invalid action: #{action}"
-        end
-      end
-
-      def nearest_expiry_date
-        Derivative.where(instrument: instrument)
-                  .where("expiry_date >= ?", Date.today)
-                  .order(:expiry_date)
-                  .limit(1)
-                  .pluck(:expiry_date)
-                  .first
-      end
-    end
-  end
-end
-
-
 # File: app/services/orders/strategies/intraday_stock_strategy.rb
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class IntradayStockStrategy < BaseStrategy
       def execute
-        place_order(dhan_order_params)
+        place_order(dhan_order_params.merge(productType: Dhanhq::Constants::INTRA))
       end
 
       private
 
       def leverage_factor
         mis_detail = instrument.mis_detail
-        mis_detail&.mis_leverage.to_i || 1 # Default to 1x if no MIS details found
+        mis_detail&.mis_leverage.to_i || 1 # Use MIS leverage if available, default to 1x
       end
 
       def calculate_quantity(price)
-        available_funds = fetch_funds * 0.3 # Use 30% of funds
+        available_funds = fetch_funds * 0.3 # Use 30% of available funds
         max_quantity = (available_funds / price).floor
-        lot_size = instrument.lot_size || 1
-
-        # Adjust quantity based on lot size
-        quantity = (max_quantity / lot_size) * lot_size
-        [ quantity, lot_size ].max
-      end
-
-      def default_product_type
-        Dhanhq::Constants::INTRA # Override default to intraday
-      end
-    end
-  end
-end
-
-
-# File: app/services/orders/strategies/options_strategy.rb
-module Orders
-  module Strategies
-    class OptionsStrategy < BaseStrategy
-      def execute
-        strike_price = calculate_strike_price(alert[:current_price])
-        option_type = determine_option_type(alert[:action].upcase)
-        raise "Lot size not found for #{alert[:ticker]}" unless instrument.lot_size
-
-        place_order(
-          dhan_order_params.merge(
-            productType: default_product_type,
-            strikePrice: calculate_strike_price(alert[:current_price]),
-            optionType: determine_option_type(alert[:action].upcase),
-            expiryDate: nearest_expiry_date
-          )
-        )
-      end
-
-      private
-
-      def default_product_type
-        Dhanhq::Constants::CNC # Options are typically delivery
-      end
-
-      def calculate_strike_price(price)
-        step = instrument.tick_size || 50 # Default to 50 if tick size is missing
-        (price / step).round * step
-      end
-
-      def determine_option_type(action)
-        case action
-        when Dhanhq::Constants::BUY then "CE" # Call
-        when Dhanhq::Constants::SELL then "PE" # Put
-        else
-          raise "Invalid action for options: #{action}"
-        end
-      end
-
-      def nearest_expiry_date
-        Instrument.where(
-          underlying_symbol: instrument.underlying_symbol,
-          expiry_flag: instrument.expiry_flag
-        ).where("sm_expiry_date >= ?", Date.today)
-         .order(:sm_expiry_date)
-         .limit(1)
-         .pluck(:sm_expiry_date)
-         .first
+        [max_quantity, 1].max # Ensure at least 1 quantity
       end
     end
   end
@@ -2282,6 +2474,8 @@ end
 
 
 # File: app/services/orders/strategies/stock_order_strategy.rb
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class StockOrderStrategy < BaseStrategy
@@ -2293,44 +2487,9 @@ module Orders
 end
 
 
-# File: app/services/orders/strategies/swing_futures_strategy.rb
-module Orders
-  module Strategies
-    class SwingFuturesStrategy < IntradayFuturesStrategy
-      private
-
-      def default_product_type
-        Dhanhq::Constants::CNC # Swing Trading Futures
-      end
-    end
-  end
-end
-
-
-# File: app/services/orders/strategies/swing_index_strategy.rb
-module Orders
-  module Strategies
-    class SwingIndexStrategy < SwingOptionsStrategy
-    end
-  end
-end
-
-
-# File: app/services/orders/strategies/swing_options_strategy.rb
-module Orders
-  module Strategies
-    class SwingOptionsStrategy < IntradayOptionsStrategy
-      private
-
-      def default_product_type
-        Dhanhq::Constants::CNC # Delivery-based options
-      end
-    end
-  end
-end
-
-
 # File: app/services/orders/strategies/swing_stock_strategy.rb
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class SwingStockStrategy < BaseStrategy
@@ -2348,90 +2507,27 @@ module Orders
 end
 
 
-# File: app/services/orders/strategies/unified_options_strategy.rb
-module Orders
-  module Strategies
-    class UnifiedOptionsStrategy < BaseStrategy
-      def execute
-        place_order(
-          dhan_order_params.merge(
-            strikePrice: calculate_strike_price(alert[:current_price]),
-            quantity: calculate_quantity(alert[:current_price])
-          )
-        )
-      end
-
-      private
-
-      def calculate_strike_price(price)
-        step = instrument.tick_size || 50
-        (price / step).round * step
-      end
-    end
-  end
-end
-
-
-# File: app/services/orders/swing_order_manager.rb
-
-
-# File: app/services/order_service.rb
-# app/services/order_service.rb
-class OrderService
-  def self.place_order(ticker:, action:, quantity:, price:, security_id:, trailing_stop_loss:)
-    response = Dhanhq::API::Orders.place(
-      transactionType: action.upcase,
-      exchangeSegment: "NSE_EQ",
-      productType: "CNC",
-      orderType: "MARKET",
-      securityId: security_id,
-      quantity: quantity,
-      price: price
-    )
-
-    Order.create(
-      ticker: ticker,
-      action: action,
-      quantity: quantity,
-      price: price,
-      dhan_order_id: response["orderId"],
-      dhan_status: response["orderStatus"],
-      security_id: security_id,
-      stop_loss_price: calculate_stop_loss(price, action, trailing_stop_loss),
-      take_profit_price: calculate_take_profit(price)
-    )
-  end
-
-  def self.calculate_stop_loss(price, action, trailing_stop_loss)
-    action == "BUY" ? price - trailing_stop_loss : price + trailing_stop_loss
-  end
-
-  def self.calculate_take_profit(price)
-    price * 1.02 # 1:2 profit-loss ratio
-  end
-end
-
-
 # File: app/services/orders_service.rb
+# frozen_string_literal: true
+
 class OrdersService
   def self.fetch_orders
+    retries ||= 0
     Dhanhq::API::Orders.list
   rescue StandardError => e
-    Rails.logger.error("Error fetching orders: #{e.message}")
-    { error: e.message }
-  end
-
-  def self.fetch_trades
-    Dhanhq::API::Orders.trades
-  rescue StandardError => e
-    Rails.logger.error("Error fetching trades: #{e.message}")
-    { error: e.message }
+    ErrorHandler.handle_error(
+      context: 'Fetching orders',
+      exception: e,
+      retries: retries + 1,
+      retry_logic: -> { fetch_orders }
+    )
   end
 end
 
 
-# File: app/services/parsers/live_order_parser.rb
-# app/services/parsers/live_order_parser.rb
+# File: app/services/parsers/market_feed_parser.rb
+# frozen_string_literal: true
+
 module Parsers
   class LiveOrderParser
     REQUIRED_FIELDS = %w[
@@ -2460,7 +2556,7 @@ module Parsers
     attr_reader :raw_data
 
     def extract_data
-      @parsed_data = raw_data["Data"].slice(*REQUIRED_FIELDS)
+      @parsed_data = raw_data['Data'].slice(*REQUIRED_FIELDS)
     end
 
     def validate_data
@@ -2478,6 +2574,8 @@ end
 
 
 # File: app/services/portfolio_service.rb
+# frozen_string_literal: true
+
 class PortfolioService
   def self.fetch_holdings
     Dhanhq::API::Portfolio.holdings
@@ -2495,32 +2593,9 @@ class PortfolioService
 end
 
 
-# File: app/services/positions/position_manager.rb
+# File: app/services/statements_service.rb
 # frozen_string_literal: true
 
-module Positions
-  class PositionManager < ApplicationService
-    def call
-      open_positions = fetch_open_positions
-      open_positions.each do |position|
-        Orders::OrderManager.close_position(position) if unrealized_profit_met?(position)
-      end
-    end
-
-    private
-
-    def fetch_open_positions
-      Dhanhq::API::Portfolio.positions
-    end
-
-    def unrealized_profit_met?(position)
-      position['unrealizedProfit'].to_f >= (position['costPrice'].to_f * 1.02)
-    end
-  end
-end
-
-
-# File: app/services/statements_service.rb
 class StatementsService
   def self.fetch_ledger(from_date, to_date)
     Dhanhq::API::Statements.ledger(from_date: from_date, to_date: to_date)
@@ -2734,10 +2809,12 @@ end
 
 
 # File: app/services/strategy_factory.rb
+# frozen_string_literal: true
+
 class StrategyFactory
   STRATEGY_MAP = {
-    "Supertrend Strategy + Indicator" => Strategies::SupertrendStrategy,
-    "VWAP Strategy" => Strategies::VWAPStrategy
+    'Supertrend Strategy + Indicator' => Strategies::SupertrendStrategy,
+    'VWAP Strategy' => Strategies::VWAPStrategy
   }.freeze
 
   def self.build(strategy_name)
@@ -2746,10 +2823,64 @@ class StrategyFactory
 end
 
 
+# File: app/services/websocket_handlers/base_websocket.rb
+# frozen_string_literal: true
+
+require 'faye/websocket'
+
+class BaseWebSocket
+  def initialize(url, auth_message)
+    @url = url
+    @auth_message = auth_message
+    @websocket = nil
+  end
+
+  def connect
+    EM.run do
+      @websocket = Faye::WebSocket::Client.new(@url)
+      setup_callbacks
+    end
+  end
+
+  def send_message(message)
+    @websocket&.send(message.to_json)
+  end
+
+  private
+
+  def setup_callbacks
+    @websocket.on(:open) { handle_open }
+    @websocket.on(:message) { |event| handle_message(event.data) }
+    @websocket.on(:close) { |event| handle_close(event) }
+    @websocket.on(:error) { |event| handle_error(event) }
+  end
+
+  def handle_open
+    send_message(@auth_message)
+    Rails.logger.info('WebSocket connection opened.')
+  end
+
+  def handle_message(data)
+    Rails.logger.info("Received message: #{data}")
+  end
+
+  def handle_close(event)
+    Rails.logger.warn("WebSocket connection closed: #{event.code} - #{event.reason}")
+    EM.stop
+  end
+
+  def handle_error(event)
+    ErrorLogger.log_error('WebSocket error', event)
+  end
+end
+
+
 # File: app/services/websocket_handlers/live_market_feed.rb
-require "faye/websocket"
-require "eventmachine"
-require "json"
+# frozen_string_literal: true
+
+require 'faye/websocket'
+require 'eventmachine'
+require 'json'
 
 class LiveMarketFeed
   MAX_INSTRUMENTS_PER_BATCH = 100
@@ -2764,7 +2895,7 @@ class LiveMarketFeed
       @ws = Faye::WebSocket::Client.new(@url)
 
       @ws.on(:open) do |_event|
-        Rails.logger.info "[LiveMarketFeed] WebSocket connection established."
+        Rails.logger.info '[LiveMarketFeed] WebSocket connection established.'
       end
 
       @ws.on(:message) do |event|
@@ -2802,14 +2933,14 @@ class LiveMarketFeed
   def unsubscribe_all
     send_message({ RequestCode: 16 })
     @subscribed_instruments.clear
-    Rails.logger.info "[LiveMarketFeed] Unsubscribed from all instruments."
+    Rails.logger.info '[LiveMarketFeed] Unsubscribed from all instruments.'
   end
 
   private
 
   def build_url
-    token = ENV.fetch("DHAN_ACCESS_TOKEN")
-    client_id = ENV.fetch("DHAN_CLIENT_ID")
+    token = ENV.fetch('DHAN_ACCESS_TOKEN')
+    client_id = ENV.fetch('DHAN_CLIENT_ID')
     "wss://api-feed.dhan.co?version=2&token=#{token}&clientId=#{client_id}&authType=2"
   end
 
@@ -2818,124 +2949,177 @@ class LiveMarketFeed
       @ws.send(message.to_json)
       Rails.logger.info "[LiveMarketFeed] Sent message: #{message}"
     else
-      Rails.logger.error "[LiveMarketFeed] WebSocket connection not established. Cannot send message."
+      Rails.logger.error '[LiveMarketFeed] WebSocket connection not established. Cannot send message.'
     end
   end
 
   def handle_message(data)
-    begin
-      # Market feed messages are in binary and need to be parsed
-      parsed_data = MarketFeed::PacketParser.parse(data)
-      MarketFeed::DataProcessor.new(parsed_data).process
-    rescue JSON::ParserError => e
-      Rails.logger.error "[LiveMarketFeed] Failed to parse message: #{e.message}. Raw data: #{data}"
-    rescue StandardError => e
-      Rails.logger.error "[LiveMarketFeed] Error processing message: #{e.message}"
-    end
+    # Market feed messages are in binary and need to be parsed
+    parsed_data = MarketFeed::PacketParser.parse(data)
+    MarketFeed::DataProcessor.new(parsed_data).process
+  rescue JSON::ParserError => e
+    Rails.logger.error "[LiveMarketFeed] Failed to parse message: #{e.message}. Raw data: #{data}"
+  rescue StandardError => e
+    Rails.logger.error "[LiveMarketFeed] Error processing message: #{e.message}"
   end
 end
 
 
 # File: app/services/websocket_handlers/live_order_update.rb
-require "faye/websocket"
-require "eventmachine"
-require "json"
+# frozen_string_literal: true
 
-class LiveOrderUpdate
-  def initialize
-    @url = "wss://api-order-update.dhan.co"
-    @auth_message = {
-      LoginReq: {
-        MsgCode: 42,
-        ClientId: ENV.fetch("DHAN_CLIENT_ID"),
-        Token: ENV.fetch("DHAN_ACCESS_TOKEN")
-      },
-      UserType: "SELF"
-    }
+class LiveOrderWebSocket < BaseWebSocket
+  def handle_message(data)
+    order_data = JSON.parse(data)
+    OrderProcessor.process(order_data)
+  rescue JSON::ParserError => e
+    ErrorLogger.log_error('Failed to parse WebSocket message', e)
+  end
+end
+
+
+# File: app/services/websocket_handlers/websocket_manager.rb
+# frozen_string_literal: true
+
+class WebSocketManager
+  def initialize(url, auth_message)
+    @url = url
+    @auth_message = auth_message
+    @websocket = nil
   end
 
   def connect
     EM.run do
-      @ws = Faye::WebSocket::Client.new(@url)
+      @websocket = Faye::WebSocket::Client.new(@url)
 
-      @ws.on(:open) do |_event|
-        authenticate
-        Rails.logger.info "[LiveOrderUpdate] WebSocket connection established."
-      end
-
-      @ws.on(:message) do |event|
-        handle_message(event.data)
-      end
-
-      @ws.on(:close) do |event|
-        Rails.logger.warn "[LiveOrderUpdate] WebSocket connection closed: Code=#{event.code}, Reason=#{event.reason}"
-        EM.stop
-      end
-
-      @ws.on(:error) do |event|
-        Rails.logger.error "[LiveOrderUpdate] WebSocket encountered an error: #{event.message}"
-      end
+      @websocket.on(:open) { |event| handle_open(event) }
+      @websocket.on(:message) { |event| handle_message(event) }
+      @websocket.on(:close) { |event| handle_close(event) }
+      @websocket.on(:error) { |event| handle_error(event) }
     end
+  end
+
+  def send_message(message)
+    @websocket&.send(message.to_json)
   end
 
   private
 
-  def authenticate
-    if @ws
-      @ws.send(@auth_message.to_json)
-      Rails.logger.info "[LiveOrderUpdate] Authentication message sent."
-    else
-      Rails.logger.error "[LiveOrderUpdate] WebSocket connection not established. Cannot authenticate."
-    end
+  def handle_open(_event)
+    Rails.logger.info('WebSocket connection opened.')
+    send_message(@auth_message)
   end
 
-  def handle_message(data)
-    begin
-      parsed_data = JSON.parse(data)
-
-      # Ensure the message type is `order_alert`
-      if parsed_data["Type"] == "order_alert"
-        process_order_update(parsed_data["Data"])
-      else
-        Rails.logger.info "[LiveOrderUpdate] Unhandled message type: #{parsed_data['Type']}"
-      end
-
-    rescue JSON::ParserError => e
-      Rails.logger.error "[LiveOrderUpdate] JSON parsing failed: #{e.message}. Raw data: #{data}"
-    rescue StandardError => e
-      Rails.logger.error "[LiveOrderUpdate] Error processing message: #{e.message}. Data: #{data}"
-    end
+  def handle_message(event)
+    # Process incoming WebSocket messages
   end
 
-  def process_order_update(order_data)
-    # Validate presence of required fields
-    required_fields = %w[OrderNo Status Symbol Price TradedQty]
-    missing_fields = required_fields - order_data.keys
+  def handle_close(event)
+    Rails.logger.warn("WebSocket connection closed: #{event.code} - #{event.reason}")
+    EM.stop
+  end
 
-    if missing_fields.any?
-      Rails.logger.warn "[LiveOrderUpdate] Missing required fields: #{missing_fields.join(', ')}. Data: #{order_data}"
-      return
-    end
+  def handle_error(event)
+    Rails.logger.error("WebSocket error: #{event.message}")
+  end
+end
 
-    # Example: Update the order in the database
-    order = Order.find_by(dhan_order_id: order_data["OrderNo"])
-    if order
-      order.update(
-        dhan_status: order_data["Status"],
-        traded_price: order_data["TradedPrice"],
-        remaining_quantity: order_data["RemainingQuantity"],
-        traded_quantity: order_data["TradedQty"],
-        last_updated_time: order_data["LastUpdatedTime"]
-      )
-      Rails.logger.info "[LiveOrderUpdate] Order updated successfully: OrderNo=#{order_data['OrderNo']}"
+
+# File: app/utils/error_handler.rb
+# frozen_string_literal: true
+
+module ErrorHandler
+  MAX_RETRIES = 3
+
+  def self.handle_error(context:, exception:, retries: 0, retry_logic: nil)
+    ErrorLogger.log_error("#{context} failed", exception)
+
+    if retries < MAX_RETRIES && retry_logic
+      Rails.logger.info("#{context} retrying... Attempt #{retries + 1}")
+      retry_logic.call
     else
-      Rails.logger.warn "[LiveOrderUpdate] Order not found: OrderNo=#{order_data['OrderNo']}"
+      Rails.logger.error("#{context} max retries exceeded. Exception: #{exception.message}")
+      { error: 'An unexpected error occurred. Please try again later.' }
     end
   end
 end
 
 
+# File: app/utils/error_logger.rb
+# frozen_string_literal: true
+
+module ErrorLogger
+  def self.log_error(message, exception = nil)
+    Rails.logger.error("#{message}: #{exception&.message}")
+    # Integrate with external monitoring tools like Sentry or Rollbar here
+  end
+end
+
+
+# File: app/utils/instrument_utils.rb
+# frozen_string_literal: true
+
+module InstrumentUtils
+  def self.find_instrument_by_symbol(symbol, segment, exchange)
+    Instrument.find_by!(
+      underlying_symbol: symbol,
+      segment: segment,
+      exchange: exchange
+    )
+  rescue ActiveRecord::RecordNotFound
+    raise "Instrument not found for symbol: #{symbol}, segment: #{segment}, exchange: #{exchange}"
+  end
+
+  def self.find_instrument_with_options(strike_price, expiry_date, option_type)
+    Instrument.joins(:derivative).find_by!(
+      'derivatives.strike_price = ? AND derivatives.option_type = ? AND derivatives.expiry_date = ?',
+      strike_price, option_type, expiry_date
+    )
+  rescue ActiveRecord::RecordNotFound
+    raise "Option not found for strike: #{strike_price}, expiry: #{expiry_date}, type: #{option_type}"
+  end
+end
+
+
+# File: app/utils/market_feed_parser.rb
+# frozen_string_literal: true
+
+class MarketFeedParser
+  def self.parse(io, fields)
+    fields.index_with do |field|
+      read_field(io, field)
+    end
+  rescue StandardError => e
+    raise "Market feed parsing failed: #{e.message}"
+  end
+
+  def self.read_field(io, field)
+    case field
+    when :last_traded_price then io.read(4).unpack1('F')
+    when :volume then io.read(4).unpack1('N')
+      # Add cases for other field types
+    end
+  end
+end
+
+
+# File: app/utils/response_helper.rb
+# frozen_string_literal: true
+
+module ResponseHelper
+  def self.error_response(message, status = :unprocessable_entity)
+    { error: { message: message, status: Rack::Utils.status_code(status) } }
+  end
+
+  def self.success_response(data, status = :ok)
+    { data: data, status: Rack::Utils.status_code(status) }
+  end
+end
+
+
 # File: app/validators/alert_validator.rb
+# frozen_string_literal: true
+
 class AlertValidator
   include ActiveModel::Model
 
@@ -3064,15 +3248,16 @@ namespace :data do
 end
 
 
-# File: lib/tasks/order_management.rake
+# File: lib/tasks/schedule_jobs.rake
 # frozen_string_literal: true
 
-namespace :order_management do
-  desc 'Process pending orders'
-  task process_pending_orders: :environment do
-    Order.where(status: 'PENDING').find_each do |order|
-      # Update order statuses or retry placements
-    end
+namespace :jobs do
+  desc 'Schedule periodic jobs for OrderManager and PositionManager'
+  task schedule: :environment do
+    OrderManagerJob.set(queue: 'order_manager', wait: 5.minutes).perform_later
+    PositionManagerJob.set(queue: 'position_manager', wait: 10.minutes).perform_later
+
+    puts 'Jobs have been scheduled.'
   end
 end
 
@@ -3092,35 +3277,9 @@ namespace :strategy do
 end
 
 
-# File: lib/tasks/trading.rake
+# File: config/initializers/cors.rb
 # frozen_string_literal: true
 
-namespace :positions do
-  desc 'Manage stop losses for naked positions'
-  task manage_stop_losses: :environment do
-    Positions::PositionManager.call
-  end
-
-  desc 'Trail stop losses'
-  task trail_stop_losses: :environment do
-    Positions::PositionManager.new.trail_stop_losses
-  end
-
-  desc 'Set take profit orders'
-  task set_take_profit_orders: :environment do
-    Positions::PositionManager.new.set_take_profit_orders
-  end
-end
-
-namespace :orders do
-  desc 'Process market orders'
-  task process_market_orders: :environment do
-    Orders::StopLossManager.new.process_orders
-  end
-end
-
-
-# File: config/initializers/cors.rb
 # Be sure to restart your server when you modify this file.
 
 # Avoid CORS issues when API is called from the frontend app.
@@ -3130,22 +3289,37 @@ end
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins "http://localhost:3000", /.*\.ngrok-free\.app/ # Allow localhost and ngrok subdomains
+    origins 'http://localhost:3000', /.*\.ngrok-free\.app/ # Allow localhost and ngrok subdomains
 
-    resource "*",
+    resource '*',
              headers: :any,
-             methods: [ :get, :post, :put, :patch, :delete, :options, :head ],
-             expose: [ "Authorization" ] # Expose any custom headers your API might send
+             methods: %i[get post put patch delete options head],
+             expose: ['Authorization'] # Expose any custom headers your API might send
   end
 end
 
 
+# File: config/initializers/delayed_job_config.rb
+# frozen_string_literal: true
+
+Delayed::Worker.destroy_failed_jobs = false
+Delayed::Worker.sleep_delay = 60
+Delayed::Worker.max_attempts = 3
+Delayed::Worker.max_run_time = 5.minutes
+Delayed::Worker.read_ahead = 10
+Delayed::Worker.default_queue_name = 'default'
+Delayed::Worker.delay_jobs = !Rails.env.test?
+Delayed::Worker.logger = Logger.new(Rails.root.join('log/delayed_job.log').to_s)
+
+
 # File: config/initializers/dhanhq_mappings.rb
+# frozen_string_literal: true
+
 module DhanhqMappings
   EXCHANGES = {
-    "NSE" => "National Stock Exchange",
-    "BSE" => "Bombay Stock Exchange",
-    "MCX" => "Multi Commodity Exchange"
+    'NSE' => 'National Stock Exchange',
+    'BSE' => 'Bombay Stock Exchange',
+    'MCX' => 'Multi Commodity Exchange'
   }.freeze
 
   # SEGMENTS = {
@@ -3158,67 +3332,73 @@ module DhanhqMappings
   # }.freeze
 
   SEGMENTS = {
-    I: "Index",
-    E: "Equity",
-    D: "Derivatives",
-    C: "Currency",
-    M: "Commodity"
+    I: 'Index',
+    E: 'Equity',
+    D: 'Derivatives',
+    C: 'Currency',
+    M: 'Commodity'
   }.freeze
 
   PRODUCT_TYPES = {
-    "CNC" => "Cash & Carry",
-    "INTRADAY" => "Intraday",
-    "MARGIN" => "Carry Forward",
-    "CO" => "Cover Order",
-    "BO" => "Bracket Order"
+    'CNC' => 'Cash & Carry',
+    'INTRADAY' => 'Intraday',
+    'MARGIN' => 'Carry Forward',
+    'CO' => 'Cover Order',
+    'BO' => 'Bracket Order'
   }.freeze
 
   ORDER_STATUSES = {
-    "TRANSIT" => "Did not reach the exchange server",
-    "PENDING" => "Awaiting execution",
-    "REJECTED" => "Rejected by broker/exchange",
-    "CANCELLED" => "Cancelled by user",
-    "TRADED" => "Executed successfully",
-    "EXPIRED" => "Validity expired"
+    'TRANSIT' => 'Did not reach the exchange server',
+    'PENDING' => 'Awaiting execution',
+    'REJECTED' => 'Rejected by broker/exchange',
+    'CANCELLED' => 'Cancelled by user',
+    'TRADED' => 'Executed successfully',
+    'EXPIRED' => 'Validity expired'
   }.freeze
 
   INSTRUMENT_TYPES = {
-    "INDEX" => "Index",
-    "FUTIDX" => "Futures of Index",
-    "OPTIDX" => "Options of Index",
-    "EQUITY" => "Equity",
-    "FUTSTK" => "Futures of Stock",
-    "OPTSTK" => "Options of Stock"
+    'INDEX' => 'Index',
+    'FUTIDX' => 'Futures of Index',
+    'OPTIDX' => 'Options of Index',
+    'EQUITY' => 'Equity',
+    'FUTSTK' => 'Futures of Stock',
+    'OPTSTK' => 'Options of Stock'
   }.freeze
 
   EXPIRY_FLAGS = {
-    "M" => "Monthly Expiry",
-    "W" => "Weekly Expiry"
+    'M' => 'Monthly Expiry',
+    'W' => 'Weekly Expiry'
   }.freeze
 end
 
 
 # File: config/initializers/dhanhq.rb
-require "dhanhq"
+# frozen_string_literal: true
+
+require 'dhanhq'
 
 Dhanhq.configure do |config|
-  config.client_id = ENV["DHAN_CLIENT_ID"]
-  config.access_token = ENV["DHAN_ACCESS_TOKEN"]
+  config.client_id = ENV.fetch('DHAN_CLIENT_ID', nil)
+  config.access_token = ENV.fetch('DHAN_ACCESS_TOKEN', nil)
 end
 
 
 # File: config/initializers/filter_parameter_logging.rb
+# frozen_string_literal: true
+
 # Be sure to restart your server when you modify this file.
 
 # Configure parameters to be partially matched (e.g. passw matches password) and filtered from the log file.
 # Use this to limit dissemination of sensitive information.
 # See the ActiveSupport::ParameterFilter documentation for supported notations and behaviors.
-Rails.application.config.filter_parameters += [
-  :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc
+Rails.application.config.filter_parameters += %i[
+  passw email secret token _key crypt salt certificate otp ssn cvv cvc
 ]
 
 
 # File: config/initializers/inflections.rb
+# frozen_string_literal: true
+
 # Be sure to restart your server when you modify this file.
 
 # Add new inflection rules using the following format. Inflections
@@ -3238,6 +3418,8 @@ Rails.application.config.filter_parameters += [
 
 
 # File: config/initializers/websockets.rb
+# frozen_string_literal: true
+
 Thread.new do
   # Start Live Market Feed WebSocket
   begin

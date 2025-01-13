@@ -50,6 +50,11 @@ group :development, :test do
   gem 'faker'
   gem 'rspec-rails'
   gem 'shoulda-matchers'
+
+  # Performance Testing
+  gem 'benchmark-ips'
+  gem 'memory_profiler'
+  gem 'stackprof'
 end
 
 group :test do
@@ -61,23 +66,13 @@ group :development do
   gem 'dotenv-rails' # Environment variable management
   # gem 'pry-byebug' # Debugging
   # gem 'pry-rails' # Debugging
-end
-
-# Code Quality
-group :development do
+  gem 'rails_best_practices'
   gem 'rubocop', require: false
   gem 'rubocop-factory_bot', require: false
   gem 'rubocop-performance', require: false
   gem 'rubocop-rails', require: false
   gem 'rubocop-rspec', require: false
   gem 'rubocop-rspec_rails', require: false
-end
-
-# Performance Testing
-group :development, :test do
-  gem 'benchmark-ips'
-  gem 'memory_profiler'
-  gem 'stackprof'
 end
 
 gem 'csv'
@@ -87,3 +82,7 @@ gem 'whenever', '~> 1.0', require: false
 gem 'kaminari', '~> 1.2'
 
 gem 'ransack', '~> 4.2'
+
+gem 'delayed_job_active_record', '~> 4.1'
+
+gem 'daemons', '~> 1.4'
