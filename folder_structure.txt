@@ -15,13 +15,6 @@
 │   │   ├── statements_controller.rb
 │   │   └── webhooks
 │   │       └── alerts_controller.rb
-│   ├── events
-│   │   └── trailing_stop_loss_event.rb
-│   ├── exceptions
-│   │   └── instrument_not_found_error.rb
-│   ├── factories
-│   │   ├── alert_processor_factory.rb
-│   │   └── strategy_factory.rb
 │   ├── jobs
 │   │   ├── application_job.rb
 │   │   ├── csv_import_job.rb
@@ -30,14 +23,6 @@
 │   │   └── update_strategy_examples_job.rb
 │   ├── mailers
 │   │   └── application_mailer.rb
-│   ├── managers
-│   │   ├── base.rb
-│   │   ├── orders
-│   │   │   └── stop_loss_manager.rb
-│   │   ├── orders.rb
-│   │   ├── positions
-│   │   │   └── adjust_stop_loss_manager.rb
-│   │   └── positions.rb
 │   ├── models
 │   │   ├── alert.rb
 │   │   ├── application_record.rb
@@ -51,12 +36,6 @@
 │   │   ├── order.rb
 │   │   ├── position.rb
 │   │   └── strategy.rb
-│   ├── presenters
-│   │   └── instrument_presenter.rb
-│   ├── repositories
-│   │   ├── instrument_repository.rb
-│   │   ├── order_repository.rb
-│   │   └── position_repository.rb
 │   ├── services
 │   │   ├── alert_processor.rb
 │   │   ├── alert_processors
@@ -65,7 +44,22 @@
 │   │   │   └── stock.rb
 │   │   ├── application_service.rb
 │   │   ├── csv_importer.rb
+│   │   ├── events
+│   │   │   └── trailing_stop_loss_event.rb
+│   │   ├── exceptions
+│   │   │   └── instrument_not_found_error.rb
+│   │   ├── factories
+│   │   │   ├── alert_processor_factory.rb
+│   │   │   └── strategy_factory.rb
 │   │   ├── funds_service.rb
+│   │   ├── managers
+│   │   │   ├── base.rb
+│   │   │   ├── orders
+│   │   │   │   └── stop_loss_manager.rb
+│   │   │   ├── orders.rb
+│   │   │   ├── positions
+│   │   │   │   └── adjust_stop_loss_manager.rb
+│   │   │   └── positions.rb
 │   │   ├── market_data
 │   │   │   ├── live_market_feed_service.rb
 │   │   │   └── option_chain_service.rb
@@ -98,6 +92,10 @@
 │   │   │   ├── holdings_service.rb
 │   │   │   └── positions_service.rb
 │   │   ├── portfolio_service.rb
+│   │   ├── repositories
+│   │   │   ├── instrument_repository.rb
+│   │   │   ├── order_repository.rb
+│   │   │   └── position_repository.rb
 │   │   ├── statements_service.rb
 │   │   ├── strategies
 │   │   │   ├── historical_data_fetcher.rb
@@ -107,19 +105,19 @@
 │   │   │   │   └── intraday_strategy.rb
 │   │   │   └── supertrend_calculator.rb
 │   │   ├── strategy_factory.rb
+│   │   ├── utils
+│   │   │   ├── error_handler.rb
+│   │   │   ├── error_logger.rb
+│   │   │   ├── instrument_utils.rb
+│   │   │   ├── market_feed_parser.rb
+│   │   │   └── response_helper.rb
+│   │   ├── validators
+│   │   │   └── alert_validator.rb
 │   │   └── websocket_handlers
 │   │       ├── base_websocket.rb
 │   │       ├── live_market_feed.rb
 │   │       ├── live_order_update.rb
 │   │       └── websocket_manager.rb
-│   ├── utils
-│   │   ├── error_handler.rb
-│   │   ├── error_logger.rb
-│   │   ├── instrument_utils.rb
-│   │   ├── market_feed_parser.rb
-│   │   └── response_helper.rb
-│   ├── validators
-│   │   └── alert_validator.rb
 │   └── views
 │       └── layouts
 │           ├── mailer.html.erb
@@ -224,4 +222,4 @@
 ├── TAGS
 └── vendor
 
-62 directories, 162 files
+61 directories, 161 files

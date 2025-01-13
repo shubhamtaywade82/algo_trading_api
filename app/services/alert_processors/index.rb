@@ -24,26 +24,22 @@ module AlertProcessors
 
     private
 
-    def security_symbol
-      instrument.symbol_name
-    end
-
     # Fetch the instrument record
     def instrument
       @instrument ||= Instrument.find_by!(
         exchange: exchange,
-        underlying_symbol: security_symbol,
+        underlying_symbol: alert[:ticker],
         instrument_type: alert[:instrument_type] == 'stock' ? 'ES' : 'INDEX'
       )
     rescue ActiveRecord::RecordNotFound
-      raise "Instrument not found for #{security_symbol} in #{exchange}"
+      raise "Instrument not found for #{alert[:ticker]} in #{exchange}"
     end
 
     # Fetch option chain for the specified expiry
     def fetch_option_chain(expiry)
       instrument.fetch_option_chain(expiry)
     rescue StandardError => e
-      raise "Failed to fetch option chain for #{security_symbol} with expiry #{expiry}: #{e.message}"
+      raise "Failed to fetch option chain for #{alert[:ticker]} with expiry #{expiry}: #{e.message}"
     end
 
     def fetch_instrument_for_strike(strike_price, expiry_date, option_type)
@@ -56,7 +52,7 @@ module AlertProcessors
                    derivatives.option_type = ? AND
                    derivatives.expiry_date = ?",
                   'D', # Derivatives
-                  security_symbol,
+                  alert[:ticker],
                   'OPTIDX', # Options Index
                   strike_price,
                   option_type.upcase,
@@ -64,7 +60,7 @@ module AlertProcessors
                 )
                 .first!
     rescue ActiveRecord::RecordNotFound
-      raise "Instrument not found for #{security_symbol}, strike #{strike_price}, expiry #{expiry_date}, and option type #{option_type}"
+      raise "Instrument not found for #{alert[:ticker]}, strike #{strike_price}, expiry #{expiry_date}, and option type #{option_type}"
     end
 
     # Analyze and select the best strike for trading

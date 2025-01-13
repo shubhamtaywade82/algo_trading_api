@@ -305,69 +305,6 @@ module Webhooks
 end
 
 
-# File: app/events/trailing_stop_loss_event.rb
-# frozen_string_literal: true
-
-class TrailingStopLossEvent
-  def self.trigger(order_id, new_stop_loss)
-    ActiveSupport::Notifications.instrument('order.stop_loss_updated', order_id: order_id, new_stop_loss: new_stop_loss)
-  end
-end
-
-
-# File: app/exceptions/instrument_not_found_error.rb
-# frozen_string_literal: true
-
-class InstrumentNotFoundError < StandardError; end
-
-
-# File: app/factories/alert_processor_factory.rb
-# frozen_string_literal: true
-
-class AlertProcessorFactory
-  def self.build(alert)
-    case alert.instrument_type
-    when 'stock'
-      AlertProcessors::Stock.new(alert)
-    when 'index'
-      AlertProcessors::Index.new(alert)
-    else
-      raise NotImplementedError, "Unsupported instrument type: #{alert.instrument_type}"
-    end
-  end
-end
-
-
-# File: app/factories/strategy_factory.rb
-# frozen_string_literal: true
-
-class StrategyFactory
-  def self.for_stock(alert)
-    case alert.strategy_type
-    when 'intraday'
-      Strategies::Stock::IntradayStrategy.new(alert)
-    when 'swing'
-      Strategies::Stock::SwingStrategy.new(alert)
-    when 'long_term'
-      Strategies::Stock::LongTermStrategy.new(alert)
-    else
-      raise NotImplementedError, "Unsupported stock strategy type: #{alert.strategy_type}"
-    end
-  end
-
-  def self.for_index(alert)
-    case alert.strategy_type
-    when 'intraday'
-      Strategies::Index::IntradayStrategy.new(alert)
-    when 'swing'
-      Strategies::Index::SwingStrategy.new(alert)
-    else
-      raise NotImplementedError, "Unsupported index strategy type: #{alert.strategy_type}"
-    end
-  end
-end
-
-
 # File: app/jobs/application_job.rb
 # frozen_string_literal: true
 
@@ -457,369 +394,6 @@ end
 class ApplicationMailer < ActionMailer::Base
   default from: 'from@example.com'
   layout 'mailer'
-end
-
-
-# File: app/managers/base.rb
-# frozen_string_literal: true
-
-module Managers
-  class Base
-    def self.call(*args)
-      new(*args).call
-    end
-
-    def log_info(message)
-      Rails.logger.info(message)
-    end
-
-    def log_error(message, exception = nil)
-      Rails.logger.error("#{message}: #{exception&.message}")
-    end
-
-    def execute_safely
-      yield
-    rescue StandardError => e
-      log_error('Error during execution', e)
-      raise e
-    end
-  end
-end
-
-
-# File: app/managers/orders/stop_loss_manager.rb
-# frozen_string_literal: true
-
-module Managers
-  module Orders
-    class StopLossManager < Managers::Base
-      def initialize(order, market_price)
-        @order = order
-        @market_price = market_price
-      end
-
-      def call
-        execute_safely do
-          adjust_stop_loss
-        end
-      end
-
-      private
-
-      def adjust_stop_loss
-        new_stop_loss = calculate_new_stop_loss
-        if new_stop_loss == @order.stop_loss_price
-          log_info("No adjustment needed for order #{@order.id}")
-        else
-          update_stop_loss_order(new_stop_loss)
-        end
-      end
-
-      def calculate_new_stop_loss
-        (@market_price * 0.98).round(2) # Adjust to 2% below the current market price
-      end
-
-      def update_stop_loss_order(new_stop_loss)
-        response = Dhanhq::API::Orders.modify(order_id: @order.dhan_order_id, stop_loss_price: new_stop_loss)
-        if response['status'] == 'success'
-          @order.update(stop_loss_price: new_stop_loss)
-          log_info("Stop-loss updated for order #{@order.id} to #{new_stop_loss}")
-        else
-          log_error("Failed to update stop-loss for order #{@order.id}", response['error'])
-        end
-      end
-    end
-  end
-end
-
-
-# File: app/managers/orders.rb
-# frozen_string_literal: true
-
-module Managers
-  class Orders < Base
-    def call
-      execute_safely do
-        process_pending_orders
-      end
-    end
-
-    def fetch_orders
-      execute_safely do
-        Dhanhq::API::Orders.list
-      rescue StandardError => e
-        log_error('Error fetching orders', e)
-        { error: e.message }
-      end
-    end
-
-    def fetch_trades
-      execute_safely do
-        Dhanhq::API::Orders.trades
-      rescue StandardError => e
-        log_error('Error fetching trades', e)
-        { error: e.message }
-      end
-    end
-
-    def place_order(ticker:, action:, quantity:, price:, security_id:, trailing_stop_loss: nil)
-      execute_safely do
-        response = Dhanhq::API::Orders.place(
-          transactionType: action.upcase,
-          exchangeSegment: 'NSE_EQ',
-          productType: 'CNC',
-          orderType: 'MARKET',
-          securityId: security_id,
-          quantity: quantity,
-          price: price
-        )
-
-        Order.create(
-          ticker: ticker,
-          action: action,
-          quantity: quantity,
-          price: price,
-          dhan_order_id: response['orderId'],
-          dhan_status: response['orderStatus'],
-          security_id: security_id,
-          stop_loss_price: calculate_stop_loss(price, action, trailing_stop_loss),
-          take_profit_price: calculate_take_profit(price)
-        )
-      rescue StandardError => e
-        log_error('Failed to place order', e)
-        raise
-      end
-    end
-
-    def calculate_stop_loss(price, action, trailing_stop_loss)
-      return unless trailing_stop_loss
-
-      action == 'BUY' ? price - trailing_stop_loss : price + trailing_stop_loss
-    end
-
-    private
-
-    def process_pending_orders
-      Order.where(order_status: %w[pending transit]).find_each do |order|
-        if order.valid?
-          place_order(order)
-        else
-          cancel_order(order)
-        end
-      rescue StandardError => e
-        log_error("Failed to process order #{order.id}", e)
-      end
-    end
-
-    def place_order(order)
-      response = Dhanhq::API::Orders.place(order.to_api_params)
-      if response['status'] == 'success'
-        order.update(
-          order_status: :traded,
-          dhan_order_id: response['orderId'],
-          traded_quantity: response['data']&.[]('tradedQuantity'),
-          traded_price: response['data']&.[]('tradedPrice')
-        )
-        log_info("Order placed successfully: #{order.id}")
-      else
-        order.update(order_status: :failed, error_message: response['error'])
-        log_error("Failed to place order: #{order.id}", response['error'])
-      end
-    rescue StandardError => e
-      log_error("Error placing order #{order.id}", e)
-    end
-
-    def cancel_order(order)
-      order.update(order_status: :cancelled)
-      log_info("Order cancelled: #{order.id}")
-    end
-
-    def update_order_status(order)
-      response = Dhanhq::API::Orders.status(order.dhan_order_id)
-      return unless response['status'] == 'success'
-
-      order.update(
-        order_status: response['data']['status'],
-        traded_quantity: response['data']['tradedQuantity'],
-        traded_price: response['data']['tradedPrice']
-      )
-      log_info("Order status updated for #{order.id}")
-    rescue StandardError => e
-      log_error("Failed to update order status for #{order.dhan_order_id}", e)
-    end
-  end
-end
-
-
-# File: app/managers/positions/adjust_stop_loss_manager.rb
-# frozen_string_literal: true
-
-module Managers
-  module Positions
-    class AdjustStopLossManager < Managers::Base
-      def call
-        execute_safely do
-          adjust_stop_loss_for_positions
-        end
-      end
-
-      private
-
-      def adjust_stop_loss_for_positions
-        Position.open.each do |position|
-          adjust_stop_loss_for_position(position)
-        end
-      end
-
-      def adjust_stop_loss_for_position(position)
-        new_stop_loss = calculate_new_stop_loss(position)
-        if new_stop_loss > position.stop_loss_price
-          update_stop_loss(position, new_stop_loss)
-        else
-          log_info("No adjustment needed for position #{position.id}")
-        end
-      end
-
-      def calculate_new_stop_loss(position)
-        current_price = position.current_market_price
-        trailing_amount = position.trailing_stop_loss
-
-        if position.position_type == 'LONG'
-          [current_price - trailing_amount, position.stop_loss_price].max
-        else
-          [current_price + trailing_amount, position.stop_loss_price].min
-        end.round(2)
-      end
-
-      def update_stop_loss(position, new_stop_loss)
-        response = Dhanhq::API::Orders.modify(
-          order_id: position.order_id,
-          stop_loss_price: new_stop_loss
-        )
-        if response['status'] == 'success'
-          position.update(stop_loss_price: new_stop_loss)
-          log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
-        else
-          log_error("Failed to update stop-loss for position #{position.id}", response['error'])
-        end
-      end
-    end
-  end
-end
-
-
-# File: app/managers/positions.rb
-# frozen_string_literal: true
-
-module Positions
-  class Manager < Managers::Base
-    def call
-      execute_safely do
-        manage_positions
-        adjust_stop_loss_for_positions
-      end
-    end
-
-    private
-
-    def manage_positions
-      Position.open.each do |position|
-        close_position_if_profitable(position)
-      end
-    end
-
-    def close_position_if_profitable(position)
-      if profitable?(position)
-        close_position(position)
-      else
-        log_info("Position not profitable: #{position.id}")
-      end
-    end
-
-    def profitable?(position)
-      position.unrealized_profit >= position.entry_price * 0.02 # Example: 2% profit threshold
-    end
-
-    def close_position(position)
-      response = Dhanhq::API::Orders.place(close_order_params(position))
-      if response['status'] == 'success'
-        position.update(status: :closed)
-        log_info("Position closed: #{position.id}")
-      else
-        log_error("Failed to close position: #{position.id}")
-      end
-    end
-
-    def close_order_params(position)
-      {
-        transactionType: position.position_type == 'LONG' ? 'SELL' : 'BUY',
-        orderType: 'MARKET',
-        productType: position.product_type,
-        securityId: position.security_id,
-        quantity: position.net_qty
-      }
-    end
-
-    def adjust_stop_loss_for_positions
-      Position.open.each do |position|
-        adjust_stop_loss_for_position(position)
-      end
-    end
-
-    def adjust_stop_loss_for_position(position)
-      new_stop_loss = calculate_new_stop_loss(position)
-      if new_stop_loss > position.stop_loss_price
-        update_stop_loss(position, new_stop_loss)
-      else
-        log_info("No adjustment needed for position #{position.id}")
-      end
-    end
-
-    def calculate_new_stop_loss(position)
-      current_price = position.current_market_price
-      trailing_amount = position.trailing_stop_loss
-
-      if position.position_type == 'LONG'
-        [current_price - trailing_amount, position.stop_loss_price].max
-      else
-        [current_price + trailing_amount, position.stop_loss_price].min
-      end.round(2)
-    end
-
-    def update_stop_loss(position, new_stop_loss)
-      response = Dhanhq::API::Orders.modify(
-        order_id: position.order_id,
-        stop_loss_price: new_stop_loss
-      )
-      if response['status'] == 'success'
-        position.update(stop_loss_price: new_stop_loss)
-        log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
-      else
-        log_error("Failed to update stop-loss for position #{position.id}", response['error'])
-      end
-    end
-
-    def trail_stop_loss_for_positions
-      Position.open.each do |position|
-        new_stop_loss = calculate_trailing_stop_loss(position)
-        update_stop_loss(position, new_stop_loss) if new_stop_loss != position.stop_loss_price
-      end
-    end
-
-    def calculate_trailing_stop_loss(position)
-      entry_price = position.entry_price
-      current_price = position.current_market_price
-      trailing_amount = position.trailing_stop_loss
-
-      return position.stop_loss_price if current_price <= entry_price
-
-      if position.position_type == 'LONG'
-        current_price - trailing_amount
-      else
-        current_price + trailing_amount
-      end.round(2)
-    end
-  end
 end
 
 
@@ -1117,29 +691,6 @@ class Strategy < ApplicationRecord
 end
 
 
-# File: app/presenters/instrument_presenter.rb
-
-
-# File: app/repositories/instrument_repository.rb
-# frozen_string_literal: true
-
-class InstrumentRepository
-  def self.find_by_symbol(symbol)
-    Instrument.find_by(symbol_name: symbol)
-  end
-
-  def self.active_instruments
-    Instrument.where(active: true)
-  end
-end
-
-
-# File: app/repositories/order_repository.rb
-
-
-# File: app/repositories/position_repository.rb
-
-
 # File: app/services/alert_processor.rb
 # frozen_string_literal: true
 
@@ -1254,7 +805,6 @@ module AlertProcessors
 
     def initialize(alert)
       @alert = alert
-      @instrument = fetch_instrument
     end
 
     def call
@@ -1263,8 +813,8 @@ module AlertProcessors
 
     private
 
-    def fetch_instrument
-      Instrument.find_by!(
+    def instrument
+      @instrument ||= Instrument.find_by!(
         underlying_symbol: alert[:ticker],
         segment: segment_from_alert_type(alert[:instrument_type]),
         exchange: alert[:exchange]
@@ -1429,6 +979,7 @@ module AlertProcessors
   class Stock < Base
     def call
       strategy = determine_strategy
+      pp strategy
       execute_strategy(strategy)
       alert.update!(status: 'processed')
     rescue StandardError => e
@@ -1656,6 +1207,69 @@ class CsvImporter
 end
 
 
+# File: app/services/events/trailing_stop_loss_event.rb
+# frozen_string_literal: true
+
+class TrailingStopLossEvent
+  def self.trigger(order_id, new_stop_loss)
+    ActiveSupport::Notifications.instrument('order.stop_loss_updated', order_id: order_id, new_stop_loss: new_stop_loss)
+  end
+end
+
+
+# File: app/services/exceptions/instrument_not_found_error.rb
+# frozen_string_literal: true
+
+class InstrumentNotFoundError < StandardError; end
+
+
+# File: app/services/factories/alert_processor_factory.rb
+# frozen_string_literal: true
+
+class AlertProcessorFactory
+  def self.build(alert)
+    case alert.instrument_type
+    when 'stock'
+      AlertProcessors::Stock.new(alert)
+    when 'index'
+      AlertProcessors::Index.new(alert)
+    else
+      raise NotImplementedError, "Unsupported instrument type: #{alert.instrument_type}"
+    end
+  end
+end
+
+
+# File: app/services/factories/strategy_factory.rb
+# frozen_string_literal: true
+
+class StrategyFactory
+  def self.for_stock(alert)
+    case alert.strategy_type
+    when 'intraday'
+      Strategies::Stock::IntradayStrategy.new(alert)
+    when 'swing'
+      Strategies::Stock::SwingStrategy.new(alert)
+    when 'long_term'
+      Strategies::Stock::LongTermStrategy.new(alert)
+    else
+      raise NotImplementedError, "Unsupported stock strategy type: #{alert.strategy_type}"
+    end
+  end
+
+  def self.for_index(alert)
+    case alert.strategy_type
+    when 'intraday'
+      Strategies::Index::IntradayStrategy.new(alert)
+    when 'swing'
+      Strategies::Index::SwingStrategy.new(alert)
+    else
+      raise NotImplementedError, "Unsupported index strategy type: #{alert.strategy_type}"
+    end
+  end
+end
+
+
 # File: app/services/funds_service.rb
 # frozen_string_literal: true
 
@@ -1670,6 +1284,369 @@ class FundsService
       retries: retries + 1,
       retry_logic: -> { fetch_funds }
     )
+  end
+end
+
+
+# File: app/services/managers/base.rb
+# frozen_string_literal: true
+
+module Managers
+  class Base
+    def self.call(*args)
+      new(*args).call
+    end
+
+    def log_info(message)
+      Rails.logger.info(message)
+    end
+
+    def log_error(message, exception = nil)
+      Rails.logger.error("#{message}: #{exception&.message}")
+    end
+
+    def execute_safely
+      yield
+    rescue StandardError => e
+      log_error('Error during execution', e)
+      raise e
+    end
+  end
+end
+
+
+# File: app/services/managers/orders/stop_loss_manager.rb
+# frozen_string_literal: true
+
+module Managers
+  module Orders
+    class StopLossManager < Managers::Base
+      def initialize(order, market_price)
+        @order = order
+        @market_price = market_price
+      end
+
+      def call
+        execute_safely do
+          adjust_stop_loss
+        end
+      end
+
+      private
+
+      def adjust_stop_loss
+        new_stop_loss = calculate_new_stop_loss
+        if new_stop_loss == @order.stop_loss_price
+          log_info("No adjustment needed for order #{@order.id}")
+        else
+          update_stop_loss_order(new_stop_loss)
+        end
+      end
+
+      def calculate_new_stop_loss
+        (@market_price * 0.98).round(2) # Adjust to 2% below the current market price
+      end
+
+      def update_stop_loss_order(new_stop_loss)
+        response = Dhanhq::API::Orders.modify(order_id: @order.dhan_order_id, stop_loss_price: new_stop_loss)
+        if response['status'] == 'success'
+          @order.update(stop_loss_price: new_stop_loss)
+          log_info("Stop-loss updated for order #{@order.id} to #{new_stop_loss}")
+        else
+          log_error("Failed to update stop-loss for order #{@order.id}", response['error'])
+        end
+      end
+    end
+  end
+end
+
+
+# File: app/services/managers/orders.rb
+# frozen_string_literal: true
+
+module Managers
+  class Orders < Base
+    def call
+      execute_safely do
+        process_pending_orders
+      end
+    end
+
+    def fetch_orders
+      execute_safely do
+        Dhanhq::API::Orders.list
+      rescue StandardError => e
+        log_error('Error fetching orders', e)
+        { error: e.message }
+      end
+    end
+
+    def fetch_trades
+      execute_safely do
+        Dhanhq::API::Orders.trades
+      rescue StandardError => e
+        log_error('Error fetching trades', e)
+        { error: e.message }
+      end
+    end
+
+    def place_order(ticker:, action:, quantity:, price:, security_id:, trailing_stop_loss: nil)
+      execute_safely do
+        response = Dhanhq::API::Orders.place(
+          transactionType: action.upcase,
+          exchangeSegment: 'NSE_EQ',
+          productType: 'CNC',
+          orderType: 'MARKET',
+          securityId: security_id,
+          quantity: quantity,
+          price: price
+        )
+
+        Order.create(
+          ticker: ticker,
+          action: action,
+          quantity: quantity,
+          price: price,
+          dhan_order_id: response['orderId'],
+          dhan_status: response['orderStatus'],
+          security_id: security_id,
+          stop_loss_price: calculate_stop_loss(price, action, trailing_stop_loss),
+          take_profit_price: calculate_take_profit(price)
+        )
+      rescue StandardError => e
+        log_error('Failed to place order', e)
+        raise
+      end
+    end
+
+    def calculate_stop_loss(price, action, trailing_stop_loss)
+      return unless trailing_stop_loss
+
+      action == 'BUY' ? price - trailing_stop_loss : price + trailing_stop_loss
+    end
+
+    private
+
+    def process_pending_orders
+      Order.where(order_status: %w[pending transit]).find_each do |order|
+        if order.valid?
+          place_order(order)
+        else
+          cancel_order(order)
+        end
+      rescue StandardError => e
+        log_error("Failed to process order #{order.id}", e)
+      end
+    end
+
+    def place_order(order)
+      response = Dhanhq::API::Orders.place(order.to_api_params)
+      if response['status'] == 'success'
+        order.update(
+          order_status: :traded,
+          dhan_order_id: response['orderId'],
+          traded_quantity: response['data']&.[]('tradedQuantity'),
+          traded_price: response['data']&.[]('tradedPrice')
+        )
+        log_info("Order placed successfully: #{order.id}")
+      else
+        order.update(order_status: :failed, error_message: response['error'])
+        log_error("Failed to place order: #{order.id}", response['error'])
+      end
+    rescue StandardError => e
+      log_error("Error placing order #{order.id}", e)
+    end
+
+    def cancel_order(order)
+      order.update(order_status: :cancelled)
+      log_info("Order cancelled: #{order.id}")
+    end
+
+    def update_order_status(order)
+      response = Dhanhq::API::Orders.status(order.dhan_order_id)
+      return unless response['status'] == 'success'
+
+      order.update(
+        order_status: response['data']['status'],
+        traded_quantity: response['data']['tradedQuantity'],
+        traded_price: response['data']['tradedPrice']
+      )
+      log_info("Order status updated for #{order.id}")
+    rescue StandardError => e
+      log_error("Failed to update order status for #{order.dhan_order_id}", e)
+    end
+  end
+end
+
+
+# File: app/services/managers/positions/adjust_stop_loss_manager.rb
+# frozen_string_literal: true
+
+module Managers
+  module Positions
+    class AdjustStopLossManager < Managers::Base
+      def call
+        execute_safely do
+          adjust_stop_loss_for_positions
+        end
+      end
+
+      private
+
+      def adjust_stop_loss_for_positions
+        Position.open.each do |position|
+          adjust_stop_loss_for_position(position)
+        end
+      end
+
+      def adjust_stop_loss_for_position(position)
+        new_stop_loss = calculate_new_stop_loss(position)
+        if new_stop_loss > position.stop_loss_price
+          update_stop_loss(position, new_stop_loss)
+        else
+          log_info("No adjustment needed for position #{position.id}")
+        end
+      end
+
+      def calculate_new_stop_loss(position)
+        current_price = position.current_market_price
+        trailing_amount = position.trailing_stop_loss
+
+        if position.position_type == 'LONG'
+          [current_price - trailing_amount, position.stop_loss_price].max
+        else
+          [current_price + trailing_amount, position.stop_loss_price].min
+        end.round(2)
+      end
+
+      def update_stop_loss(position, new_stop_loss)
+        response = Dhanhq::API::Orders.modify(
+          order_id: position.order_id,
+          stop_loss_price: new_stop_loss
+        )
+        if response['status'] == 'success'
+          position.update(stop_loss_price: new_stop_loss)
+          log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
+        else
+          log_error("Failed to update stop-loss for position #{position.id}", response['error'])
+        end
+      end
+    end
+  end
+end
+
+
+# File: app/services/managers/positions.rb
+# frozen_string_literal: true
+
+module Positions
+  class Manager < Managers::Base
+    def call
+      execute_safely do
+        manage_positions
+        adjust_stop_loss_for_positions
+      end
+    end
+
+    private
+
+    def manage_positions
+      Position.open.each do |position|
+        close_position_if_profitable(position)
+      end
+    end
+
+    def close_position_if_profitable(position)
+      if profitable?(position)
+        close_position(position)
+      else
+        log_info("Position not profitable: #{position.id}")
+      end
+    end
+
+    def profitable?(position)
+      position.unrealized_profit >= position.entry_price * 0.02 # Example: 2% profit threshold
+    end
+
+    def close_position(position)
+      response = Dhanhq::API::Orders.place(close_order_params(position))
+      if response['status'] == 'success'
+        position.update(status: :closed)
+        log_info("Position closed: #{position.id}")
+      else
+        log_error("Failed to close position: #{position.id}")
+      end
+    end
+
+    def close_order_params(position)
+      {
+        transactionType: position.position_type == 'LONG' ? 'SELL' : 'BUY',
+        orderType: 'MARKET',
+        productType: position.product_type,
+        securityId: position.security_id,
+        quantity: position.net_qty
+      }
+    end
+
+    def adjust_stop_loss_for_positions
+      Position.open.each do |position|
+        adjust_stop_loss_for_position(position)
+      end
+    end
+
+    def adjust_stop_loss_for_position(position)
+      new_stop_loss = calculate_new_stop_loss(position)
+      if new_stop_loss > position.stop_loss_price
+        update_stop_loss(position, new_stop_loss)
+      else
+        log_info("No adjustment needed for position #{position.id}")
+      end
+    end
+
+    def calculate_new_stop_loss(position)
+      current_price = position.current_market_price
+      trailing_amount = position.trailing_stop_loss
+
+      if position.position_type == 'LONG'
+        [current_price - trailing_amount, position.stop_loss_price].max
+      else
+        [current_price + trailing_amount, position.stop_loss_price].min
+      end.round(2)
+    end
+
+    def update_stop_loss(position, new_stop_loss)
+      response = Dhanhq::API::Orders.modify(
+        order_id: position.order_id,
+        stop_loss_price: new_stop_loss
+      )
+      if response['status'] == 'success'
+        position.update(stop_loss_price: new_stop_loss)
+        log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
+      else
+        log_error("Failed to update stop-loss for position #{position.id}", response['error'])
+      end
+    end
+
+    def trail_stop_loss_for_positions
+      Position.open.each do |position|
+        new_stop_loss = calculate_trailing_stop_loss(position)
+        update_stop_loss(position, new_stop_loss) if new_stop_loss != position.stop_loss_price
+      end
+    end
+
+    def calculate_trailing_stop_loss(position)
+      entry_price = position.entry_price
+      current_price = position.current_market_price
+      trailing_amount = position.trailing_stop_loss
+
+      return position.stop_loss_price if current_price <= entry_price
+
+      if position.position_type == 'LONG'
+        current_price - trailing_amount
+      else
+        current_price + trailing_amount
+      end.round(2)
+    end
   end
 end
 
@@ -2593,6 +2570,26 @@ class PortfolioService
 end
 
 
+# File: app/services/repositories/instrument_repository.rb
+# frozen_string_literal: true
+
+class InstrumentRepository
+  def self.find_by_symbol(symbol)
+    Instrument.find_by(symbol_name: symbol)
+  end
+
+  def self.active_instruments
+    Instrument.where(active: true)
+  end
+end
+
+
+# File: app/services/repositories/order_repository.rb
+
+
+# File: app/services/repositories/position_repository.rb
+
+
 # File: app/services/statements_service.rb
 # frozen_string_literal: true
 
@@ -2823,6 +2820,124 @@ class StrategyFactory
 end
 
 
+# File: app/services/utils/error_handler.rb
+# frozen_string_literal: true
+
+module ErrorHandler
+  MAX_RETRIES = 3
+
+  def self.handle_error(context:, exception:, retries: 0, retry_logic: nil)
+    ErrorLogger.log_error("#{context} failed", exception)
+
+    if retries < MAX_RETRIES && retry_logic
+      Rails.logger.info("#{context} retrying... Attempt #{retries + 1}")
+      retry_logic.call
+    else
+      Rails.logger.error("#{context} max retries exceeded. Exception: #{exception.message}")
+      { error: 'An unexpected error occurred. Please try again later.' }
+    end
+  end
+end
+
+
+# File: app/services/utils/error_logger.rb
+# frozen_string_literal: true
+
+module ErrorLogger
+  def self.log_error(message, exception = nil)
+    Rails.logger.error("#{message}: #{exception&.message}")
+    # Integrate with external monitoring tools like Sentry or Rollbar here
+  end
+end
+
+
+# File: app/services/utils/instrument_utils.rb
+# frozen_string_literal: true
+
+module InstrumentUtils
+  def self.find_instrument_by_symbol(symbol, segment, exchange)
+    Instrument.find_by!(
+      underlying_symbol: symbol,
+      segment: segment,
+      exchange: exchange
+    )
+  rescue ActiveRecord::RecordNotFound
+    raise "Instrument not found for symbol: #{symbol}, segment: #{segment}, exchange: #{exchange}"
+  end
+
+  def self.find_instrument_with_options(strike_price, expiry_date, option_type)
+    Instrument.joins(:derivative).find_by!(
+      'derivatives.strike_price = ? AND derivatives.option_type = ? AND derivatives.expiry_date = ?',
+      strike_price, option_type, expiry_date
+    )
+  rescue ActiveRecord::RecordNotFound
+    raise "Option not found for strike: #{strike_price}, expiry: #{expiry_date}, type: #{option_type}"
+  end
+end
+
+
+# File: app/services/utils/market_feed_parser.rb
+# frozen_string_literal: true
+
+class MarketFeedParser
+  def self.parse(io, fields)
+    fields.index_with do |field|
+      read_field(io, field)
+    end
+  rescue StandardError => e
+    raise "Market feed parsing failed: #{e.message}"
+  end
+
+  def self.read_field(io, field)
+    case field
+    when :last_traded_price then io.read(4).unpack1('F')
+    when :volume then io.read(4).unpack1('N')
+      # Add cases for other field types
+    end
+  end
+end
+
+
+# File: app/services/utils/response_helper.rb
+# frozen_string_literal: true
+
+module ResponseHelper
+  def self.error_response(message, status = :unprocessable_entity)
+    { error: { message: message, status: Rack::Utils.status_code(status) } }
+  end
+
+  def self.success_response(data, status = :ok)
+    { data: data, status: Rack::Utils.status_code(status) }
+  end
+end
+
+
+# File: app/services/validators/alert_validator.rb
+# frozen_string_literal: true
+
+class AlertValidator
+  include ActiveModel::Model
+
+  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,
+                :previous_position, :current_price, :high, :low, :volume, :time,
+                :stop_loss, :take_profit, :trailing_stop_loss, :strategy_name, :strategy_id
+
+  validates :ticker, :instrument_type, :action, :order_type, :strategy_name, :strategy_id, presence: true
+  validates :instrument_type, inclusion: { in: %w[stock index] }
+  validates :action, inclusion: { in: %w[buy sell] }
+  validates :order_type, inclusion: { in: %w[market limit stop] }
+  validates :current_price, :stop_loss, :take_profit, numericality: { greater_than: 0 }
+  validates :volume, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :time, presence: true
+
+  def initialize(params = {})
+    super(params.permit(:ticker, :instrument_type, :action, :order_type, :current_position,
+                        :previous_position, :current_price, :high, :low, :volume, :time,
+                        :stop_loss, :take_profit, :trailing_stop_loss, :strategy_name, :strategy_id))
+  end
+end
+
+
 # File: app/services/websocket_handlers/base_websocket.rb
 # frozen_string_literal: true
 
@@ -3021,124 +3136,6 @@ class WebSocketManager
 
   def handle_error(event)
     Rails.logger.error("WebSocket error: #{event.message}")
-  end
-end
-
-
-# File: app/utils/error_handler.rb
-# frozen_string_literal: true
-
-module ErrorHandler
-  MAX_RETRIES = 3
-
-  def self.handle_error(context:, exception:, retries: 0, retry_logic: nil)
-    ErrorLogger.log_error("#{context} failed", exception)
-
-    if retries < MAX_RETRIES && retry_logic
-      Rails.logger.info("#{context} retrying... Attempt #{retries + 1}")
-      retry_logic.call
-    else
-      Rails.logger.error("#{context} max retries exceeded. Exception: #{exception.message}")
-      { error: 'An unexpected error occurred. Please try again later.' }
-    end
-  end
-end
-
-
-# File: app/utils/error_logger.rb
-# frozen_string_literal: true
-
-module ErrorLogger
-  def self.log_error(message, exception = nil)
-    Rails.logger.error("#{message}: #{exception&.message}")
-    # Integrate with external monitoring tools like Sentry or Rollbar here
-  end
-end
-
-
-# File: app/utils/instrument_utils.rb
-# frozen_string_literal: true
-
-module InstrumentUtils
-  def self.find_instrument_by_symbol(symbol, segment, exchange)
-    Instrument.find_by!(
-      underlying_symbol: symbol,
-      segment: segment,
-      exchange: exchange
-    )
-  rescue ActiveRecord::RecordNotFound
-    raise "Instrument not found for symbol: #{symbol}, segment: #{segment}, exchange: #{exchange}"
-  end
-
-  def self.find_instrument_with_options(strike_price, expiry_date, option_type)
-    Instrument.joins(:derivative).find_by!(
-      'derivatives.strike_price = ? AND derivatives.option_type = ? AND derivatives.expiry_date = ?',
-      strike_price, option_type, expiry_date
-    )
-  rescue ActiveRecord::RecordNotFound
-    raise "Option not found for strike: #{strike_price}, expiry: #{expiry_date}, type: #{option_type}"
-  end
-end
-
-
-# File: app/utils/market_feed_parser.rb
-# frozen_string_literal: true
-
-class MarketFeedParser
-  def self.parse(io, fields)
-    fields.index_with do |field|
-      read_field(io, field)
-    end
-  rescue StandardError => e
-    raise "Market feed parsing failed: #{e.message}"
-  end
-
-  def self.read_field(io, field)
-    case field
-    when :last_traded_price then io.read(4).unpack1('F')
-    when :volume then io.read(4).unpack1('N')
-      # Add cases for other field types
-    end
-  end
-end
-
-
-# File: app/utils/response_helper.rb
-# frozen_string_literal: true
-
-module ResponseHelper
-  def self.error_response(message, status = :unprocessable_entity)
-    { error: { message: message, status: Rack::Utils.status_code(status) } }
-  end
-
-  def self.success_response(data, status = :ok)
-    { data: data, status: Rack::Utils.status_code(status) }
-  end
-end
-
-
-# File: app/validators/alert_validator.rb
-# frozen_string_literal: true
-
-class AlertValidator
-  include ActiveModel::Model
-
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,
-                :previous_position, :current_price, :high, :low, :volume, :time,
-                :stop_loss, :take_profit, :trailing_stop_loss, :strategy_name, :strategy_id
-
-  validates :ticker, :instrument_type, :action, :order_type, :strategy_name, :strategy_id, presence: true
-  validates :instrument_type, inclusion: { in: %w[stock index] }
-  validates :action, inclusion: { in: %w[buy sell] }
-  validates :order_type, inclusion: { in: %w[market limit stop] }
-  validates :current_price, :stop_loss, :take_profit, numericality: { greater_than: 0 }
-  validates :volume, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
-  validates :time, presence: true
-
-  def initialize(params = {})
-    super(params.permit(:ticker, :instrument_type, :action, :order_type, :current_position,
-                        :previous_position, :current_price, :high, :low, :volume, :time,
-                        :stop_loss, :take_profit, :trailing_stop_loss, :strategy_name, :strategy_id))
   end
 end
 

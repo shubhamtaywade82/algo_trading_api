@@ -2,11 +2,11 @@
 
 module AlertProcessors
   class Base < ApplicationService
-    attr_reader :alert
+    attr_reader :alert, :exchange
 
     def initialize(alert)
       @alert = alert
-      @instrument = fetch_instrument
+      @exchange = alert[:exchange]
     end
 
     def call
@@ -15,8 +15,8 @@ module AlertProcessors
 
     private
 
-    def fetch_instrument
-      Instrument.find_by!(
+    def instrument
+      @instrument ||= Instrument.find_by!(
         underlying_symbol: alert[:ticker],
         segment: segment_from_alert_type(alert[:instrument_type]),
         exchange: alert[:exchange]
