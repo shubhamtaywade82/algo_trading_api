@@ -95,12 +95,16 @@ module AlertProcessors
       max_allocation = available_balance * 0.5 # Use 50% of available balance
       quantity = calculate_quantity(strike[:last_price], max_allocation, instrument.lot_size)
 
+      if available_balance < (quantity * strike[:last_price])
+        return ErrorLogger.log_error("Insufficient balance: #{available_balance - (quantity * strike[:last_price])}")
+      end
+
       order_data = {
-        transactionType: 'BUY',
+        transactionType: Dhanhq::Constants::BUY,
         exchangeSegment: instrument.exchange_segment,
-        productType: 'INTRADAY',
+        productType: Dhanhq::Constants::MARGIN,
         orderType: alert[:order_type].upcase,
-        validity: 'DAY',
+        validity: Dhanhq::Constants::DAY,
         securityId: instrument.security_id,
         quantity: quantity,
         price: strike[:last_price],

@@ -4,7 +4,7 @@ module AlertProcessors
   class Stock < Base
     def call
       strategy = determine_strategy
-      pp strategy
+      Rails.logger.debug strategy
       execute_strategy(strategy)
       alert.update!(status: 'processed')
     rescue StandardError => e
