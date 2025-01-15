@@ -30,3 +30,5 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+algo_trading_api-code_context
+folder_structure.txt
