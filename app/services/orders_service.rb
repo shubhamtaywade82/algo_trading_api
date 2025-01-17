@@ -13,6 +13,18 @@ class OrdersService
     )
   end
 
+  def self.fetch_order(order_id)
+    retries ||= 0
+    Dhanhq::API::Orders.find(order_id)
+  rescue StandardError => e
+    ErrorHandler.handle_error(
+      context: 'Fetching orders',
+      exception: e,
+      retries: retries + 1,
+      retry_logic: -> { fetch_orders }
+    )
+  end
+
   # Place a generic order
   # @param payload [Hash] The payload for the order, including keys like :transactionType, :exchangeSegment, etc.
   # @return [Hash] The response from the DhanHQ API
