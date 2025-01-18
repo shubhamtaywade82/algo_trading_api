@@ -29,7 +29,7 @@ module AlertProcessors
       @instrument ||= Instrument.find_by!(
         exchange: exchange,
         underlying_symbol: alert[:ticker],
-        instrument_type: alert[:instrument_type] == 'stock' ? 'ES' : 'INDEX'
+        instrument: alert[:instrument_type] == 'stock' ? 'ES' : 'INDEX'
       )
     rescue ActiveRecord::RecordNotFound
       raise "Instrument not found for #{alert[:ticker]} in #{exchange}"
@@ -43,22 +43,7 @@ module AlertProcessors
     end
 
     def fetch_instrument_for_strike(strike_price, expiry_date, option_type)
-      Instrument.joins(:derivative)
-                .where(
-                  "instruments.segment = ? AND
-                   instruments.underlying_symbol = ? AND
-                   instruments.instrument = ? AND
-                   derivatives.strike_price = ? AND
-                   derivatives.option_type = ? AND
-                   derivatives.expiry_date = ?",
-                  'D', # Derivatives
-                  alert[:ticker],
-                  'OPTIDX', # Options Index
-                  strike_price,
-                  option_type.upcase,
-                  expiry_date.to_date
-                )
-                .first!
+      instrument.derivatives.find_by(strike_price: strike_price, expiry_date: expiry_date, option_type: option_type)
     rescue ActiveRecord::RecordNotFound
       raise "Instrument not found for #{alert[:ticker]}, strike #{strike_price}, expiry #{expiry_date}, and option type #{option_type}"
     end
