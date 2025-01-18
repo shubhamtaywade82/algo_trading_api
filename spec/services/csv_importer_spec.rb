@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe CsvImporter, type: :service do
+RSpec.describe InstrumentsImporter, type: :service do
   include CsvMockHelper
 
   let(:mock_csv_path) { CsvMockHelper::MOCK_CSV_PATH }

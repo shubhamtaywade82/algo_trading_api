@@ -2,7 +2,7 @@
 
 class OrderFeature < ApplicationRecord
   # Associations
-  belongs_to :instrument
+  belongs_to :featureable, polymorphic: true
 
   # Validations
   validates :bracket_flag, :cover_flag, inclusion: { in: %w[Y N] }, allow_nil: true

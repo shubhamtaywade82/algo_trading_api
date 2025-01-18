@@ -7,7 +7,7 @@ class CsvImportJob < ApplicationJob
 
   def perform(*_args)
     file_path = download_file(file_url)
-    CsvImporter.import(file_path)
+    InstrumentsImporter.import(file_path)
     cleanup_file(file_path)
   end
 

@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-namespace :data do
+namespace :import do
   desc 'Import MIS Details from CSV'
-  task import_mis: :environment do
+  task mis_details: :environment do
     require 'csv'
 
     # Define the path to the CSV file

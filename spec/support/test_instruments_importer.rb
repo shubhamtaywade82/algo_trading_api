@@ -3,7 +3,7 @@
 require 'csv'
 require 'open-uri'
 
-module TestCsvImporter
+module TestInstrumentsImporter
   MAIN_CSV_URL = 'https://images.dhan.co/api-data/api-scrip-master-detailed.csv'
   MIS_CSV_PATH = Rails.root.join('mis_data.csv')
   MAIN_DOWNLOADED_FILE = Rails.root.join('tmp/large_master.csv')
@@ -127,7 +127,7 @@ module TestCsvImporter
 
     # Import the main CSV data
     CSV.read(MAIN_FILTERED_CSV_PATH, headers: true)
-    CsvImporter.import_csv_data(MAIN_FILTERED_CSV_PATH)
+    InstrumentsImporter.import_csv_data(MAIN_FILTERED_CSV_PATH)
 
     # Import the MIS details CSV data
     mis_csv_data = CSV.read(MIS_FILTERED_CSV_PATH, headers: true)
@@ -222,7 +222,7 @@ end
 # Prepare and import test data before tests run
 RSpec.configure do |config|
   # config.before(:suite) do
-  #   TestCsvImporter.prepare_test_csvs
-  #   TestCsvImporter.import_to_test_db
+  #   TestInstrumentsImporter.prepare_test_csvs
+  #   TestInstrumentsImporter.import_to_test_db
   # end
 end

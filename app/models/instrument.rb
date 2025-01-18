@@ -3,13 +3,13 @@
 class Instrument < ApplicationRecord
   # Associations
   has_one :mis_detail, dependent: :destroy
-  has_one :derivative, dependent: :destroy
-  has_many :margin_requirements, dependent: :destroy
-  has_many :order_features, dependent: :destroy
+  has_many :derivatives, dependent: :destroy
+  has_many :margin_requirements, as: :requirementable, dependent: :destroy
+  has_many :order_features, as: :featureable, dependent: :destroy
   has_many :alerts, dependent: :destroy
 
   # Enable nested attributes for associated models
-  accepts_nested_attributes_for :derivative, allow_destroy: true
+  accepts_nested_attributes_for :derivatives, allow_destroy: true
   accepts_nested_attributes_for :margin_requirements, allow_destroy: true
   accepts_nested_attributes_for :order_features, allow_destroy: true
 
@@ -106,8 +106,7 @@ class Instrument < ApplicationRecord
   # Generate `exchange_segment` dynamically
   def exchange_segment
     case [exchange.to_sym, segment.to_sym]
-    when %i[nse index] then 'IDX_I'
-    when %i[bse index] then 'IDX_I'
+    when %i[nse index], %i[bse index] then 'IDX_I'
     when %i[nse equity] then 'NSE_EQ'
     when %i[bse equity] then 'BSE_EQ'
     when %i[nse derivatives] then 'NSE_FNO'

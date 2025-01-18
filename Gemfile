@@ -86,3 +86,5 @@ gem 'ransack', '~> 4.2'
 gem 'delayed_job_active_record', '~> 4.1'
 
 gem 'daemons', '~> 1.4'
+
+gem 'activerecord-import'

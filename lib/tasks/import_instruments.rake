@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-namespace :csv do
+namespace :import do
   desc 'Import instruments from CSV'
-  task import: :environment do
+  task instruments: :environment do
     puts 'Starting CSV import process...'
 
     # Dynamically download and import the CSV
-    CsvImporter.import
+    InstrumentsImporter.import
 
     puts 'CSV import completed successfully!'
   rescue StandardError => e
