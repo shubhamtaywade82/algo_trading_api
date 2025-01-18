@@ -6,7 +6,7 @@ namespace :data do
     require 'csv'
 
     # Define the path to the CSV file
-    file_path = Rails.root.join('mis_data.csv')
+    file_path = Rails.root.join('db/seeds/mis_data.csv')
 
     # Check if the file exists
     unless File.exist?(file_path)
@@ -20,7 +20,7 @@ namespace :data do
 
       CSV.foreach(file_path, headers: true) do |row|
         # Skip rows with missing critical data
-        if row['Symbol / Scrip Name'].blank?
+        if row['SYMBOL_NAME'].blank?
 
           puts "Skipping row due to missing critical data: #{row.to_h}"
           Rails.logger.warn "Skipping row due to missing critical data: #{row.to_h}"
@@ -28,10 +28,10 @@ namespace :data do
         end
 
         # Fetch the associated instruments
-        instruments = Instrument.where(underlying_symbol: row['Symbol / Scrip Name'], isin: row['ISIN'])
+        instruments = Instrument.where(underlying_symbol: row['SYMBOL_NAME'], isin: row['ISIN'])
 
         if instruments.empty?
-          Rails.logger.warn "No matching instruments found for Symbol: #{row['Symbol / Scrip Name']}, Exchange: #{row['Exchange ID']}, Segment: #{row['Segment Code']}"
+          Rails.logger.warn "No matching instruments found for Symbol: #{row['SYMBOL_NAME']}, Exchange: #{row['Exchange ID']}, Segment: #{row['Segment Code']}"
           next
         end
 
@@ -40,9 +40,9 @@ namespace :data do
           mis_detail = MisDetail.find_or_initialize_by(instrument: instrument)
           mis_detail.assign_attributes(
             isin: row['ISIN'],
-            mis_leverage: row['MIS(Intraday)']&.delete('x')&.to_i,
-            bo_leverage: row['BO(Bracket)']&.delete('x')&.to_i,
-            co_leverage: row['CO(Cover)']&.delete('x')&.to_i
+            mis_leverage: row['MIS_INTRADAY']&.delete('x')&.to_i,
+            bo_leverage: row['BO_BRACKET)']&.delete('x')&.to_i,
+            co_leverage: row['CO_COVER)']&.delete('x')&.to_i
           )
 
           if mis_detail.save

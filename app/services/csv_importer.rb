@@ -11,8 +11,10 @@ class CsvImporter
   VALID_INSTRUMENTS = %w[OPTIDX FUTIDX OPTSTK FUTSTK EQUITY INDEX].freeze
   VALID_BUY_SELL_INDICATOR = %w[A].freeze # A means both Buy and Sell are allowed
 
-  def self.import
-    file_path = download_csv
+  def self.import(file_path = nil)
+    file_path ||= download_csv
+
+    Rails.logger.debug { "Using CSV file: #{file_path}" }
     csv_data = filter_csv_data(CSV.read(file_path, headers: true))
 
     # Import Instruments
@@ -73,7 +75,12 @@ class CsvImporter
 
       Rails.logger.debug { "Importing Instrument: #{row['DISPLAY_NAME']} (#{row['INSTRUMENT']})" }
 
-      instrument = Instrument.find_or_initialize_by(security_id: row['SECURITY_ID'], symbol_name: row['SYMBOL_NAME'])
+      instrument = Instrument.find_or_initialize_by(
+        security_id: row['SECURITY_ID'],
+        symbol_name: row['SYMBOL_NAME'],
+        exchange: row['EXCH_ID'],
+        segment: row['SEGMENT']
+      )
       next unless instrument
 
       instrument.update(
@@ -88,9 +95,7 @@ class CsvImporter
         tick_size: row['TICK_SIZE'],
         asm_gsm_flag: row['ASM_GSM_FLAG'],
         asm_gsm_category: row['ASM_GSM_CATEGORY'],
-        mtf_leverage: row['MTF_LEVERAGE'],
-        exchange: row['EXCH_ID'],
-        segment: row['SEGMENT']
+        mtf_leverage: row['MTF_LEVERAGE']
       )
     end
   end
