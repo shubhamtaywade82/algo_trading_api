@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_18_115524) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_18_171303) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -124,6 +124,23 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_18_115524) do
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_instruments_unique", unique: true
   end
 
+  create_table "levels", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.decimal "high"
+    t.decimal "low"
+    t.decimal "open"
+    t.decimal "close"
+    t.decimal "volume"
+    t.decimal "demand_zone"
+    t.decimal "supply_zone"
+    t.string "timeframe"
+    t.date "period_start"
+    t.date "period_end"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_levels_on_instrument_id"
+  end
+
   create_table "margin_requirements", force: :cascade do |t|
     t.string "requirementable_type", null: false
     t.bigint "requirementable_id", null: false
@@ -230,6 +247,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_18_115524) do
 
   add_foreign_key "alerts", "instruments"
   add_foreign_key "derivatives", "instruments"
+  add_foreign_key "levels", "instruments"
   add_foreign_key "mis_details", "instruments"
   add_foreign_key "orders", "alerts"
   add_foreign_key "positions", "instruments"
