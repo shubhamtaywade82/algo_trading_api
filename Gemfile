@@ -55,6 +55,8 @@ group :development, :test do
   gem 'benchmark-ips'
   gem 'memory_profiler'
   gem 'stackprof'
+
+  gem 'rubycritic', require: false
 end
 
 group :test do
