@@ -67,8 +67,10 @@ class InstrumentsImporter
         exchange: row['EXCH_ID'],
         segment: row['SEGMENT'],
         instrument: row['INSTRUMENT'],
+        instrument_type: row['INSTRUMENT_TYPE'],
         underlying_symbol: row['UNDERLYING_SYMBOL'],
         underlying_security_id: row['UNDERLYING_SECURITY_ID'],
+        series: row['SERIES'],
         lot_size: row['LOT_SIZE'].to_i.positive? ? row['LOT_SIZE'].to_i : nil,
         tick_size: row['TICK_SIZE'].to_f,
         asm_gsm_flag: row['ASM_GSM_FLAG'],
@@ -95,7 +97,7 @@ class InstrumentsImporter
     # Create a mapping of security_id, exchange, and segment to instrument_id
     Instrument.where(security_id: instrument_rows.pluck(:security_id))
               .pluck(:id, :underlying_symbol, :segment, :exchange)
-              .each_with_object({}) do |(id, underlying_symbol, segment, exchange), mapping|
+              .each_with_object({}) do |(id, underlying_symbol, _segment, exchange), mapping|
       mapping["#{underlying_symbol}-#{Instrument.exchanges[exchange]}"] = id
     end
   end
@@ -103,24 +105,24 @@ class InstrumentsImporter
   def self.import_derivatives(csv_data, instrument_mapping)
     Rails.logger.debug 'Batch importing derivatives...'
 
-    pp instrument_mapping
     derivative_rows = csv_data.select { |row| valid_derivative?(row) && row['SEGMENT'] == 'D' }.filter_map do |row|
-      pp "#{row['UNDERLYING_SYMBOL']}-#{row['EXCH_ID']}-#{row['SEGMENT']}"
       instrument_id = instrument_mapping["#{row['UNDERLYING_SYMBOL']}-#{row['EXCH_ID']}"]
       next unless instrument_id
 
       {
+        exchange: row['EXCH_ID'],
+        segment: row['SEGMENT'],
         security_id: row['SECURITY_ID'],
         symbol_name: row['SYMBOL_NAME'],
         display_name: row['DISPLAY_NAME'],
-        exchange: row['EXCH_ID'],
-        segment: row['SEGMENT'],
+        instrument: row['INSTRUMENT'],
         instrument_type: row['INSTRUMENT_TYPE'],
         underlying_symbol: row['UNDERLYING_SYMBOL'],
         underlying_security_id: row['UNDERLYING_SECURITY_ID'],
         expiry_date: parse_date(row['SM_EXPIRY_DATE']),
         strike_price: row['STRIKE_PRICE'].to_f,
         option_type: row['OPTION_TYPE'],
+        expiry_flag: row['EXPIRY_FLAG'],
         lot_size: row['LOT_SIZE'].to_i,
         tick_size: row['TICK_SIZE'].to_f,
         asm_gsm_flag: row['ASM_GSM_FLAG'] == 'Y',
