@@ -23,7 +23,9 @@
 
 set :environment, ENV['RAILS_ENV'] || 'development'
 set :output, 'log/cron.log'
-
+every :sunday, at: '2:00 am' do
+  runner 'LevelsUpdateJob.perform_later'
+end
 # Process Delayed Job tasks every minute
 every 1.minute do
   rake 'jobs:workoff'
