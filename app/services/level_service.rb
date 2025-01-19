@@ -56,9 +56,7 @@ class LevelService < ApplicationService
     levels.each do |level|
       Level.find_or_initialize_by(
         instrument: instrument,
-        timeframe: timeframe,
-        period_start: level[:date],
-        period_end: level[:date]
+        timeframe: timeframe
       ).update!(
         high: level[:high],
         low: level[:low],
@@ -66,7 +64,9 @@ class LevelService < ApplicationService
         close: level[:close],
         demand_zone: level[:demand_zone],
         supply_zone: level[:supply_zone],
-        volume: level[:volume]
+        volume: level[:volume],
+        period_start: level[:date],
+        period_end: level[:date]
       )
     end
   end

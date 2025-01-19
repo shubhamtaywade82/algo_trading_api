@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module ErrorHandler
-  MAX_RETRIES = 3
+  MAX_RETRIES = 0
 
   def self.handle_error(context:, exception:, retries: 0, retry_logic: nil)
     ErrorLogger.log_error("#{context} failed", exception)

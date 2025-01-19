@@ -1,9 +1,20 @@
 # frozen_string_literal: true
 
+require 'csv'
+
 namespace :levels do
-  desc 'Update daily and weekly levels for all instruments'
+  desc 'Update daily and weekly levels for instruments in instraday_stocks.csv'
   task update: :environment do
-    Instrument.nse.where(underlying_symbol: 'RELIANCE').find_each do |instrument|
+    # Load symbols from CSV
+    file_path = Rails.root.join('db/seeds/intraday_stocks.csv')
+    stocks = CSV.read(file_path, headers: true).pluck('SYMBOL_NAME')
+
+    Rails.logger.debug { "Loaded #{stocks.size} symbols from CSV." }
+    # Fetch instruments in bulk
+    instruments = Instrument.where(underlying_symbol: stocks)
+    instruments.pluck(:underlying_symbol)
+
+    instruments.each do |instrument|
       Rails.logger.debug { "Processing instrument: #{instrument.symbol_name}" }
 
       # Calculate dates for daily levels
@@ -18,7 +29,7 @@ namespace :levels do
       ).fetch_and_store_levels
 
       # Only update weekly levels on Sundays
-      if Time.zone.today.sunday?
+      if Time.zone.today.sunday? || Time.zone.today.saturday?
         weekly_from_date, weekly_to_date = calculate_weekly_dates
         Rails.logger.debug { "Weekly Levels: #{weekly_from_date} to #{weekly_to_date}" }
 
@@ -29,7 +40,19 @@ namespace :levels do
           weekly_to_date
         ).fetch_and_store_levels
       end
+
+      # Delay next iteration by 5 seconds
+      sleep(5)
     end
+
+    # Log missing symbols
+    if missing_symbols.any?
+      Rails.logger.error { "Symbols not found: #{missing_symbols.join(', ')}" }
+      puts "Symbols not found: #{missing_symbols.join(', ')}"
+    else
+      puts 'All symbols processed successfully.'
+    end
+
     puts 'Levels updated!'
   end
 
