@@ -1,403 +1,0 @@
-
-config/application.rb,174
-module AlgoTradingAppAlgoTradingApp21,0
-  class Application < Rails::ApplicationApplication22,0
-  class Application < Rails::ApplicationAlgoTradingApp::Application22,0
-
-app/services/websocket_handler.rb,165
-class WebSocketHandlerWebSocketHandler4,0
-  def self.start_order_updatesstart_order_updates5,0
-  def self.process_order_update(update)process_order_update17,0
-
-app/services/websocket_handlers/live_order_handler.rb,365
-module WebsocketHandlersWebsocketHandlers2,0
-  class LiveOrderHandlerLiveOrderHandler3,0
-  class LiveOrderHandlerWebsocketHandlers::LiveOrderHandler3,0
-    def initialize(websocket_connection)initialize4,0
-    def process_messagesprocess_messages8,0
-    def handle_message(message)handle_message18,0
-    def process_order(order_data)process_order27,0
-
-app/services/websocket_handlers/market_feed_handler.rb,356
-module WebsocketHandlersWebsocketHandlers6,0
-  class MarketFeedHandlerMarketFeedHandler7,0
-  class MarketFeedHandlerWebsocketHandlers::MarketFeedHandler7,0
-    def initializeinitialize8,0
-    def subscribe_to_instruments(instruments)subscribe_to_instruments12,0
-    def listenlisten21,0
-    def handle_market_data(data)handle_market_data29,0
-
-app/services/websocket_handlers/order_update_handler.rb,325
-module WebsocketHandlersWebsocketHandlers5,0
-  class OrderUpdateHandlerOrderUpdateHandler6,0
-  class OrderUpdateHandlerWebsocketHandlers::OrderUpdateHandler6,0
-    def initializeinitialize7,0
-    def authenticateauthenticate12,0
-    def listenlisten24,0
-    def handle_order_update(data)handle_order_update32,0
-
-app/services/options/strategy_suggester.rb,359
-module OptionsOptions1,0
-  class StrategySuggesterStrategySuggester2,0
-  class StrategySuggesterOptions::StrategySuggester2,0
-    def initialize(analysis, params)initialize3,0
-    def suggestsuggest8,0
-    def generate_example(name)generate_example18,0
-    def best_option(type)best_option32,0
-    def format_example(action)format_example37,0
-
-app/services/order_service.rb,305
-class OrderServiceOrderService2,0
-  def self.place_order(ticker:, action:, quantity:, price:, security_id:, trailing_stop_loss:)place_order3,0
-  def self.calculate_stop_loss(price, action, trailing_stop_loss)calculate_stop_loss27,0
-  def self.calculate_take_profit(price)calculate_take_profit31,0
-
-app/services/algo_trading/stop_loss_manager.rb,304
-module AlgoTradingAlgoTrading2,0
-  class StopLossManagerStopLossManager3,0
-  class StopLossManagerAlgoTrading::StopLossManager3,0
-    def initializeinitialize4,0
-    def adjust_stop_loss(order, market_data)adjust_stop_loss8,0
-    def calculate_stop_loss(current_price)calculate_stop_loss13,0
-
-app/services/algo_trading/order_manager.rb,367
-module AlgoTradingAlgoTrading2,0
-  class OrderManagerOrderManager3,0
-  class OrderManagerAlgoTrading::OrderManager3,0
-    def initializeinitialize4,0
-    def startstart9,0
-    def place_order(alert, market_data)place_order14,0
-    def calculate_limit_price(market_data)calculate_limit_price26,0
-    def calculate_quantity(price)calculate_quantity31,0
-
-app/services/alert_processor.rb,551
-class AlertProcessor < ApplicationServiceAlertProcessor1,0
-  def initialize(alert)initialize2,0
-  def callcall6,0
-  attr_reader :alertalert24,0
-  def handle_open_positionhandle_open_position27,0
-  def fetch_open_positionfetch_open_position35,0
-  def position_profitable?(position)position_profitable?40,0
-  def close_position(position)close_position44,0
-  def select_strategyselect_strategy60,0
-  def setup_trailing_stop_loss(order_response)setup_trailing_stop_loss85,0
-  def fetch_order_details(order_id)fetch_order_details98,0
-
-app/services/market_feed/data_processor.rb,295
-module MarketFeedMarketFeed1,0
-  class DataProcessorDataProcessor2,0
-  class DataProcessorMarketFeed::DataProcessor2,0
-    def initialize(data)initialize3,0
-    def processprocess7,0
-    def significant_movement?significant_movement?14,0
-    def update_strategyupdate_strategy19,0
-
-app/services/market_feed/packet_parser.rb,248
-module MarketFeedMarketFeed1,0
-  class PacketParserPacketParser2,0
-  class PacketParserMarketFeed::PacketParser2,0
-    def self.parse(binary_data)parse3,0
-    def self.handler_for_response_code(response_code)handler_for_response_code26,0
-
-app/services/market_feed/adjustment_strategy.rb,211
-module MarketFeedMarketFeed1,0
-  class AdjustmentStrategyAdjustmentStrategy2,0
-  class AdjustmentStrategyMarketFeed::AdjustmentStrategy2,0
-    def initialize(data)initialize3,0
-    def adjustadjust7,0
-
-app/services/market_feed/handlers/quote_handler.rb,291
-module MarketFeedMarketFeed1,0
-  module HandlersHandlers2,0
-  module HandlersMarketFeed::Handlers2,0
-    class QuoteHandlerQuoteHandler3,0
-    class QuoteHandlerMarketFeed::Handlers::QuoteHandler3,0
-      def initialize(io)initialize4,0
-      def parse_payloadparse_payload8,0
-
-app/services/market_feed/handlers/ticker_handler.rb,295
-module MarketFeedMarketFeed1,0
-  module HandlersHandlers2,0
-  module HandlersMarketFeed::Handlers2,0
-    class TickerHandlerTickerHandler3,0
-    class TickerHandlerMarketFeed::Handlers::TickerHandler3,0
-      def initialize(io)initialize4,0
-      def parse_payloadparse_payload8,0
-
-app/services/market_feed/handlers/full_packet_handler.rb,364
-module MarketFeedMarketFeed1,0
-  module HandlersHandlers2,0
-  module HandlersMarketFeed::Handlers2,0
-    class FullPacketHandlerFullPacketHandler3,0
-    class FullPacketHandlerMarketFeed::Handlers::FullPacketHandler3,0
-      def initialize(io)initialize4,0
-      def parse_payloadparse_payload8,0
-      def parse_market_depthparse_market_depth24,0
-
-app/services/orders/strategies/intraday_stock_strategy.rb,463
-module OrdersOrders1,0
-  module StrategiesStrategies2,0
-  module StrategiesOrders::Strategies2,0
-    class IntradayStockStrategy < BaseStrategyIntradayStockStrategy3,0
-    class IntradayStockStrategy < BaseStrategyOrders::Strategies::IntradayStockStrategy3,0
-      def executeexecute4,0
-      def leverage_factorleverage_factor10,0
-      def calculate_quantity(price)calculate_quantity15,0
-      def default_product_typedefault_product_type25,0
-
-app/services/orders/strategies/swing_stock_strategy.rb,344
-module OrdersOrders1,0
-  module StrategiesStrategies2,0
-  module StrategiesOrders::Strategies2,0
-    class SwingStockStrategy < BaseStrategySwingStockStrategy3,0
-    class SwingStockStrategy < BaseStrategyOrders::Strategies::SwingStockStrategy3,0
-      def executeexecute4,0
-      def default_product_typedefault_product_type10,0
-
-app/services/orders/strategies/unified_options_strategy.rb,371
-module OrdersOrders1,0
-  module StrategiesStrategies2,0
-  module StrategiesOrders::Strategies2,0
-    class UnifiedOptionsStrategy < BaseStrategyUnifiedOptionsStrategy3,0
-    class UnifiedOptionsStrategy < BaseStrategyOrders::Strategies::UnifiedOptionsStrategy3,0
-      def executeexecute4,0
-      def calculate_strike_price(price)calculate_strike_price15,0
-
-app/services/orders/strategies/base_strategy.rb,1059
-module OrdersOrders1,0
-  module StrategiesStrategies2,0
-  module StrategiesOrders::Strategies2,0
-    class BaseStrategyBaseStrategy3,0
-    class BaseStrategyOrders::Strategies::BaseStrategy3,0
-      attr_reader :alert, :instrument, :security_symbol, :exchangealert4,0
-      attr_reader :alert, :instrument, :security_symbol, :exchangeinstrument4,0
-      attr_reader :alert, :instrument, :security_symbol, :exchangesecurity_symbol4,0
-      attr_reader :alert, :instrument, :security_symbol, :exchangeexchange4,0
-      def initialize(alert)initialize6,0
-      def executeexecute12,0
-      def instrumentinstrument19,0
-      def fetch_fundsfetch_funds29,0
-      def build_order_payloadbuild_order_payload34,0
-      def map_exchange_segment(exchange)map_exchange_segment47,0
-      def calculate_quantity(price)calculate_quantity52,0
-      def leverage_factorleverage_factor62,0
-      def funds_utilizationfunds_utilization66,0
-      def default_product_typedefault_product_type71,0
-      def place_order(params)place_order76,0
-
-app/services/orders/strategies/stock_order_strategy.rb,287
-module OrdersOrders1,0
-  module StrategiesStrategies2,0
-  module StrategiesOrders::Strategies2,0
-    class StockOrderStrategy < BaseStrategyStockOrderStrategy3,0
-    class StockOrderStrategy < BaseStrategyOrders::Strategies::StockOrderStrategy3,0
-      def executeexecute4,0
-
-app/services/orders/strategies/options_strategy.rb,522
-module OrdersOrders1,0
-  module StrategiesStrategies2,0
-  module StrategiesOrders::Strategies2,0
-    class OptionsStrategy < BaseStrategyOptionsStrategy3,0
-    class OptionsStrategy < BaseStrategyOrders::Strategies::OptionsStrategy3,0
-      def executeexecute4,0
-      def default_product_typedefault_product_type21,0
-      def calculate_strike_price(price)calculate_strike_price25,0
-      def determine_option_type(action)determine_option_type30,0
-      def nearest_expiry_datenearest_expiry_date39,0
-
-app/services/application_service.rb,131
-class ApplicationServiceApplicationService1,0
-  def self.call(*args, &block)call2,0
-  def handle_error(error)handle_error7,0
-
-app/services/live_order_update.rb,204
-class LiveOrderUpdateLiveOrderUpdate3,0
-  def initialize(token:, client_id:)initialize4,0
-  def connectconnect16,0
-  def authenticateauthenticate25,0
-  def handle_message(msg)handle_message30,0
-
-app/services/instrument_sync_service.rb,431
-class InstrumentSyncServiceInstrumentSyncService4,0
-  DETAILED_CSV_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"DETAILED_CSV_URL5,0
-  DETAILED_CSV_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"InstrumentSyncService::DETAILED_CSV_URL5,0
-  def self.sync_instrumentssync_instruments7,0
-  def self.download_csvdownload_csv51,0
-  def self.parse_date(date_string)parse_date60,0
-
-app/services/live_market_feed.rb,238
-class LiveMarketFeedLiveMarketFeed3,0
-  def initialize(token:, client_id:)initialize4,0
-  def connectconnect9,0
-  def subscribe_to_instruments(instruments)subscribe_to_instruments20,0
-  def handle_message(msg)handle_message34,0
-
-app/services/parsers/live_order_parser.rb,432
-module ParsersParsers2,0
-  class LiveOrderParserLiveOrderParser3,0
-  class LiveOrderParserParsers::LiveOrderParser3,0
-    REQUIRED_FIELDS = %w[REQUIRED_FIELDS4,0
-    REQUIRED_FIELDS = %w[Parsers::LiveOrderParser::REQUIRED_FIELDS4,0
-    def initialize(raw_data)initialize11,0
-    def parseparse16,0
-    attr_reader :raw_dataraw_data27,0
-    def extract_dataextract_data29,0
-    def validate_datavalidate_data33,0
-
-app/services/strategy_factory.rb,173
-class StrategyFactoryStrategyFactory1,0
-  STRATEGY_MAP = {STRATEGY_MAP2,0
-  STRATEGY_MAP = {StrategyFactory::STRATEGY_MAP2,0
-  def self.build(strategy_name)build7,0
-
-app/controllers/webhooks/alerts_controller.rb,310
-class Webhooks::AlertsController < ApplicationControllerAlertsController1,0
-class Webhooks::AlertsController < ApplicationControllerWebhooks::AlertsController1,0
-  def createcreate2,0
-  def alert_paramsalert_params28,0
-  def valid_alert?(alert)valid_alert?37,0
-  def parse_payloadparse_payload43,0
-
-app/controllers/instruments_controller.rb,78
-class InstrumentsController < ApplicationControllerInstrumentsController1,0
-
-app/controllers/application_controller.rb,78
-class ApplicationController < ActionController::APIApplicationController1,0
-
-app/controllers/mis_details_controller.rb,76
-class MisDetailsController < ApplicationControllerMisDetailsController1,0
-
-app/controllers/options_controller.rb,118
-class OptionsController < ApplicationControllerOptionsController1,0
-  def suggest_strategiessuggest_strategies2,0
-
-app/mailers/application_mailer.rb,67
-class ApplicationMailer < ActionMailer::BaseApplicationMailer1,0
-
-app/validators/alert_validator.rb,3274
-class AlertValidatorAlertValidator1,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,ticker4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,ticker=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,instrument_type4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,instrument_type=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,action4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,action=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,order_type4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,order_type=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,current_position4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,current_position=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,previous_position4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,previous_position=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,current_price4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,current_price=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,high4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,high=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,low4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,low=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,volume4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,volume=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,time4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,time=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,stop_loss4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,stop_loss=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,take_profit4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,take_profit=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,trailing_stop_loss4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,trailing_stop_loss=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,strategy_name4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,strategy_name=4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,strategy_id4,0
-  attr_accessor :ticker, :instrument_type, :action, :order_type, :current_position,strategy_id=4,0
-  def initialize(params = {})initialize16,0
-
-app/jobs/trailing_stop_loss_job.rb,315
-class TrailingStopLossJob < ApplicationJobTrailingStopLossJob1,0
-  def performperform4,0
-  def fetch_latest_price(ticker)fetch_latest_price15,0
-  def calculate_new_stop_loss(position, latest_price)calculate_new_stop_loss19,0
-  def update_stop_loss_order(position, new_stop_loss)update_stop_loss_order26,0
-
-app/jobs/application_job.rb,58
-class ApplicationJob < ActiveJob::BaseApplicationJob1,0
-
-app/models/position.rb,48
-class Position < ApplicationRecordPosition1,0
-
-app/models/application_record.rb,67
-class ApplicationRecord < ActiveRecord::BaseApplicationRecord1,0
-
-app/models/order.rb,42
-class Order < ApplicationRecordOrder1,0
-
-app/models/instrument.rb,961
-class Instrument < ApplicationRecordInstrument1,0
-  has_one :mis_detail, dependent: :destroymis_detail52,0
-  has_one :mis_detail, dependent: :destroymis_detail=52,0
-  has_one :mis_detail, dependent: :destroybuild_mis_detail52,0
-  has_one :mis_detail, dependent: :destroycreate_mis_detail52,0
-  has_one :mis_detail, dependent: :destroycreate_mis_detail!52,0
-  scope :equities, -> { where(instrument_type: "EQ") }equities59,0
-  scope :indices, -> { where(instrument_type: "INDEX") }indices60,0
-  scope :currencies, -> { where(segment: "C") }currencies61,0
-  scope :expiring_soon, -> { where(expiry_flag: "1") }expiring_soon62,0
-  def display_namedisplay_name65,0
-  def full_segment_namefull_segment_name69,0
-  def ltpltp80,0
-  def ohlcohlc100,0
-  def depthdepth120,0
-  def fetch_option_chain(expiry)fetch_option_chain140,0
-  def exchange_segmentexchange_segment149,0
-  def exchange_segment_mappingexchange_segment_mapping156,0
-
-app/models/alert.rb,42
-class Alert < ApplicationRecordAlert1,0
-
-app/models/mis_detail.rb,272
-class MisDetail < ApplicationRecordMisDetail1,0
-  belongs_to :instrumentinstrument2,0
-  belongs_to :instrumentinstrument=2,0
-  belongs_to :instrumentbuild_instrument2,0
-  belongs_to :instrumentcreate_instrument2,0
-  belongs_to :instrumentcreate_instrument!2,0
-
-app/models/strategy.rb,48
-class Strategy < ApplicationRecordStrategy1,0
-
-db/migrate/20241215180057_add_status_to_alerts.rb,101
-class AddStatusToAlerts < ActiveRecord::Migration[8.0]AddStatusToAlerts1,0
-  def changechange2,0
-
-db/migrate/20241214104857_create_alerts.rb,91
-class CreateAlerts < ActiveRecord::Migration[8.0]CreateAlerts1,0
-  def changechange2,0
-
-db/migrate/20241216022320_add_action_to_alerts.rb,101
-class AddActionToAlerts < ActiveRecord::Migration[8.0]AddActionToAlerts1,0
-  def changechange2,0
-
-db/migrate/20241214104920_create_positions.rb,97
-class CreatePositions < ActiveRecord::Migration[8.0]CreatePositions1,0
-  def changechange2,0
-
-db/migrate/20241221185356_create_strategies.rb,99
-class CreateStrategies < ActiveRecord::Migration[8.0]CreateStrategies1,0
-  def changechange2,0
-
-db/migrate/20241214104909_create_orders.rb,91
-class CreateOrders < ActiveRecord::Migration[8.0]CreateOrders1,0
-  def changechange2,0
-
-db/migrate/20241218104754_create_mis_details.rb,99
-class CreateMisDetails < ActiveRecord::Migration[8.0]CreateMisDetails1,0
-  def changechange2,0
-
-db/migrate/20241214125823_create_instruments.rb,101
-class CreateInstruments < ActiveRecord::Migration[8.0]CreateInstruments1,0
-  def changechange2,0
-
-db/migrate/20241215192445_add_error_message_to_alert.rb,111
-class AddErrorMessageToAlert < ActiveRecord::Migration[8.0]AddErrorMessageToAlert1,0
-  def changechange2,0
-
-db/seeds.rb,40
-STRATEGIES_DATA = [STRATEGIES_DATA2,0
