@@ -1,10 +1,7 @@
-class ApplicationService
-  def self.call(*args, &block)
-    new(*args, &block).call
-  end
+# frozen_string_literal: true
 
-  # Optional: Override this to define a custom error handler in subclasses
-  def handle_error(error)
-    raise error
+class ApplicationService
+  def self.call(...)
+    new(...).call
   end
 end

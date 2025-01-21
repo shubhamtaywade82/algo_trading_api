@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateMisDetails < ActiveRecord::Migration[8.0]
   def change
     create_table :mis_details do |t|

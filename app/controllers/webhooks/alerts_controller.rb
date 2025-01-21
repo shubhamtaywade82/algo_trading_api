@@ -1,53 +1,79 @@
-class Webhooks::AlertsController < ApplicationController
-  def create
-    alert = Alert.new(alert_params)
+# frozen_string_literal: true
 
-    if valid_alert?(alert_params)
-      if alert.save
-        # Select the appropriate processor based on `instrument_type`
-        processor = select_processor(alert_params[:instrument_type])
-        processor.call(alert)
-
-        render json: { message: "Alert processed successfully", alert: alert }, status: :ok
-      else
-        render json: { error: "Failed to save alert", details: alert.errors.full_messages }, status: :unprocessable_entity
+module Webhooks
+  class AlertsController < ApplicationController
+    def create
+      if instrument.nil?
+        return render json: { error: 'Instrument not found for the given parameters' },
+                      status: :not_found
       end
-    else
-      render json: { error: "Invalid or delayed alert" }, status: :unprocessable_entity
+
+      # Build the alert with the associated instrument
+      alert = instrument.alerts.build(alert_params)
+
+      if valid_alert?(alert_params)
+        if alert.save
+          processor = AlertProcessorFactory.build(alert)
+          processor.call
+
+          render json: { message: 'Alert processed successfully', alert: alert }, status: :created
+        else
+          render json: { error: 'Failed to save alert', details: alert.errors.full_messages },
+                 status: :unprocessable_entity
+        end
+      else
+        render json: { error: 'Invalid or delayed alert' }, status: :unprocessable_entity
+      end
     end
-  end
 
-  private
+    private
 
-  def alert_params
-    params.require(:alert).permit(
-      :ticker, :instrument_type, :order_type, :current_position, :previous_position, :current_price,
-      :high, :low, :volume, :time, :chart_interval, :stop_loss, :take_profit, :trailing_stop_loss,
-      :strategy_name, :strategy_id, :action, :strategy_type, :exchange
-    )
-  end
+    def instrument
+      @instrument ||= Instrument.find_by(
+        underlying_symbol: alert_params[:ticker],
+        segment: segment_from_alert_type(alert_params[:instrument_type]),
+        exchange: alert_params[:exchange]
+      )
+    end
 
-  # Validate alert timestamp to ensure it's not delayed beyond 60 seconds
-  def valid_alert?(alert)
-    Time.zone.now - Time.parse(alert[:time]) < 60 || true
-  rescue ArgumentError
-    false
-  end
+    def alert_params
+      params.require(:alert).permit(
+        :ticker, :instrument_type, :order_type, :current_position, :previous_position, :strategy_type, :current_price,
+        :high, :low, :volume, :time, :chart_interval, :stop_loss, :stop_price, :take_profit, :limit_price,
+        :trailing_stop_loss, :strategy_name, :strategy_id, :action, :exchange
+      )
+    end
 
-  def parse_payload
-    payload = JSON.parse(request.body.read)
-    AlertValidator.new(payload)
-  end
+    # Map instrument_type to segment
+    def segment_from_alert_type(instrument_type)
+      case instrument_type
+      when 'index' then 'index'
+      when 'stock' then 'equity'
+      else instrument_type # Default to the given type
+      end
+    end
 
-  def select_processor(instrument_type)
-    case instrument_type.downcase
-    when "stock"
-      # AlertProcessors::StocksAlertProcessor
-      AlertProcessor
-    when "index"
-      AlertProcessors::IndexAlertProcessor
-    else
-      raise "Unsupported instrument type: #{instrument_type}"
+    # Validate the alert timing and time range
+    def valid_alert?(alert)
+      alert_time = begin
+        Time.zone.parse(alert[:time])
+      rescue StandardError
+        nil
+      end
+      alert_time.present? && recent_alert?(alert_time)
+    end
+
+    # Check if the alert time is recent (within 60 seconds)
+    def recent_alert?(alert_time)
+      Time.zone.now - alert_time < 20
+    end
+
+    # NOTE: NOT USED
+    # Check if the alert time is within market hours (9:15 AM to 3:00 PM IST)
+    def within_time_range?(alert_time)
+      start_time = alert_time.beginning_of_day.change(hour: 9, min: 15)
+      end_time = alert_time.beginning_of_day.change(hour: 15, min: 0)
+      alert_time.between?(start_time, end_time)
     end
   end
 end

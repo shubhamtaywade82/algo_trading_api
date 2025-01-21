@@ -65,6 +65,8 @@ GEM
       activemodel (= 8.0.1)
       activesupport (= 8.0.1)
       timeout (>= 0.4.0)
+    activerecord-import (2.0.0)
+      activerecord (>= 4.2)
     activestorage (8.0.1)
       actionpack (= 8.0.1)
       activejob (= 8.0.1)
@@ -87,11 +89,16 @@ GEM
     addressable (2.8.7)
       public_suffix (>= 2.0.2, < 7.0)
     ast (2.4.2)
+    axiom-types (0.1.1)
+      descendants_tracker (~> 0.0.4)
+      ice_nine (~> 0.11.0)
+      thread_safe (~> 0.3, >= 0.3.1)
     base64 (0.2.0)
     bcrypt_pbkdf (1.1.1)
     bcrypt_pbkdf (1.1.1-arm64-darwin)
     bcrypt_pbkdf (1.1.1-x86_64-darwin)
     benchmark (0.4.0)
+    benchmark-ips (2.14.0)
     bigdecimal (3.1.8)
     bindata (2.5.0)
     bootsnap (1.18.4)
@@ -99,7 +106,13 @@ GEM
     brakeman (6.2.2)
       racc
     builder (3.3.0)
+    childprocess (5.1.0)
+      logger (~> 1.5)
     chronic (0.10.2)
+    code_analyzer (0.5.5)
+      sexp_processor
+    coercible (1.0.0)
+      descendants_tracker (~> 0.0.1)
     concurrent-ruby (1.3.4)
     connection_pool (2.4.1)
     crack (1.0.0)
@@ -107,6 +120,7 @@ GEM
       rexml
     crass (1.0.6)
     csv (3.3.0)
+    daemons (1.4.1)
     database_cleaner-active_record (2.2.0)
       activerecord (>= 5.a)
       database_cleaner-core (~> 2.0.0)
@@ -115,8 +129,19 @@ GEM
     debug (1.9.2)
       irb (~> 1.10)
       reline (>= 0.3.8)
+    delayed_job (4.1.13)
+      activesupport (>= 3.0, < 9.0)
+    delayed_job_active_record (4.1.11)
+      activerecord (>= 3.0, < 9.0)
+      delayed_job (>= 3.0, < 5)
+    descendants_tracker (0.0.4)
+      thread_safe (~> 0.3, >= 0.3.1)
     diff-lcs (1.5.1)
+    docile (1.4.1)
     dotenv (3.1.6)
+    dotenv-rails (3.1.6)
+      dotenv (= 3.1.6)
+      railties (>= 6.1)
     drb (2.2.1)
     dry-configurable (1.2.0)
       dry-core (~> 1.0, < 2)
@@ -154,6 +179,7 @@ GEM
       zeitwerk (~> 2.6)
     ed25519 (1.3.0)
     erubi (1.13.0)
+    erubis (2.7.0)
     et-orbi (1.2.11)
       tzinfo
     eventmachine (1.2.7)
@@ -192,6 +218,15 @@ GEM
     faye-websocket (0.11.3)
       eventmachine (>= 0.12.0)
       websocket-driver (>= 0.5.1)
+    flay (2.13.3)
+      erubi (~> 1.10)
+      path_expander (~> 1.0)
+      ruby_parser (~> 3.0)
+      sexp_processor (~> 4.0)
+    flog (4.8.0)
+      path_expander (~> 1.0)
+      ruby_parser (~> 3.1, > 3.1.0)
+      sexp_processor (~> 4.8)
     fugit (1.11.1)
       et-orbi (~> 1, >= 1.2.11)
       raabro (~> 1.4)
@@ -200,6 +235,7 @@ GEM
     hashdiff (1.1.2)
     i18n (1.14.6)
       concurrent-ruby (~> 1.0)
+    ice_nine (0.11.2)
     io-console (0.8.0)
     irb (1.14.2)
       rdoc (>= 4.0.0)
@@ -229,6 +265,9 @@ GEM
       kaminari-core (= 1.2.2)
     kaminari-core (1.2.2)
     language_server-protocol (3.17.0.3)
+    launchy (3.0.1)
+      addressable (~> 2.8)
+      childprocess (~> 5.0)
     logger (1.6.3)
     loofah (2.23.1)
       crass (~> 1.0.2)
@@ -239,6 +278,7 @@ GEM
       net-pop
       net-smtp
     marcel (1.0.4)
+    memory_profiler (1.1.0)
     mini_mime (1.1.5)
     minitest (5.25.4)
     msgpack (1.7.5)
@@ -275,6 +315,7 @@ GEM
     parser (3.3.6.0)
       ast (~> 2.4.1)
       racc
+    path_expander (1.1.3)
     pg (1.5.9)
     psych (5.2.1)
       date
@@ -314,6 +355,14 @@ GEM
     rails-html-sanitizer (1.6.2)
       loofah (~> 2.21)
       nokogiri (>= 1.15.7, != 1.16.7, != 1.16.6, != 1.16.5, != 1.16.4, != 1.16.3, != 1.16.2, != 1.16.1, != 1.16.0.rc1, != 1.16.0)
+    rails_best_practices (1.23.2)
+      activesupport
+      code_analyzer (~> 0.5.5)
+      erubis
+      i18n
+      json
+      require_all (~> 3.0)
+      ruby-progressbar
     railties (8.0.1)
       actionpack (= 8.0.1)
       activesupport (= 8.0.1)
@@ -330,9 +379,16 @@ GEM
       i18n
     rdoc (6.9.0)
       psych (>= 4.0.0)
+    reek (6.4.0)
+      dry-schema (~> 1.13.0)
+      logger (~> 1.6)
+      parser (~> 3.3.0)
+      rainbow (>= 2.0, < 4.0)
+      rexml (~> 3.1)
     regexp_parser (2.9.3)
     reline (0.5.12)
       io-console (~> 0.5)
+    require_all (3.0.0)
     rexml (3.3.9)
     rspec-core (3.13.2)
       rspec-support (~> 3.13.0)
@@ -363,9 +419,8 @@ GEM
       unicode-display_width (>= 2.4.0, < 4.0)
     rubocop-ast (1.37.0)
       parser (>= 3.3.1.0)
-    rubocop-minitest (0.36.0)
-      rubocop (>= 1.61, < 2.0)
-      rubocop-ast (>= 1.31.1, < 2.0)
+    rubocop-factory_bot (2.26.1)
+      rubocop (~> 1.61)
     rubocop-performance (1.23.0)
       rubocop (>= 1.48.1, < 2.0)
       rubocop-ast (>= 1.31.1, < 2.0)
@@ -374,16 +429,38 @@ GEM
       rack (>= 1.1)
       rubocop (>= 1.52.0, < 2.0)
       rubocop-ast (>= 1.31.1, < 2.0)
-    rubocop-rails-omakase (1.0.0)
-      rubocop
-      rubocop-minitest
-      rubocop-performance
-      rubocop-rails
+    rubocop-rspec (3.2.0)
+      rubocop (~> 1.61)
+    rubocop-rspec_rails (2.30.0)
+      rubocop (~> 1.61)
+      rubocop-rspec (~> 3, >= 3.0.1)
     ruby-progressbar (1.13.0)
     ruby2_keywords (0.0.5)
+    ruby_parser (3.21.1)
+      racc (~> 1.5)
+      sexp_processor (~> 4.16)
+    rubycritic (4.9.0)
+      flay (~> 2.13)
+      flog (~> 4.7)
+      launchy (>= 2.5.2)
+      parser (>= 3.2.2.1)
+      rainbow (~> 3.1.1)
+      reek (~> 6.0, < 7.0)
+      rexml
+      ruby_parser (~> 3.20)
+      simplecov (>= 0.22.0)
+      tty-which (~> 0.5.0)
+      virtus (~> 2.0)
     securerandom (0.4.0)
+    sexp_processor (4.17.3)
     shoulda-matchers (6.4.0)
       activesupport (>= 5.2.0)
+    simplecov (0.22.0)
+      docile (~> 1.1)
+      simplecov-html (~> 0.11)
+      simplecov_json_formatter (~> 0.1)
+    simplecov-html (0.13.1)
+    simplecov_json_formatter (0.1.4)
     solid_cable (3.0.4)
       actioncable (>= 7.2)
       activejob (>= 7.2)
@@ -406,14 +483,17 @@ GEM
       net-sftp (>= 2.1.2)
       net-ssh (>= 2.8.0)
       ostruct
+    stackprof (0.2.26)
     stringio (3.1.2)
     thor (1.3.2)
+    thread_safe (0.3.6)
     thruster (0.1.9)
     thruster (0.1.9-aarch64-linux)
     thruster (0.1.9-arm64-darwin)
     thruster (0.1.9-x86_64-darwin)
     thruster (0.1.9-x86_64-linux)
     timeout (0.4.2)
+    tty-which (0.5.0)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     unicode-display_width (3.1.2)
@@ -423,6 +503,10 @@ GEM
     useragent (0.16.11)
     vcr (6.3.1)
       base64
+    virtus (2.0.0)
+      axiom-types (~> 0.1)
+      coercible (~> 1.0)
+      descendants_tracker (~> 0.0, >= 0.0.3)
     webmock (3.24.0)
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
@@ -443,29 +527,42 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  activerecord-import
+  benchmark-ips
   bootsnap
   brakeman
   csv
+  daemons (~> 1.4)
   database_cleaner-active_record
   debug
+  delayed_job_active_record (~> 4.1)
   dhanhq!
-  dotenv
+  dotenv-rails
   factory_bot_rails
   faker
   faye-websocket
   kamal
   kaminari (~> 1.2)
+  memory_profiler
   pg (~> 1.1)
   puma (>= 5.0)
   rack-cors
   rails (~> 8.0.0)
+  rails_best_practices
   ransack (~> 4.2)
   rspec-rails
-  rubocop-rails-omakase
+  rubocop
+  rubocop-factory_bot
+  rubocop-performance
+  rubocop-rails
+  rubocop-rspec
+  rubocop-rspec_rails
+  rubycritic
   shoulda-matchers
   solid_cable
   solid_cache
   solid_queue
+  stackprof
   thruster
   tzinfo-data
   vcr

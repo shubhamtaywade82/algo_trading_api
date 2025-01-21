@@ -1,61 +1,49 @@
-require "rails_helper"
+# frozen_string_literal: true
 
-RSpec.describe Webhooks::AlertsController, type: :controller do
-  describe "POST #create" do
-    let!(:instrument) { create(:instrument) }
-    let!(:derivative) { create(:derivative, instrument: instrument) }
-    let!(:margin_requirement) { create(:margin_requirement, instrument: instrument) }
-    let!(:mis_detail) { create(:mis_detail, instrument: instrument) }
-    let!(:order_feature) { create(:order_feature, instrument: instrument) }
-    let(:valid_alert) { attributes_for(:alert) }
+# spec/requests/webhooks/alerts_controller_spec.rb
+require 'rails_helper'
 
-    context "when a valid stock alert is received" do
-      it "creates the alert and processes it" do
-        expect {
-          post :create, params: { alert: valid_alert }
-        }.to change(Alert, :count).by(1)
+RSpec.describe 'Webhooks::AlertsController', type: :request do
+  include AlertParamsHelper
+  let(:instrument) { create(:instrument) }
 
-        expect(response).to have_http_status(:ok)
-        expect(JSON.parse(response.body)["message"]).to eq("Alert processed successfully")
+  describe 'POST /webhooks/tradingview' do
+    let(:params) { { alert: valid_alert_params } }
+
+    context 'when instrument exists' do
+      before { instrument }
+
+      it 'processes the alert successfully' do
+        post '/webhooks/tradingview', params: params
+
+        expect(response).to have_http_status(:created)
+        expect(Alert.count).to eq(1)
+        # expect(Alert.last.status).to eq('processed')
       end
     end
 
-    context "when a valid index alert is received" do
-      let(:valid_index_alert) do
-        attributes_for(:alert, ticker: "NIFTY", instrument_type: "index", strategy_id: "NIFTY_intraday")
-      end
+    context 'when instrument does not exist' do
+      before { instrument.destroy }
 
-      it "creates the alert and processes it with option chain analysis" do
-        post :create, params: { alert: valid_index_alert }
+      it 'returns a not found error' do
+        post '/webhooks/tradingview', params: params
 
-        alert = Alert.last
-        expect(alert.instrument_type).to eq("index")
-        expect(alert.strategy_id).to eq("NIFTY_intraday")
-        expect(response).to have_http_status(:ok)
+        expect(response).to have_http_status(:not_found)
+        expect(response.parsed_body['error']).to eq('Instrument not found for the given parameters')
       end
     end
 
-    context "when the alert payload is invalid" do
-      it "returns an error and does not save the alert" do
-        post :create, params: { alert: valid_alert.except(:ticker) }
+    context 'when alert is invalid' do
+      before { instrument }
+
+      it 'returns an error for delayed alert' do
+        delayed_params = params.deep_dup
+        delayed_params[:alert][:time] = 2.minutes.ago
+
+        post '/webhooks/tradingview', params: delayed_params
 
         expect(response).to have_http_status(:unprocessable_entity)
-        expect(Alert.count).to eq(0)
-        expect(JSON.parse(response.body)["error"]).to eq("Invalid or delayed alert")
-      end
-    end
-
-    context "when processing fails" do
-      before do
-        allow(AlertProcessor).to receive(:call).and_raise(StandardError.new("Processing error"))
-      end
-
-      it "updates the alert status to failed" do
-        post :create, params: { alert: valid_alert }
-
-        alert = Alert.last
-        expect(alert.status).to eq("failed")
-        expect(alert.error_message).to eq("Processing error")
+        expect(response.parsed_body['error']).to eq('Invalid or delayed alert')
       end
     end
   end

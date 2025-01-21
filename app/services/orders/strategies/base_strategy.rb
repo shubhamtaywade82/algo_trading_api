@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class BaseStrategy
-      attr_reader :alert, :instrument, :security_symbol, :exchange
+      attr_reader :alert, :security_symbol, :exchange
 
       def initialize(alert)
         @alert = alert
@@ -15,12 +17,12 @@ module Orders
 
       private
 
-      # Fetch the instrument record
+      # Fetch the instrument record for stock type
       def instrument
         @instrument ||= Instrument.find_by!(
           exchange: exchange,
           underlying_symbol: security_symbol,
-          instrument_type: alert[:instrument_type] == "stock" ? "ES" : "INDEX"
+          segment: 'equity' # Only process stocks
         )
       rescue ActiveRecord::RecordNotFound
         raise "Instrument not found for #{security_symbol} in #{exchange}"
@@ -28,18 +30,33 @@ module Orders
 
       # Fetch available funds
       def fetch_funds
-        Dhanhq::API::Funds.balance["availabelBalance"].to_f
+        Dhanhq::API::Funds.balance['availabelBalance'].to_f
+      rescue StandardError => e
+        raise "Failed to fetch funds: #{e.message}"
       end
 
-      # Prepare common order parameters
-      def dhan_order_params
+      # Validate margin before placing an order
+      def validate_margin(params)
+        params = params.merge(price: instrument.ltp)
+        response = Dhanhq::API::Funds.margin_calculator(params)
+        insufficient_balance = response['insufficientBalance'].to_f
+
+        raise "Insufficient margin: Missing ₹#{insufficient_balance}" if insufficient_balance.positive?
+
+        response
+      rescue StandardError => e
+        raise "Margin validation failed: #{e.message}"
+      end
+
+      # Prepare common order parameters for stock
+      def build_order_payload
         {
           transactionType: alert[:action].upcase,
-          orderType: Dhanhq::Constants::MARKET,
-          productType: default_product_type,
+          orderType: alert[:order_type].upcase,
+          productType: determine_product_type,
           validity: Dhanhq::Constants::DAY,
           securityId: instrument.security_id,
-          exchangeSegment: map_exchange_segment(instrument.exchange_segment),
+          exchangeSegment: instrument.exchange_segment,
           quantity: calculate_quantity(alert[:current_price])
         }
       end
@@ -51,13 +68,18 @@ module Orders
       end
 
       def calculate_quantity(price)
-        utilized_funds = fetch_funds * funds_utilization * leverage_factor
+        available_funds = fetch_funds * funds_utilization * leverage_factor
+        max_quantity = (available_funds / price).floor
+        [max_quantity, 1].max
+      end
 
-        lot_size = instrument.lot_size || 1
-        max_quantity = (utilized_funds / price).floor
-
-        quantity = (max_quantity / lot_size) * lot_size
-        [ quantity, lot_size ].max
+      def determine_product_type
+        case alert[:strategy_type]
+        when 'intraday'
+          Dhanhq::Constants::INTRA
+        else
+          Dhanhq::Constants::MARGIN
+        end
       end
 
       def leverage_factor
@@ -70,13 +92,41 @@ module Orders
 
       # Default product type (can be overridden by subclasses)
       def default_product_type
-        Dhanhq::Constants::INTRA # Default to intraday
+        Dhanhq::Constants::MARGIN # Default to intraday
       end
 
       # Place an order using Dhan API
       def place_order(params)
-        pp params
-        Dhanhq::API::Orders.place(params)
+        Rails.logger.debug params
+        # validate_margin(params)
+        if ENV['PLACE_ORDER'] == 'true'
+          executed_order = Dhanhq::API::Orders.place(params)
+
+          dhan_order = OrdersService.fetch_order(executed_order[:orderId])
+          order = Order.new(
+            dhan_order_id: dhan_order[:orderId],
+            transaction_type: dhan_order[:transactionType],
+            product_type: dhan_order[:productType],
+            order_type: dhan_order[:orderType],
+            validity: dhan_order[:validity],
+            exchange_segment: dhan_order[:exchangeSegment],
+            security_id: dhan_order[:securityId],
+            quantity: dhan_order[:quantity],
+            disclosed_quantity: dhan_order[:disclosedQuantity],
+            price: dhan_order[:price],
+            trigger_price: dhan_order[:triggerPrice],
+            bo_profit_value: dhan_order[:boProfitValue],
+            bo_stop_loss_value: dhan_order[:boStopLossValue],
+            ltp: dhan_order[:price],
+            order_status: dhan_order[:orderStatus],
+            filled_qty: dhan_order[:filled_qty],
+            average_traded_price: (dhan_order[:price] * dhan_order[:quantity]),
+            alert_id: alert[:id]
+          )
+          order.save
+        else
+          Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{params}")
+        end
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"
       end

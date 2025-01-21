@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Option
   class ChainAnalyzer
     attr_reader :options_chain
@@ -23,7 +25,7 @@ module Option
       strikes.map do |strike|
         oi_call = @options_chain.dig(:oc, strike, :ce, :oi).to_i
         oi_put = @options_chain.dig(:oc, strike, :pe, :oi).to_i
-        [ strike.to_f, oi_call + oi_put ]
+        [strike.to_f, oi_call + oi_put]
       end.min_by { |_strike, combined_oi| combined_oi }&.first
     end
 
@@ -54,7 +56,7 @@ module Option
     end
 
     def analyze_price_action
-      prices = @options_chain.dig(:oc)&.values&.map { |data| data.dig("ce", "last_price").to_f } || []
+      prices = @options_chain[:oc]&.values&.map { |data| data.dig('ce', 'last_price').to_f } || []
 
       return { bullish: false, bearish: false, neutral: true } if prices.empty? || prices.size < 5
 
@@ -76,12 +78,14 @@ module Option
     end
 
     def collect_greek_values(greek)
-      @options_chain[:oc].values.flat_map { |data| [ data.dig(:ce, :greeks, greek), data.dig(:pe, :greeks, greek) ].compact }
+      @options_chain[:oc].values.flat_map do |data|
+        [data.dig(:ce, :greeks, greek), data.dig(:pe, :greeks, greek)].compact
+      end
     end
 
     def collect_iv_data
       @options_chain[:oc].values.flat_map do |data|
-      [ data.dig(:ce, :implied_volatility), data.dig(:pe, :implied_volatility) ].compact
+        [data.dig(:ce, :implied_volatility), data.dig(:pe, :implied_volatility)].compact
       end
     end
 
@@ -90,8 +94,9 @@ module Option
     end
 
     def trend(values)
-      return "neutral" if values.empty? || values.size < 2
-      values.last > values.first ? "increasing" : "decreasing"
+      return 'neutral' if values.empty? || values.size < 2
+
+      values.last > values.first ? 'increasing' : 'decreasing'
     end
 
     def bullish_trend?(prices, volumes)

@@ -1,8 +1,10 @@
+# frozen_string_literal: true
+
 module Orders
   module Strategies
     class SwingStockStrategy < BaseStrategy
       def execute
-        place_order(dhan_order_params.merge(productType: Dhanhq::Constants::CNC))
+        place_order(build_order_payload.merge(productType: Dhanhq::Constants::CNC))
       end
 
       private

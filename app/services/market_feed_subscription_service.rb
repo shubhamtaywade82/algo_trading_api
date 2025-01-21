@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class MarketFeedSubscriptionService
   def self.subscribe_to_equities
     instruments = Instrument.equities.limit(1000).pluck(:exchange_segment, :security_id)
