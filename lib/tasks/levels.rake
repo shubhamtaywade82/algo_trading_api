@@ -63,7 +63,7 @@ namespace :levels do
 
   def calculate_weekly_dates
     last_week_monday = 1.week.ago.to_date.beginning_of_week.strftime('%Y-%m-%d') # Last Monday
-    last_week_friday = 1.week.ago.to_date.beginning_of_week + 4.days             # Last Friday
+    last_week_friday = 1.week.ago.to_date.beginning_of_week + 5.days             # Last Friday
     [last_week_monday, last_week_friday.strftime('%Y-%m-%d')]
   end
 end

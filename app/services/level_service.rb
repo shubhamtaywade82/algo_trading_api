@@ -22,7 +22,6 @@ class LevelService < ApplicationService
     Rails.logger.debug { "Request Params: #{params}" }
 
     response = Dhanhq::API::Historical.daily(params)
-    pp response
     Rails.logger.debug { "API Response: #{response}" }
 
     levels = calculate_levels(response)
