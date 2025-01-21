@@ -8,7 +8,7 @@ module Options
         expiry_date: strategy_params[:expiry_date],
         params: strategy_params
       )
-      render json: { strategies: strategies }
+      render json: strategies
     rescue StandardError => e
       render json: { error: e.message }, status: :unprocessable_entity
     end

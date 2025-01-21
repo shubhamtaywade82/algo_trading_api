@@ -12,7 +12,11 @@ module Option
       strategies = Strategy.all
       strategies = apply_filters(strategies, criteria)
 
-      strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
+      # strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
+      {
+        index_details: index_details(criteria[:analysis]),
+        strategies: strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
+      }
     end
 
     private
@@ -30,6 +34,43 @@ module Option
         example: send("generate_#{strategy.name.parameterize(separator: '_')}", analysis),
         analysis: analysis
       }
+    end
+
+    def index_details(analysis)
+      {
+        ltp: @current_price,
+        atm_strikes: atm_strikes.take(3),
+        itm_strikes: itm_strikes.take(3),
+        otm_strikes: otm_strikes.take(3),
+        sentiment: analysis[:price_action_trends],
+        key_levels: analysis[:support_resistance]
+      }
+    end
+
+    def atm_strikes
+      strikes_with_oi.select { |strike| (strike[:strike_price] - @current_price).abs <= 50 }
+                     .sort_by { |strike| -strike[:oi] }
+    end
+
+    def itm_strikes
+      strikes_with_oi.select { |strike| strike[:strike_price] < @current_price }
+                     .sort_by { |strike| -strike[:oi] }
+    end
+
+    def otm_strikes
+      strikes_with_oi.select { |strike| strike[:strike_price] > @current_price }
+                     .sort_by { |strike| -strike[:oi] }
+    end
+
+    def strikes_with_oi
+      @option_chain[:oc].map do |strike, data|
+        {
+          strike_price: strike.to_f,
+          oi: (data.dig(:ce, :oi).to_i + data.dig(:pe, :oi).to_i),
+          call_oi: data.dig(:ce, :oi).to_i,
+          put_oi: data.dig(:pe, :oi).to_i
+        }
+      end
     end
 
     # Individual strategy methods
