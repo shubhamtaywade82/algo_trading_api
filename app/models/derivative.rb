@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# Represents a derivative financial instrument tied to an underlying asset.
 class Derivative < ApplicationRecord
   # Associations
   belongs_to :instrument

@@ -4,6 +4,7 @@ module Option
   class SuggestStrategyService
     def self.call(index_symbol:, expiry_date:, params:)
       instrument = Instrument.segment_index.find_by(underlying_symbol: index_symbol)
+      Rails.logger.debug instrument
       raise "Invalid index symbol. #{index_symbol}" unless instrument
 
       expiry = instrument.expiry_list.find { |e| e == expiry_date } || instrument.expiry_list.first

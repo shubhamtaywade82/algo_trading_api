@@ -14,6 +14,7 @@ class Instrument < ApplicationRecord
   accepts_nested_attributes_for :margin_requirements, allow_destroy: true
   accepts_nested_attributes_for :order_features, allow_destroy: true
 
+  # Enums
   enum :exchange, { nse: 'NSE', bse: 'BSE' }
   enum :segment, { index: 'I', equity: 'E', currency: 'C', derivatives: 'D' }, prefix: true
   enum :instrument, {
@@ -31,12 +32,68 @@ class Instrument < ApplicationRecord
   validates :security_id, presence: true
 
   # Scopes
-  # scope :equities, -> { where(instrument: equities) }
-  # scope :indices, -> { where(instrument: :index) }
-  # scope :currencies, -> { where(segment: "C") }
   scope :expiring_soon, -> { where(expiry_flag: '1') }
 
+  # Class Methods
+
+  # Define searchable attributes for Ransack
+  def self.ransackable_attributes(_auth_object = nil)
+    %w[
+      instrument
+      instrument_type
+      underlying_symbol
+      symbol_name
+      display_name
+      exchange
+      segment
+      created_at
+      updated_at
+    ]
+  end
+
+  # Define searchable associations for Ransack
+  def self.ransackable_associations(_auth_object = nil)
+    %w[derivatives margin_requirement mis_detail order_feature]
+  end
+
+  # Instance Methods
+  include MarketFeedHelper
+
   # API Methods
+  def fetch_option_chain(expiry = nil)
+    expiry ||= expiry_list.first
+    response = Dhanhq::API::Option.chain(
+      UnderlyingScrip: security_id.to_i,
+      UnderlyingSeg: exchange_segment,
+      Expiry: expiry
+    )
+    data = response['data']
+    return nil unless data
+
+    filtered_data = filter_option_chain_data(data)
+
+    { last_price: data['last_price'], oc: filtered_data }
+  rescue StandardError => e
+    Rails.logger.error("Failed to fetch Option Chain for Instrument #{id}: #{e.message}")
+    nil
+  end
+
+  def filter_option_chain_data(data)
+    data['oc'].select do |_strike, option_data|
+      call_data = option_data['ce']
+      put_data = option_data['pe']
+
+      has_call_values = call_data && call_data.except('implied_volatility').values.any? do |v|
+        numeric_value?(v) && v.to_f.positive?
+      end
+      has_put_values = put_data && put_data.except('implied_volatility').values.any? do |v|
+        numeric_value?(v) && v.to_f.positive?
+      end
+
+      has_call_values || has_put_values
+    end
+  end
+
   def ltp
     response = Dhanhq::API::MarketFeed.ltp(exch_segment_enum)
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s, 'last_price') : nil
@@ -58,36 +115,6 @@ class Instrument < ApplicationRecord
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Depth for Instrument #{id}: #{e.message}")
-    nil
-  end
-
-  def fetch_option_chain(expiry = nil)
-    expiry ||= expiry_list.first
-    response = Dhanhq::API::Option.chain(
-      UnderlyingScrip: security_id.to_i,
-      UnderlyingSeg: exchange_segment,
-      Expiry: expiry
-    )
-    data = response['data']
-    return nil unless data
-
-    filtered_data = data['oc'].select do |_strike, option_data|
-      call_data = option_data['ce']
-      put_data = option_data['pe']
-
-      has_call_values = call_data && call_data.except('implied_volatility').values.any? do |v|
-        numeric_value?(v) && v.to_f.positive?
-      end
-      has_put_values = put_data && put_data.except('implied_volatility').values.any? do |v|
-        numeric_value?(v) && v.to_f.positive?
-      end
-
-      has_call_values || has_put_values
-    end
-
-    { last_price: data['last_price'], oc: filtered_data }
-  rescue StandardError => e
-    Rails.logger.error("Failed to fetch Option Chain for Instrument #{id}: #{e.message}")
     nil
   end
 
@@ -117,26 +144,6 @@ class Instrument < ApplicationRecord
     else
       raise "Unsupported exchange and segment combination: #{exchange}, #{segment}"
     end
-  end
-
-  # Define searchable attributes for Ransack
-  def self.ransackable_attributes(_auth_object = nil)
-    %w[
-      instrument
-      instrument_type
-      underlying_symbol
-      symbol_name
-      display_name
-      exchange
-      segment
-      created_at
-      updated_at
-    ]
-  end
-
-  # Define searchable associations for Ransack
-  def self.ransackable_associations(_auth_object = nil)
-    %w[derivatives margin_requirement mis_detail order_feature]
   end
 
   private

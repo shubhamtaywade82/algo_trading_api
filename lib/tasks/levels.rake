@@ -21,24 +21,14 @@ namespace :levels do
       daily_from_date, daily_to_date = calculate_daily_dates
       Rails.logger.debug { "Daily Levels: From #{daily_from_date} To #{daily_to_date}" }
 
-      LevelService.new(
-        instrument.id,
-        'daily',
-        daily_from_date,
-        daily_to_date
-      ).fetch_and_store_levels
+      LevelService.new(instrument.id, 'daily', daily_from_date, daily_to_date).fetch_and_store_levels
 
       # Only update weekly levels on Sundays
       if Time.zone.today.sunday? || Time.zone.today.saturday?
         weekly_from_date, weekly_to_date = calculate_weekly_dates
         Rails.logger.debug { "Weekly Levels: #{weekly_from_date} to #{weekly_to_date}" }
 
-        LevelService.new(
-          instrument.id,
-          'weekly',
-          weekly_from_date,
-          weekly_to_date
-        ).fetch_and_store_levels
+        LevelService.new(instrument.id, 'weekly', weekly_from_date, weekly_to_date).fetch_and_store_levels
       end
 
       # Delay next iteration by 5 seconds

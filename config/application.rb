@@ -47,6 +47,8 @@ module AlgoTradingApp
     config.hosts << 'localhost'
     config.hosts << /.*/
 
+    config.time_zone = 'Asia/Kolkata'
+
     config.after_initialize do
       # Update crontab on server start
       system('bundle exec whenever --update-crontab') if Rails.env.development?
