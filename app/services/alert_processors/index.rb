@@ -9,6 +9,7 @@ module AlertProcessors
       option_chain = fetch_option_chain(expiry)
       best_strike = select_best_strike(option_chain)
 
+      pp best_strike
       raise 'Failed to find a suitable strike for trading' unless best_strike
 
       option_type = alert[:action].downcase == 'buy' ? 'CE' : 'PE'
@@ -49,9 +50,35 @@ module AlertProcessors
     end
 
     # Analyze and select the best strike for trading
+    # def select_best_strike(option_chain)
+    #   chain_analyzer = Option::ChainAnalyzer.new(option_chain)
+    #   chain_analyzer.analyze
+
+    #   # Determine the desired option type (CE/PE) based on the action
+    #   option_type = alert[:action].downcase == 'buy' ? 'ce' : 'pe'
+
+    #   strikes = option_chain[:oc].filter_map do |strike, data|
+    #     next unless data[option_type]
+
+    #     {
+    #       strike_price: strike.to_i,
+    #       last_price: data[option_type]['last_price'].to_f,
+    #       oi: data[option_type]['oi'].to_i,
+    #       iv: data[option_type]['implied_volatility'].to_f,
+    #       greeks: data[option_type]['greeks']
+    #     }
+    #   end
+
+    #   # Select based on OI, IV, and Greeks (customizable logic)
+    #   strikes.max_by do |s|
+    #     s[:oi] * s[:iv] * (s.dig(:greeks, :delta).abs || 0.5) # Example scoring formula
+    #   end
+    # end
+
+    # Analyze and select the best strike for trading
     def select_best_strike(option_chain)
       chain_analyzer = Option::ChainAnalyzer.new(option_chain)
-      chain_analyzer.analyze
+      analysis = chain_analyzer.analyze
 
       # Determine the desired option type (CE/PE) based on the action
       option_type = alert[:action].downcase == 'buy' ? 'ce' : 'pe'
@@ -68,9 +95,13 @@ module AlertProcessors
         }
       end
 
-      # Select based on OI, IV, and Greeks (customizable logic)
+      # Select based on combined metrics using analysis results
       strikes.max_by do |s|
-        s[:oi] * s[:iv] * (s.dig(:greeks, :delta).abs || 0.5) # Example scoring formula
+        score = s[:oi] * s[:iv] * (s.dig(:greeks, :delta).abs || 0.5) # Existing scoring formula
+        score += 1 if s[:strike_price] == analysis[:max_pain] # Favor max pain level
+        score += 1 if s[:strike_price] == analysis[:support_resistance][:support] # Favor support
+        score += 1 if s[:strike_price] == analysis[:support_resistance][:resistance] # Favor resistance
+        score
       end
     end
 
@@ -93,33 +124,33 @@ module AlertProcessors
         securityId: instrument.security_id,
         quantity: quantity,
         price: strike[:last_price],
-        triggerPrice: alert[:stop_price] || strike[:last_price]
+        triggerPrice: strike[:last_price].to_f || alert[:stop_price].to_f
       }
 
       Rails.logger.debug order_data
-      executed_order = Dhanhq::API::Orders.place(order_data)
-      dhan_order = OrdersService.fetch_order(executed_order[:orderId])
-      order = Order.new(
-        dhan_order_id: dhan_order[:orderId],
-        transaction_type: dhan_order[:transactionType],
-        product_type: dhan_order[:productType],
-        order_type: dhan_order[:orderType],
-        validity: dhan_order[:validity],
-        exchange_segment: dhan_order[:exchangeSegment],
-        security_id: dhan_order[:securityId],
-        quantity: dhan_order[:quantity],
-        disclosed_quantity: dhan_order[:disclosedQuantity],
-        price: dhan_order[:price],
-        trigger_price: dhan_order[:triggerPrice],
-        bo_profit_value: dhan_order[:boProfitValue],
-        bo_stop_loss_value: dhan_order[:boStopLossValue],
-        ltp: dhan_order[:price],
-        order_status: dhan_order[:orderStatus],
-        filled_qty: dhan_order[:filled_qty],
-        average_traded_price: (dhan_order[:price] * dhan_order[:quantity]),
-        alert_id: alert[:id]
-      )
-      order.save
+      # executed_order = Dhanhq::API::Orders.place(order_data)
+      # dhan_order = OrdersService.fetch_order(executed_order[:orderId])
+      # order = Order.new(
+      #   dhan_order_id: dhan_order[:orderId],
+      #   transaction_type: dhan_order[:transactionType],
+      #   product_type: dhan_order[:productType],
+      #   order_type: dhan_order[:orderType],
+      #   validity: dhan_order[:validity],
+      #   exchange_segment: dhan_order[:exchangeSegment],
+      #   security_id: dhan_order[:securityId],
+      #   quantity: dhan_order[:quantity],
+      #   disclosed_quantity: dhan_order[:disclosedQuantity],
+      #   price: dhan_order[:price],
+      #   trigger_price: dhan_order[:triggerPrice],
+      #   bo_profit_value: dhan_order[:boProfitValue],
+      #   bo_stop_loss_value: dhan_order[:boStopLossValue],
+      #   ltp: dhan_order[:price],
+      #   order_status: dhan_order[:orderStatus],
+      #   filled_qty: dhan_order[:filled_qty],
+      #   average_traded_price: (dhan_order[:price] * dhan_order[:quantity]),
+      #   alert_id: alert[:id]
+      # )
+      # order.save
     rescue StandardError => e
       raise "Failed to place order for instrument #{instrument.symbol_name}: #{e.message}"
     end
