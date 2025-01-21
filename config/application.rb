@@ -48,6 +48,7 @@ module AlgoTradingApp
     config.hosts << /.*/
 
     config.time_zone = 'Asia/Kolkata'
+    config.active_record.default_timezone = :local
 
     config.after_initialize do
       # Update crontab on server start
