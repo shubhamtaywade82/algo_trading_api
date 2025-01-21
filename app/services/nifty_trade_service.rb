@@ -44,24 +44,23 @@ class NiftyTradeService
 
   def handle_demand_zone_trade(ltp, option_chain)
     Rails.logger.debug { "Nifty near demand zone. LTP: #{ltp}, Demand Zone: #{@levels[:demand_zone]}" }
-
-    # Analyze option chain for strike price near the demand zone
     strike_to_buy = find_strike_near_zone(option_chain, @levels[:demand_zone], :call)
-
-    # Place a call option buy order
-    Dhanhq::API::Orders.place({
-                                securityId: strike_to_buy[:security_id],
-                                transactionType: 'BUY',
-                                exchangeSegment: 'NSE_FNO',
-                                productType: 'INTRADAY',
-                                orderType: 'MARKET',
-                                quantity: 75, # Nifty lot size
-                                price: nil,
-                                drvOptionType: 'CALL',
-                                drvStrikePrice: strike_to_buy[:strike]
-                              })
-
-    Rails.logger.debug { "Bought CALL option at strike: #{strike_to_buy[:strike]}" }
+    order_data = {
+      securityId: strike_to_buy[:security_id],
+      transactionType: 'BUY',
+      exchangeSegment: 'NSE_FNO',
+      productType: 'INTRADAY',
+      orderType: 'MARKET',
+      quantity: 75,
+      price: nil,
+      drvOptionType: 'CALL',
+      drvStrikePrice: strike_to_buy[:strike]
+    }
+    if ENV['PLACE_ORDER'] == 'true'
+      Dhanhq::API::Orders.place(order_data)
+    else
+      Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
+    end
   end
 
   def handle_supply_zone_trade(ltp, option_chain)

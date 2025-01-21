@@ -61,17 +61,20 @@ class AlertProcessor < ApplicationService
   end
 
   def close_position(position)
-    order_data = {
-      transactionType: position['positionType'] == 'LONG' ? 'SELL' : 'BUY',
-      exchangeSegment: position['exchangeSegment'],
-      productType: position['productType'],
-      orderType: 'MARKET',
-      validity: 'DAY',
-      securityId: position['securityId'],
-      quantity: position['netQty']
-    }
-
-    Dhanhq::API::Orders.place(order_data)
+    if ENV['PLACE_ORDER'] == 'true'
+      order_data = {
+        transactionType: position['positionType'] == 'LONG' ? 'SELL' : 'BUY',
+        exchangeSegment: position['exchangeSegment'],
+        productType: position['productType'],
+        orderType: 'MARKET',
+        validity: 'DAY',
+        securityId: position['securityId'],
+        quantity: position['netQty']
+      }
+      Dhanhq::API::Orders.place(order_data)
+    else
+      Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{position}")
+    end
   rescue StandardError => e
     raise "Failed to close position for #{position['tradingSymbol']}: #{e.message}"
   end

@@ -29,8 +29,13 @@ class OrdersService
   # @param payload [Hash] The payload for the order, including keys like :transactionType, :exchangeSegment, etc.
   # @return [Hash] The response from the DhanHQ API
   def self.place_order(payload)
-    response = Dhanhq::API::Orders.place(payload)
-    handle_response(response)
+    if ENV['PLACE_ORDER'] == 'true'
+      response = Dhanhq::API::Orders.place(payload)
+      handle_response(response)
+    else
+      Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{payload}")
+      { message: 'Order placement skipped due to PLACE_ORDER being disabled', data: payload }
+    end
   end
 
   # Place a slicing order

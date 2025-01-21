@@ -9,7 +9,6 @@ module AlertProcessors
       option_chain = fetch_option_chain(expiry)
       best_strike = select_best_strike(option_chain)
 
-      pp best_strike
       raise 'Failed to find a suitable strike for trading' unless best_strike
 
       option_type = alert[:action].downcase == 'buy' ? 'CE' : 'PE'
@@ -127,7 +126,12 @@ module AlertProcessors
         triggerPrice: strike[:last_price].to_f || alert[:stop_price].to_f
       }
 
-      Rails.logger.debug order_data
+      if ENV['PLACE_ORDER'] == 'true'
+        executed_order = Dhanhq::API::Orders.place(order_data)
+        log_order_details(executed_order, alert)
+      else
+        Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
+      end
       # executed_order = Dhanhq::API::Orders.place(order_data)
       # dhan_order = OrdersService.fetch_order(executed_order[:orderId])
       # order = Order.new(

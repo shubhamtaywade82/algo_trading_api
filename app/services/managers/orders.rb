@@ -28,7 +28,7 @@ module Managers
 
     def place_order(ticker:, action:, quantity:, price:, security_id:, trailing_stop_loss: nil)
       execute_safely do
-        response = Dhanhq::API::Orders.place(
+        order_data = {
           transactionType: action.upcase,
           exchangeSegment: 'NSE_EQ',
           productType: 'CNC',
@@ -36,19 +36,24 @@ module Managers
           securityId: security_id,
           quantity: quantity,
           price: price
-        )
+        }
+        if ENV['PLACE_ORDER'] == 'true'
+          response = Dhanhq::API::Orders.place(order_data)
 
-        Order.create(
-          ticker: ticker,
-          action: action,
-          quantity: quantity,
-          price: price,
-          dhan_order_id: response['orderId'],
-          dhan_status: response['orderStatus'],
-          security_id: security_id,
-          stop_loss_price: calculate_stop_loss(price, action, trailing_stop_loss),
-          take_profit_price: calculate_take_profit(price)
-        )
+          Order.create(
+            ticker: ticker,
+            action: action,
+            quantity: quantity,
+            price: price,
+            dhan_order_id: response['orderId'],
+            dhan_status: response['orderStatus'],
+            security_id: security_id,
+            stop_loss_price: calculate_stop_loss(price, action, trailing_stop_loss),
+            take_profit_price: calculate_take_profit(price)
+          )
+        else
+          Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
+        end
       rescue StandardError => e
         log_error('Failed to place order', e)
         raise

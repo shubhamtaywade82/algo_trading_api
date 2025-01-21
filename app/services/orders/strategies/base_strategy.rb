@@ -99,30 +99,34 @@ module Orders
       def place_order(params)
         Rails.logger.debug params
         # validate_margin(params)
-        executed_order = Dhanhq::API::Orders.place(params)
+        if ENV['PLACE_ORDER'] == 'true'
+          executed_order = Dhanhq::API::Orders.place(params)
 
-        dhan_order = OrdersService.fetch_order(executed_order[:orderId])
-        order = Order.new(
-          dhan_order_id: dhan_order[:orderId],
-          transaction_type: dhan_order[:transactionType],
-          product_type: dhan_order[:productType],
-          order_type: dhan_order[:orderType],
-          validity: dhan_order[:validity],
-          exchange_segment: dhan_order[:exchangeSegment],
-          security_id: dhan_order[:securityId],
-          quantity: dhan_order[:quantity],
-          disclosed_quantity: dhan_order[:disclosedQuantity],
-          price: dhan_order[:price],
-          trigger_price: dhan_order[:triggerPrice],
-          bo_profit_value: dhan_order[:boProfitValue],
-          bo_stop_loss_value: dhan_order[:boStopLossValue],
-          ltp: dhan_order[:price],
-          order_status: dhan_order[:orderStatus],
-          filled_qty: dhan_order[:filled_qty],
-          average_traded_price: (dhan_order[:price] * dhan_order[:quantity]),
-          alert_id: alert[:id]
-        )
-        order.save
+          dhan_order = OrdersService.fetch_order(executed_order[:orderId])
+          order = Order.new(
+            dhan_order_id: dhan_order[:orderId],
+            transaction_type: dhan_order[:transactionType],
+            product_type: dhan_order[:productType],
+            order_type: dhan_order[:orderType],
+            validity: dhan_order[:validity],
+            exchange_segment: dhan_order[:exchangeSegment],
+            security_id: dhan_order[:securityId],
+            quantity: dhan_order[:quantity],
+            disclosed_quantity: dhan_order[:disclosedQuantity],
+            price: dhan_order[:price],
+            trigger_price: dhan_order[:triggerPrice],
+            bo_profit_value: dhan_order[:boProfitValue],
+            bo_stop_loss_value: dhan_order[:boStopLossValue],
+            ltp: dhan_order[:price],
+            order_status: dhan_order[:orderStatus],
+            filled_qty: dhan_order[:filled_qty],
+            average_traded_price: (dhan_order[:price] * dhan_order[:quantity]),
+            alert_id: alert[:id]
+          )
+          order.save
+        else
+          Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{params}")
+        end
       rescue StandardError => e
         raise "Failed to place order: #{e.message}"
       end
