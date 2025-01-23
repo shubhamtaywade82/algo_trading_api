@@ -24,17 +24,6 @@ module AlertProcessors
 
     private
 
-    # Fetch the instrument record
-    def instrument
-      @instrument ||= Instrument.find_by!(
-        exchange: exchange,
-        underlying_symbol: alert[:ticker],
-        instrument: alert[:instrument_type] == 'stock' ? 'ES' : 'INDEX'
-      )
-    rescue ActiveRecord::RecordNotFound
-      raise "Instrument not found for #{alert[:ticker]} in #{exchange}"
-    end
-
     # Fetch option chain for the specified expiry
     def fetch_option_chain(expiry)
       instrument.fetch_option_chain(expiry)
@@ -128,7 +117,7 @@ module AlertProcessors
 
       if ENV['PLACE_ORDER'] == 'true'
         executed_order = Dhanhq::API::Orders.place(order_data)
-        log_order_details(executed_order, alert)
+        Rails.logger.info("#{executed_order}, #{alert}")
       else
         Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
       end
