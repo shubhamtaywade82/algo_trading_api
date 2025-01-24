@@ -95,6 +95,15 @@ class Instrument < ApplicationRecord
   end
 
   def ltp
+    Rails.cache.fetch("instrument_ltp_#{id}", expires_in: CACHE_EXPIRY) do
+      fetch_ltp_from_api
+    end
+  rescue StandardError => e
+    Rails.logger.error("Failed to fetch LTP for Instrument #{id}: #{e.message}")
+    nil
+  end
+
+  def fetch_ltp_from_api
     response = Dhanhq::API::MarketFeed.ltp(exch_segment_enum)
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s, 'last_price') : nil
   rescue StandardError => e

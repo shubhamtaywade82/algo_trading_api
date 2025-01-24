@@ -2,4 +2,6 @@
 
 class ApplicationRecord < ActiveRecord::Base
   primary_abstract_class
+
+  CACHE_EXPIRY = 1.minute.freeze
 end
