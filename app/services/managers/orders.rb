@@ -2,6 +2,8 @@
 
 module Managers
   class Orders < Base
+    STATUSES = %w[PENDING TRANSIT].freeze
+
     def call
       log_info("Orders Manager called at #{Time.zone.now}")
       execute_safely do
@@ -16,11 +18,11 @@ module Managers
       Dhanhq::API::Orders.list
     rescue StandardError => e
       log_error('Error fetching orders', e)
-      { error: e.message }
+      []
     end
 
     def process_pending_orders
-      orders = fetch_orders.select { |order| %w[PENDING TRANSIT].include?(order['orderStatus']) }
+      orders = fetch_orders.select { |order| STATUSES.include?(order['orderStatus']) }
 
       orders.each do |order|
         execute_safely do
@@ -48,16 +50,19 @@ module Managers
 
       return unless target_profit && stop_loss
 
-      response = Dhanhq::API::Orders.modify(
-        order_id: order['orderId'],
+      modify_params = {
         price: target_profit,
-        stop_loss_price: stop_loss
-      )
+        triggerPrice: stop_loss # Stop-loss is set via `triggerPrice`
+      }
+
+      response = Dhanhq::API::Orders.modify(order['orderId'], modify_params)
       if response['status'] == 'success'
         log_info("Updated stop-loss and target price for order #{order['orderId']}")
       else
         log_error("Failed to update order #{order['orderId']}: #{response['omsErrorDescription']}")
       end
+    rescue StandardError => e
+      log_error("Error updating order #{order['orderId']}", e)
     end
 
     def calculate_target_profit(order)
@@ -68,6 +73,42 @@ module Managers
     def calculate_stop_loss(order)
       entry_price = order['price'].to_f
       (entry_price * 0.98).round(2) # 2% stop loss
+    end
+
+    def valid_order?(order)
+      order['quantity'].to_i.positive? && order['price'].to_f.positive?
+    end
+
+    def attempt_order_placement(order)
+      response = Dhanhq::API::Orders.place(build_order_params(order))
+      if response['status'] == 'success'
+        log_info("Order successfully placed: #{order['orderId']}")
+      else
+        log_error("Order placement failed: #{order['orderId']}, Error: #{response['error']}")
+      end
+    end
+
+    def build_order_params(order)
+      {
+        transactionType: order['transactionType'],
+        exchangeSegment: order['exchangeSegment'],
+        productType: order['productType'],
+        orderType: order['orderType'],
+        securityId: order['securityId'],
+        quantity: order['quantity'],
+        price: order['price']
+      }
+    end
+
+    def cancel_order(order)
+      response = Dhanhq::API::Orders.cancel(order['orderId'])
+      if response['status'] == 'success'
+        log_info("Order cancelled: #{order['orderId']}")
+      else
+        log_error("Failed to cancel order: #{order['orderId']}, Error: #{response['error']}")
+      end
+    rescue StandardError => e
+      log_error("Error cancelling order #{order['orderId']}", e)
     end
   end
 end

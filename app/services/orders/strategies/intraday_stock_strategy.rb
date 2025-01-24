@@ -4,7 +4,9 @@ module Orders
   module Strategies
     class IntradayStockStrategy < BaseStrategy
       def execute
-        place_order(build_order_payload.merge(productType: Dhanhq::Constants::INTRA))
+        order_params = build_order_payload.merge(productType: Dhanhq::Constants::INTRA)
+
+        place_order(order_params)
       end
 
       private

@@ -97,8 +97,8 @@ module Orders
 
       # Place an order using Dhan API
       def place_order(params)
-        Rails.logger.debug params
-        # validate_margin(params)
+        validate_margin(params)
+
         if ENV['PLACE_ORDER'] == 'true'
           executed_order = Dhanhq::API::Orders.place(params)
 
