@@ -3,15 +3,16 @@
 module Webhooks
   class AlertsController < ApplicationController
     def create
-      if instrument.nil?
-        return render json: { error: 'Instrument not found for the given parameters' },
-                      status: :not_found
-      end
-
-      # Build the alert with the associated instrument
-      alert = instrument.alerts.build(alert_params)
-
+      Rails.logger.debug params
+      Rails.logger.debug alert_params
       if valid_alert?(alert_params)
+        if instrument.nil?
+          return render json: { error: 'Instrument not found for the given parameters' },
+                        status: :not_found
+        end
+
+        # Build the alert with the associated instrument
+        alert = instrument.alerts.build(alert_params)
         if alert.save
           processor = AlertProcessorFactory.build(alert)
           processor.call
@@ -54,18 +55,18 @@ module Webhooks
     end
 
     # Validate the alert timing and time range
-    def valid_alert?(alert)
+    def valid_alert?(_alert)
+      # current_time = Time.zone.now
       alert_time = begin
         Time.zone.parse(alert[:time])
       rescue StandardError
         nil
       end
-      alert_time.present? && recent_alert?(alert_time)
-    end
-
-    # Check if the alert time is recent (within 60 seconds)
-    def recent_alert?(alert_time)
-      Time.zone.now - alert_time < 20
+      # Rails.logger.debug alert_time
+      # Rails.logger.debug current_time
+      # Rails.logger.debug(current_time - alert_time)
+      # (current_time - alert_time) < 70.seconds
+      alert_time.present?
     end
 
     # NOTE: NOT USED

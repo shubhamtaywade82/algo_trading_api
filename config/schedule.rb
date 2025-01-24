@@ -23,28 +23,36 @@
 
 set :environment, ENV['RAILS_ENV'] || 'development'
 set :output, 'log/cron.log'
-every :sunday, at: '2:00 am' do
-  runner 'LevelsUpdateJob.perform_later'
-end
-# Process Delayed Job tasks every minute
-every 1.minute do
-  rake 'jobs:workoff'
-end
+# every :sunday, at: '2:00 am' do
+#   runner 'LevelsUpdateJob.perform_later'
+# end
 
 every 1.minute do
-  runner 'OrderManagerJob.perform_later'
+  runner 'Managers::Orders.call'
 end
 
-every 5.minutes do
-  runner 'PositionsManagerJob.perform_later'
-end
-
-# Stop-loss adjustments for positions
-every 2.minutes do
-  runner 'AdjustStopLossManagerJob.perform_later'
-end
-
-# Stop-loss adjustments for orders
 every 1.minute do
-  runner 'StopLossManagerJob.perform_later'
+  runner 'Managers::Positions.call'
 end
+# # Process Delayed Job tasks every minute
+# every 1.minute do
+#   rake 'jobs:workoff'
+# end
+
+# every 1.minute do
+#   runner 'OrderManagerJob.perform_later'
+# end
+
+# every 5.minutes do
+#   runner 'PositionsManagerJob.perform_later'
+# end
+
+# # Stop-loss adjustments for positions
+# every 2.minutes do
+#   runner 'AdjustStopLossManagerJob.perform_later'
+# end
+
+# # Stop-loss adjustments for orders
+# every 1.minute do
+#   runner 'StopLossManagerJob.perform_later'
+# end

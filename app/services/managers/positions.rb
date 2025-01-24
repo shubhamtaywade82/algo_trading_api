@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
-module Positions
-  class Manager < Managers::Base
+module Managers
+  class Positions < Managers::Base
     def call
+      log_info("Postions Manager called at #{Time.zone.now}")
       execute_safely do
         manage_positions
         adjust_stop_loss_for_positions
@@ -12,101 +13,110 @@ module Positions
     private
 
     def manage_positions
-      Position.open.each do |position|
-        close_position_if_profitable(position)
+      positions.each do |position|
+        evaluate_and_exit_position(position)
       end
     end
 
-    def close_position_if_profitable(position)
-      if profitable?(position)
-        close_position(position)
+    # Fetch open positions using the DhanHQ API
+    def positions
+      Dhanhq::API::Portfolio.positions
+    rescue StandardError => e
+      log_error('Error fetching positions', e)
+      []
+    end
+
+    # Evaluate a position's profit and place a target order if criteria match
+    def evaluate_and_exit_position(position)
+      profit_percent = calculate_unrealized_profit_percent(position)
+      if profit_percent.between?(2.0, 3.0)
+        place_limit_exit_order(position)
       else
-        log_info("Position not profitable: #{position.id}")
+        log_info("Position #{position['tradingSymbol']} not meeting profit criteria: #{profit_percent}%")
       end
     end
 
-    def profitable?(position)
-      position.unrealized_profit >= position.entry_price * 0.02 # Example: 2% profit threshold
+    # Calculate unrealized profit percentage
+    def calculate_unrealized_profit_percent(position)
+      entry_price = position['buyAvg'].to_f
+      unrealized_profit = position['unrealizedProfit'].to_f
+      ((unrealized_profit / entry_price) * 100).round(2)
     end
 
-    def close_position(position)
-      response = Dhanhq::API::Orders.place(close_order_params(position))
-      if response['status'] == 'success'
-        position.update(status: :closed)
-        log_info("Position closed: #{position.id}")
-      else
-        log_error("Failed to close position: #{position.id}")
-      end
-    end
-
-    def close_order_params(position)
-      {
-        transactionType: position.position_type == 'LONG' ? 'SELL' : 'BUY',
-        orderType: 'MARKET',
-        productType: position.product_type,
-        securityId: position.security_id,
-        quantity: position.net_qty
+    # Place a limit order to exit the position
+    def place_limit_exit_order(position)
+      order_params = {
+        transactionType: position['positionType'] == 'LONG' ? 'SELL' : 'BUY',
+        exchangeSegment: position['exchangeSegment'],
+        productType: position['productType'],
+        orderType: 'LIMIT',
+        securityId: position['securityId'],
+        quantity: position['netQty'],
+        price: calculate_exit_price(position)
       }
+
+      response = Dhanhq::API::Orders.place(order_params)
+      handle_order_response(response, position)
+    rescue StandardError => e
+      log_error("Failed to place exit order for position #{position['tradingSymbol']}", e)
     end
 
+    # Calculate target exit price
+    def calculate_exit_price(position)
+      entry_price = position['buyAvg'].to_f
+      (entry_price * 1.02).round(2) # 2% profit target
+    end
+
+    # Handle the response from the order placement
+    def handle_order_response(response, position)
+      if response['orderStatus'] == 'PENDING'
+        log_info("Exit order placed successfully for position #{position['tradingSymbol']}")
+      else
+        log_error("Failed to place exit order for position #{position['tradingSymbol']}: #{response['omsErrorDescription']}")
+      end
+    end
+
+    # Adjust stop-loss dynamically for all open positions
     def adjust_stop_loss_for_positions
-      Position.open.each do |position|
+      positions.each do |position|
         adjust_stop_loss_for_position(position)
       end
+    rescue StandardError => e
+      log_error('Error adjusting stop-loss for positions', e)
     end
 
     def adjust_stop_loss_for_position(position)
       new_stop_loss = calculate_new_stop_loss(position)
-      if new_stop_loss > position.stop_loss_price
+      if new_stop_loss > position['stopLossPrice'].to_f
         update_stop_loss(position, new_stop_loss)
       else
-        log_info("No adjustment needed for position #{position.id}")
+        log_info("No adjustment needed for position #{position['tradingSymbol']}")
       end
     end
 
     def calculate_new_stop_loss(position)
-      current_price = position.current_market_price
-      trailing_amount = position.trailing_stop_loss
+      current_price = position['lastTradedPrice'].to_f
+      trailing_amount = position['trailingStopLoss'].to_f
 
-      if position.position_type == 'LONG'
-        [current_price - trailing_amount, position.stop_loss_price].max
+      if position['positionType'] == 'LONG'
+        [current_price - trailing_amount, position['stopLossPrice'].to_f].max
       else
-        [current_price + trailing_amount, position.stop_loss_price].min
+        [current_price + trailing_amount, position['stopLossPrice'].to_f].min
       end.round(2)
     end
 
     def update_stop_loss(position, new_stop_loss)
       response = Dhanhq::API::Orders.modify(
-        order_id: position.order_id,
+        order_id: position['orderId'],
         stop_loss_price: new_stop_loss
       )
       if response['status'] == 'success'
-        position.update(stop_loss_price: new_stop_loss)
-        log_info("Stop-loss updated for position #{position.id} to #{new_stop_loss}")
+        log_info("Stop-loss updated for position #{position['tradingSymbol']} to #{new_stop_loss}")
       else
-        log_error("Failed to update stop-loss for position #{position.id}", response['error'])
+        log_error("Failed to update stop-loss for position #{position['tradingSymbol']}: #{response['omsErrorDescription']}")
       end
-    end
-
-    def trail_stop_loss_for_positions
-      Position.open.each do |position|
-        new_stop_loss = calculate_trailing_stop_loss(position)
-        update_stop_loss(position, new_stop_loss) if new_stop_loss != position.stop_loss_price
-      end
-    end
-
-    def calculate_trailing_stop_loss(position)
-      entry_price = position.entry_price
-      current_price = position.current_market_price
-      trailing_amount = position.trailing_stop_loss
-
-      return position.stop_loss_price if current_price <= entry_price
-
-      if position.position_type == 'LONG'
-        current_price - trailing_amount
-      else
-        current_price + trailing_amount
-      end.round(2)
+    rescue StandardError => e
+      log_error("Error updating stop-loss for position #{position['tradingSymbol']}", e)
     end
   end
 end
