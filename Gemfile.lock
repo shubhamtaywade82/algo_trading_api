@@ -1,5 +1,7 @@
-PATH
-  remote: ../dhanhq
+GIT
+  remote: https://github.com/shubhamtaywade82/dhanhq.git
+  revision: a513606f940fa79df00493618e326d0d6f108791
+  branch: main
   specs:
     dhanhq (0.1.0)
       activesupport
@@ -206,8 +208,8 @@ GEM
     faraday-em_synchrony (1.0.0)
     faraday-excon (1.1.0)
     faraday-httpclient (1.0.1)
-    faraday-multipart (1.0.4)
-      multipart-post (~> 2)
+    faraday-multipart (1.1.0)
+      multipart-post (~> 2.0)
     faraday-net_http (1.0.2)
     faraday-net_http_persistent (1.2.0)
     faraday-patron (1.0.0)
