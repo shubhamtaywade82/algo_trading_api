@@ -33,7 +33,7 @@ gem 'thruster', require: false
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 # gem "image_processing", "~> 1.2"
-gem 'dhanhq', git: 'https://github.com/your-username/dhanhq.git'
+gem 'dhanhq', git: 'https://github.com/shubhamtaywade82/dhanhq.git'
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 gem 'rack-cors'
 
