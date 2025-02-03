@@ -38,7 +38,7 @@ gem 'dhanhq', git: 'https://github.com/shubhamtaywade82/dhanhq.git'
 gem 'rack-cors'
 
 group :development, :test do
-  gem 'dhanhq', path: '../dhanhq'
+  # gem 'dhanhq', path: '../dhanhq'
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem 'debug', platforms: %i[mri windows], require: 'debug/prelude'
 
