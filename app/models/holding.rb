@@ -2,5 +2,5 @@
 
 class Holding < ApplicationRecord
   # Enums
-  enum :exchange, { nse: 'NSE', bse: 'BSE', mcx: 'MCX', all: 'ALL' }
+  enum :exchange, { nse: 'NSE', bse: 'BSE', mcx: 'MCX' }
 end
