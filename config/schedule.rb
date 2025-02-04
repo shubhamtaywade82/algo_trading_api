@@ -28,7 +28,7 @@ set :output, 'log/cron.log'
 # end
 
 every 1.minute do
-  runner 'Managers::Orders.call'
+  runner 'Managers::Orders::Processor.call'
 end
 
 every 1.minute do

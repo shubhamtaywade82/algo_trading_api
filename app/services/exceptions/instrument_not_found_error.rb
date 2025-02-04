@@ -1,3 +1,5 @@
 # frozen_string_literal: true
 
-class InstrumentNotFoundError < StandardError; end
+module Exceptions
+  class InstrumentNotFoundError < StandardError; end
+end

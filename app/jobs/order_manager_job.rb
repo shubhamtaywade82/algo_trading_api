@@ -4,6 +4,6 @@ class OrderManagerJob < ApplicationJob
   queue_as :default
 
   def perform
-    Managers::Orders.call
+    Managers::Orders::Processor.call
   end
 end

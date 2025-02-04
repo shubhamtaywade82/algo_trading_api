@@ -1,13 +1,13 @@
 1. Common Redundancies Detected
    A. Duplicate Responsibilities
-   Orders::Manager and Managers::Orders
+   Orders::Manager and Managers::Orders::Processor
 
 Both manage orders but seem redundant.
-Suggest merging their functionality into a single Managers::Orders class.
-Orders::StopLossManager and Managers::Orders::StopLossManager
+Suggest merging their functionality into a single Managers::Orders::Processor class.
+Orders::StopLossManager and Managers::Orders::Processor::StopLossManager
 
-These seem to handle similar responsibilities. Only one is needed, preferably under Managers::Orders.
-OrdersService and Managers::Orders
+These seem to handle similar responsibilities. Only one is needed, preferably under Managers::Orders::Processor.
+OrdersService and Managers::Orders::Processor
 
 Both fetch orders; the service can be used within the manager instead of duplicating logic.
 B. Repeated Classes
@@ -27,7 +27,7 @@ C. Redundant Implementations
 Command Classes
 
 CancelOrderCommand, ModifyOrderCommand, PlaceOrderCommand:
-These can be absorbed into Managers::Orders as methods since they are not complex enough to need separate classes.
+These can be absorbed into Managers::Orders::Processor as methods since they are not complex enough to need separate classes.
 Decorators
 
 PositionDecorator is empty. Remove unless intended for future use.
@@ -55,8 +55,8 @@ A. Simplify Folder Structure
 Organize app/managers/orders/ and app/managers/positions/:
 Group managers into a consistent hierarchy (e.g., StopLoss, TrailingStopLoss).
 B. Merge Redundant Logic
-Merge Managers::Orders and Orders::Manager into Managers::Orders.
-Merge Managers::Orders::StopLossManager and Orders::StopLossManager.
+Merge Managers::Orders::Processor and Orders::Manager into Managers::Orders::Processor.
+Merge Managers::Orders::Processor::StopLossManager and Orders::StopLossManager.
 C. Remove Duplicates
 Remove duplicate jobs like TrailingStopLossJob if its logic overlaps with AdjustStopLossManagerJob.
 D. Remove Empty Files
