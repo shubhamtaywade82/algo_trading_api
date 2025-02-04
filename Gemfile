@@ -64,8 +64,8 @@ group :test do
   gem 'webmock'
 end
 
+gem 'dotenv-rails' # Environment variable management
 group :development do
-  gem 'dotenv-rails' # Environment variable management
   # gem 'pry-byebug' # Debugging
   # gem 'pry-rails' # Debugging
   gem 'rails_best_practices'

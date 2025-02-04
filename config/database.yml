@@ -83,7 +83,7 @@ production:
     <<: *default
     database: algo_trading_app_production
     username: algo_trading_app
-    password: <%= ENV["ALGO_TRADING_APP_DATABASE_PASSWORD"] %>
+    password: <%= ENV["DATABASE_PASSWORD"] %>
   cache:
     <<: *primary_production
     database: algo_trading_app_production_cache
