@@ -1,0 +1,7 @@
+services:
+  - name: algo-trading-api
+    type: web
+    env: ruby
+    buildCommand: "bundle install"
+    startCommand: "bundle exec puma -C config/puma.rb"
+    releaseCommand: "rails db:migrate && rails db:seed && rails import:instruments && rails import:mis_details"
