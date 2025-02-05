@@ -7,4 +7,4 @@ rails db:migrate
 rails db:seed
 rails levels:update
 rails import:instruments
-# rails import:mis_details
+rails import:mis_details
