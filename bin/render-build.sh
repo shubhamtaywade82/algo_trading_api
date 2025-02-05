@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # exit on error
 set -o errexit
-
-echo "Hello FROM RENDER BUILD"
 # Install gems
 bundle install
 
