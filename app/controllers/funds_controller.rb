@@ -2,7 +2,7 @@
 
 class FundsController < ApplicationController
   def index
-    funds = FundsService.fetch_funds
+    funds = Dhanhq::API::Funds.balance
     render json: funds.except(:dhanClientId)
   rescue StandardError => e
     render json: ErrorHandler.handle_error(
