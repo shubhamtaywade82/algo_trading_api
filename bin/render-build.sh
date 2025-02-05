@@ -4,6 +4,7 @@ set -o errexit
 # Install gems
 bundle install
 rails db:migrate
+
 rails db:seed
 rails levels:update
 rails import:instruments
