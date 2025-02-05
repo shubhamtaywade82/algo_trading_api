@@ -5,6 +5,6 @@ set -o errexit
 bundle install
 rails db:migrate
 rails db:seed
-
+rails levels:update
 rails import:instruments
 # rails import:mis_details
