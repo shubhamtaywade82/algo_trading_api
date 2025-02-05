@@ -1,7 +1,28 @@
+databases:
+  - name: algotrading-db
+    databaseName: algo_trading_app_production
+    user: nemesis
+    plan: free
+
 services:
-  - name: algo-trading-api
-    type: web
-    env: ruby
-    buildCommand: "bundle install"
-    startCommand: "bundle exec puma -C config/puma.rb"
-    releaseCommand: "rails db:migrate && rails db:seed && rails import:instruments && rails import:mis_details"
+  - type: web
+    name: algo_trading_api
+    runtime: ruby
+    plan: free
+    buildCommand: "./bin/render-build.sh"
+    startCommand: "bundle exec rails server"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: algotrading-db
+          property: connectionString
+
+      # Any other environment variables you need:
+      - key: DHAN_API_KEY
+        sync: false
+      - key: DHAN_API_SECRET
+        sync: false
+
+      # Helps avoid memory issues on free tier
+      - key: WEB_CONCURRENCY
+        value: "2"
