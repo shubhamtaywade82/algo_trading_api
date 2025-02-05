@@ -18,8 +18,8 @@ class InstrumentsController < ApplicationController
   end
 
   def show
-    instrument = Instrument.find(params[:id])
-    render json: instrument
+    instruments = Instrument.where(security_id: params[:id])
+    render json: instruments
   end
 
   private
