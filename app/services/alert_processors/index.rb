@@ -98,9 +98,10 @@ module AlertProcessors
       available_balance = fetch_available_balance
       max_allocation = available_balance * 0.5 # Use 50% of available balance
       quantity = calculate_quantity(strike[:last_price], max_allocation, instrument.lot_size)
+      total_order_cost = quantity * strike[:last_price]
 
-      if available_balance < (quantity * strike[:last_price])
-        return ErrorLogger.log_error("Insufficient balance: #{available_balance - (quantity * strike[:last_price])}")
+      if available_balance < total_order_cost
+        raise "Insufficient funds ₹#{available_balance - total_order_cost}: Required ₹#{total_order_cost}, Available ₹#{available_balance}"
       end
 
       order_data = {

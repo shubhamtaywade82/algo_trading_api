@@ -40,25 +40,36 @@ module AlertProcessors
     # Handle intraday strategy
     def process_intraday_strategy
       order_params = build_order_payload(Dhanhq::Constants::INTRA)
-      place_order(order_params)
+      verify_funds_and_place_order(order_params)
     end
 
     # Handle swing strategy
     def process_swing_strategy
-      order_params = build_order_payload(Dhanhq::Constants::CNC)
-      place_order(order_params)
+      order_params = build_order_payload(Dhanhq::Constants::MARGIN)
+      verify_funds_and_place_order(order_params)
     end
 
     # Handle long-term strategy
     def process_long_term_strategy
-      order_params = build_order_payload(Dhanhq::Constants::CNC)
+      order_params = build_order_payload(Dhanhq::Constants::MARGIN)
+      verify_funds_and_place_order(order_params)
+    end
+
+    # Verify available funds before placing an order
+    def verify_funds_and_place_order(order_params)
+      validate_margin(order_params)
+      available_balance = fetch_available_balance
+      total_order_cost = order_params[:quantity] * instrument.ltp
+
+      if available_balance < total_order_cost
+        raise "Insufficient funds ₹#{available_balance - total_order_cost}: Required ₹#{total_order_cost}, Available ₹#{available_balance}"
+      end
+
       place_order(order_params)
     end
 
     # Place order using Dhan API
     def place_order(order_params)
-      validate_margin(order_params)
-
       if ENV['PLACE_ORDER'] == 'true'
         executed_order = Dhanhq::API::Orders.place(order_params)
         Rails.logger.info("Order placed successfully: #{executed_order}")
@@ -75,25 +86,25 @@ module AlertProcessors
       response = Dhanhq::API::Funds.margin_calculator(params)
       insufficient_balance = response['insufficientBalance'].to_f
 
-      raise "Insufficient margin: Missing ₹#{insufficient_balance}" if insufficient_balance.positive?
+      # raise "Insufficient margin: Missing ₹#{insufficient_balance}" if insufficient_balance.positive?
 
       response
     rescue StandardError => e
       raise "Margin validation failed: #{e.message}"
     end
 
-    # Calculate the maximum quantity to trade
-    def calculate_quantity(price)
-      available_funds = fetch_funds * funds_utilization * leverage_factor
-      max_quantity = (available_funds / price).floor
-      [max_quantity, 1].max # Ensure at least one unit
+    # Fetch available balance
+    def fetch_available_balance
+      Dhanhq::API::Funds.balance['availabelBalance'].to_f
+    rescue StandardError
+      raise 'Failed to fetch available balance'
     end
 
-    # Fetch available funds
-    def fetch_funds
-      Dhanhq::API::Funds.balance['availabelBalance'].to_f
-    rescue StandardError => e
-      raise "Failed to fetch funds: #{e.message}"
+    # Calculate the maximum quantity to trade
+    def calculate_quantity(price)
+      available_funds = fetch_available_balance * funds_utilization * leverage_factor
+      max_quantity = (available_funds / price).floor
+      [max_quantity, 1].max # Ensure at least one unit
     end
 
     # Define leverage factor based on strategy type
