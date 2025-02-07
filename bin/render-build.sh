@@ -5,7 +5,7 @@ set -o errexit
 bundle install
 rails db:migrate
 
-rails db:seed
+# rails db:seed
 rails import:instruments
-rails import:mis_details
+# rails import:mis_details
 # rails levels:update
