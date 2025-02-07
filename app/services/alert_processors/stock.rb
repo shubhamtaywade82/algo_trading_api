@@ -57,7 +57,7 @@ module AlertProcessors
 
     # Verify available funds before placing an order
     def verify_funds_and_place_order(order_params)
-      validate_margin(order_params)
+      # validate_margin(order_params)
       available_balance = fetch_available_balance
       total_order_cost = order_params[:quantity] * instrument.ltp
 
@@ -84,7 +84,7 @@ module AlertProcessors
     def validate_margin(params)
       params = params.merge(price: instrument.ltp)
       response = Dhanhq::API::Funds.margin_calculator(params)
-      # insufficient_balance = response['insufficientBalance'].to_f
+      insufficient_balance = response['insufficientBalance']
 
       # raise "Insufficient margin: Missing ₹#{insufficient_balance}" if insufficient_balance.positive?
 

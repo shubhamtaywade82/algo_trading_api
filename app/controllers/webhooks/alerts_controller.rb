@@ -3,6 +3,11 @@
 module Webhooks
   class AlertsController < ApplicationController
     def create
+      pp "-------------------------------------------------------------------------------------------------"
+      pp params
+      pp "-------------------------------------------------------------------------------------------------"
+      pp alert
+      pp "-------------------------------------------------------------------------------------------------"
       if valid_alert?(alert_params)
         if instrument.nil?
           return render json: { error: 'Instrument not found for the given parameters' },
@@ -36,7 +41,7 @@ module Webhooks
     end
 
     def alert_params
-      params.require(:alert).permit(
+      params.permit(
         :ticker, :instrument_type, :order_type, :current_position, :previous_position, :strategy_type, :current_price,
         :high, :low, :volume, :time, :chart_interval, :stop_loss, :stop_price, :take_profit, :limit_price,
         :trailing_stop_loss, :strategy_name, :strategy_id, :action, :exchange
