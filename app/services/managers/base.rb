@@ -7,11 +7,11 @@ module Managers
     end
 
     def log_info(message)
-      Rails.logger.info(message)
+      Rails.logger.info(message.to_s)
     end
 
     def log_error(message, exception = nil)
-      Rails.logger.error("#{message}: #{exception&.message}")
+      Rails.logger.error("❌ #{message}: #{exception&.message}")
     end
 
     def execute_safely
