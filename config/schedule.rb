@@ -23,36 +23,38 @@
 
 set :environment, ENV['RAILS_ENV'] || 'development'
 set :output, 'log/cron.log'
-# every :sunday, at: '2:00 am' do
-#   runner 'LevelsUpdateJob.perform_later'
-# end
 
+# 📌 Orders Management (Monitor Pending & Open Orders)
 every 1.minute do
-  runner 'Managers::Orders::Processor.call'
+  runner 'Managers::Orders.call'
 end
 
+# 📌 Positions Management (Monitor Positions & Adjust Stop-Loss)
 every 1.minute do
   runner 'Managers::Positions.call'
 end
-# # Process Delayed Job tasks every minute
-# every 1.minute do
-#   rake 'jobs:workoff'
-# end
 
-# every 1.minute do
-#   runner 'OrderManagerJob.perform_later'
-# end
+# 📌 Holdings Management (Check for Profit Exits)
+every 5.minutes do
+  runner 'Managers::Holdings.call'
+end
 
-# every 5.minutes do
-#   runner 'PositionsManagerJob.perform_later'
-# end
+# 📌 Adjust Stop-Loss for Open Positions
+every 2.minutes do
+  runner 'Managers::Positions::StopLoss.call'
+end
 
-# # Stop-loss adjustments for positions
-# every 2.minutes do
-#   runner 'AdjustStopLossManagerJob.perform_later'
-# end
+# 📌 Adjust Stop-Loss for Open Orders
+every 1.minute do
+  runner 'Managers::Orders::StopLoss.call'
+end
 
-# # Stop-loss adjustments for orders
-# every 1.minute do
-#   runner 'StopLossManagerJob.perform_later'
-# end
+# 📌 Process Delayed Job Tasks
+every 1.minute do
+  rake 'jobs:workoff'
+end
+
+# 📌 Weekly Cleanup Task (E.g., Level Updates)
+every :sunday, at: '2:00 am' do
+  runner 'LevelsUpdateJob.perform_later'
+end

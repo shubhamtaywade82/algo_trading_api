@@ -5,7 +5,7 @@ module Managers
     PROFIT_TARGET_RANGE = (5.0..10.0) # Target profit range for exits
 
     def call
-      log_info("📊 Executing Holdings Manager")
+      log_info('📊 Executing Holdings Manager')
       execute_safely { manage_holdings }
     end
 
