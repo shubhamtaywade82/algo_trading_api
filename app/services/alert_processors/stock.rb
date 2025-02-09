@@ -84,7 +84,7 @@ module AlertProcessors
     def validate_margin(params)
       params = params.merge(price: instrument.ltp)
       response = Dhanhq::API::Funds.margin_calculator(params)
-      insufficient_balance = response['insufficientBalance']
+      response['insufficientBalance']
 
       # raise "Insufficient margin: Missing ₹#{insufficient_balance}" if insufficient_balance.positive?
 

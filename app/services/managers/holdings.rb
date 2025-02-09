@@ -17,7 +17,7 @@ module Managers
     def holdings
       Dhanhq::API::Portfolio.holdings
     rescue StandardError => e
-      log_error('❌ Error fetching holdings', e)
+      log_error('Error fetching holdings', e)
       []
     end
 
@@ -56,7 +56,7 @@ module Managers
 
       response.dig('data', security_id.to_s, 'last_price').to_f
     rescue StandardError => e
-      log_error("❌ Failed to fetch LTP for security ID #{security_id}", e)
+      log_error("Failed to fetch LTP for security ID #{security_id}", e)
       nil
     end
 
@@ -74,12 +74,12 @@ module Managers
 
       if ENV['PLACE_ORDER'] == 'true'
         response = Dhanhq::API::Orders.place(order_params)
-        log_info("🚀 Exit order placed for #{holding['tradingSymbol']}: Order ID #{response['orderId']}")
+        log_info(" Exit order placed for #{holding['tradingSymbol']}: Order ID #{response['orderId']}")
       else
-        log_info("🔍 PLACE_ORDER is disabled. Exit order not placed for #{holding['tradingSymbol']}.")
+        log_info("PLACE_ORDER is disabled. Exit order not placed for #{holding['tradingSymbol']}.")
       end
     rescue StandardError => e
-      log_error("❌ Failed to place exit order for #{holding['tradingSymbol']}", e)
+      log_error("Failed to place exit order for #{holding['tradingSymbol']}", e)
     end
 
     # Calculate the target exit price for holdings

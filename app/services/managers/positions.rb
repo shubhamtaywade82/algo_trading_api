@@ -25,9 +25,7 @@ module Managers
     end
 
     def manage_positions
-      positions.each do |position|
-        evaluate_and_exit_position(position)
-      end
+      positions.each { |position| evaluate_and_exit_position(position) }
     end
 
     # Evaluate a position's profit and place a target order if criteria match
@@ -68,8 +66,7 @@ module Managers
 
     # Calculate target exit price
     def calculate_exit_price(position)
-      entry_price = position['buyAvg'].to_f
-      (entry_price * 1.02).round(2) # 2% profit target
+      (position['buyAvg'].to_f * 1.02).round(2)
     end
 
     # Handle the response from the order placement
@@ -83,9 +80,7 @@ module Managers
 
     # Adjust stop-loss dynamically for all open positions
     def adjust_stop_loss_for_positions
-      positions.each do |position|
-        adjust_stop_loss_for_position(position)
-      end
+      positions.each { |position| adjust_stop_loss_for_position(position) }
     rescue StandardError => e
       log_error('Error adjusting stop-loss for positions', e)
     end
@@ -96,30 +91,15 @@ module Managers
       if new_stop_loss > position['costPrice'].to_f
         update_stop_loss(position, new_stop_loss)
       else
-        log_info("No adjustment needed for position #{position['tradingSymbol']}")
+        log_info("No stop-loss update needed for #{position['tradingSymbol']}")
       end
-    end
-
-    def calculate_new_stop_loss(position)
-      current_price = position['lastTradedPrice'].to_f
-      trailing_amount = position['trailingStopLoss'].to_f
-
-      if position['positionType'] == 'LONG'
-        [current_price - trailing_amount, position['stopLossPrice'].to_f].max
-      else
-        [current_price + trailing_amount, position['stopLossPrice'].to_f].min
-      end.round(2)
     end
 
     def calculate_adaptive_stop_loss(position)
       atr_value = fetch_atr(position)
       entry_price = position['buyAvg'].to_f
 
-      if position['positionType'] == 'LONG'
-        (entry_price - (ATR_MULTIPLIER * atr_value)).round(2)
-      else
-        (entry_price + (ATR_MULTIPLIER * atr_value)).round(2)
-      end
+      position['positionType'] == 'LONG' ? (entry_price - (ATR_MULTIPLIER * atr_value)).round(2) : (entry_price + (ATR_MULTIPLIER * atr_value)).round(2)
     end
 
     def fetch_atr(position)
@@ -127,22 +107,17 @@ module Managers
 
       if response['status'] == 'success'
         ohlc_data = response.dig('data', position['exchangeSegment'], position['securityId'].to_s)
-        high = ohlc_data['high'].to_f
-        low = ohlc_data['low'].to_f
-        close = ohlc_data['close'].to_f
+        high, low, close = ohlc_data.values_at('high', 'low', 'close').map(&:to_f)
 
         ((high - low).abs + (high - close).abs + (low - close).abs) / 3
       else
         log_error("Failed to fetch ATR for #{position['tradingSymbol']}")
-        1.0 # Default ATR
+        1.0
       end
     end
 
     def update_stop_loss(position, new_stop_loss)
-      response = Dhanhq::API::Orders.modify(
-        position['orderId'],
-        { triggerPrice: new_stop_loss }
-      )
+      response = Dhanhq::API::Orders.modify(position['orderId'], { triggerPrice: new_stop_loss })
 
       if response['status'] == 'success'
         log_info("Stop-loss updated for position #{position['tradingSymbol']} to #{new_stop_loss}")
