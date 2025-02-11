@@ -33,39 +33,25 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
-        quantity: calculate_quantity(instrument.ltp)
+        quantity: calculate_quantity(ltp)
       }
     end
 
     # Handle intraday strategy
     def process_intraday_strategy
       order_params = build_order_payload(Dhanhq::Constants::INTRA)
-      verify_funds_and_place_order(order_params)
+      place_order(order_params)
     end
 
     # Handle swing strategy
     def process_swing_strategy
       order_params = build_order_payload(Dhanhq::Constants::MARGIN)
-      verify_funds_and_place_order(order_params)
+      place_order(order_params)
     end
 
     # Handle long-term strategy
     def process_long_term_strategy
       order_params = build_order_payload(Dhanhq::Constants::MARGIN)
-      verify_funds_and_place_order(order_params)
-    end
-
-    # Verify available funds before placing an order
-    def verify_funds_and_place_order(order_params)
-      # validate_margin(order_params)
-      available_balance = fetch_available_balance
-      leveraged_ltp = order_params[:strategy_type] == 'intraday' ? (ltp / leverage_factor) : ltp
-      total_order_cost = order_params[:quantity] * leveraged_ltp
-
-      if available_balance < total_order_cost
-        raise "Insufficient funds ₹#{available_balance - total_order_cost}: Required ₹#{total_order_cost}, Available ₹#{available_balance}"
-      end
-
       place_order(order_params)
     end
 
@@ -105,6 +91,11 @@ module AlertProcessors
     def calculate_quantity(price)
       available_funds = fetch_available_balance * funds_utilization * leverage_factor
       max_quantity = (available_funds / price).floor
+
+      if available_funds < (max_quantity * price)
+        raise "Insufficient funds: Required ₹#{max_quantity * price}, Available ₹#{available_funds}"
+      end
+
       [max_quantity, 1].max # Ensure at least one unit
     end
 
