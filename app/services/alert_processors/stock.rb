@@ -1,7 +1,22 @@
 # frozen_string_literal: true
 
 module AlertProcessors
+  # Stock processes TradingView alerts for equity (stock) instruments.
+  # It handles different strategy types (intraday, swing, long_term),
+  # builds appropriate order parameters, and places orders if allowed by
+  # environment configuration (PLACE_ORDER). If any step fails, it updates
+  # the alert status to "failed" and logs the error.
   class Stock < Base
+    # The main entry point for processing a stock alert.
+    # Based on `alert[:strategy_type]`, it calls the relevant private method:
+    #  - `process_intraday_strategy`
+    #  - `process_swing_strategy`
+    #  - `process_long_term_strategy`
+    #
+    # If it fails at any step, the alert status is updated to "failed",
+    # with the error message logged. Otherwise, the alert status is set to "processed".
+    #
+    # @return [void]
     def call
       Rails.logger.info("Processing stock alert: #{alert.inspect}")
 
@@ -24,7 +39,21 @@ module AlertProcessors
 
     private
 
-    # Common logic to prepare order payload
+    # Processes an intraday strategy by building an INTRA order payload
+    # and placing the order.
+    #
+    # @return [void]
+    #
+    def process_intraday_strategy
+      order_params = build_order_payload(Dhanhq::Constants::INTRA)
+      place_order(order_params)
+    end
+
+    # Builds a hash of order parameters common to all strategies, with a
+    # specified product type (e.g., INTRA or MARGIN).
+    #
+    # @param product_type [String] The product type constant (e.g. `Dhanhq::Constants::INTRA`).
+    # @return [Hash] The payload required by the Dhanhq::API::Orders.place method.
     def build_order_payload(product_type)
       {
         transactionType: alert[:action].upcase,
@@ -37,25 +66,29 @@ module AlertProcessors
       }
     end
 
-    # Handle intraday strategy
-    def process_intraday_strategy
-      order_params = build_order_payload(Dhanhq::Constants::INTRA)
-      place_order(order_params)
-    end
-
-    # Handle swing strategy
+    # Processes a swing strategy by building a MARGIN order payload
+    # and placing the order.
+    #
+    # @return [void]
     def process_swing_strategy
       order_params = build_order_payload(Dhanhq::Constants::MARGIN)
       place_order(order_params)
     end
 
-    # Handle long-term strategy
+    # Processes a long-term strategy by building a MARGIN order payload
+    # and placing the order.
+    #
+    # @return [void]
     def process_long_term_strategy
       order_params = build_order_payload(Dhanhq::Constants::MARGIN)
       place_order(order_params)
     end
 
-    # Place order using Dhan API
+    # Places the order using Dhan API if PLACE_ORDER is set to 'true';
+    # otherwise logs order parameters without placing an order.
+    #
+    # @param order_params [Hash] The order payload to be sent to Dhanhq::API::Orders.place
+    # @return [void]
     def place_order(order_params)
       if ENV['PLACE_ORDER'] == 'true'
         executed_order = Dhanhq::API::Orders.place(order_params)
@@ -67,7 +100,12 @@ module AlertProcessors
       raise "Failed to place order: #{e.message}"
     end
 
-    # Validate margin before placing an order
+    # Validates margin before placing an order (unused in the current example).
+    # Demonstrates how you might extend functionality, e.g., by calling
+    # Dhanhq::API::Funds.margin_calculator.
+    #
+    # @param params [Hash] A hash of order details used to calculate margin.
+    # @return [Hash] The API response indicating margin details, if successful.
     def validate_margin(params)
       params = params.merge(price: instrument.ltp)
       response = Dhanhq::API::Funds.margin_calculator(params)
@@ -80,7 +118,11 @@ module AlertProcessors
       raise "Margin validation failed: #{e.message}"
     end
 
-    # Calculate the maximum quantity to trade
+    # Calculates the maximum quantity to trade, ensuring it doesn't exceed
+    # available balance and applies any leverage or lot constraints.
+    #
+    # @param price [Float] The current LTP (Last Traded Price) of the instrument.
+    # @return [Integer] The final computed quantity to trade.
     def calculate_quantity(price)
       raw_available_balance = fetch_available_balance
       effective_funds = raw_available_balance * funds_utilization
@@ -91,25 +133,36 @@ module AlertProcessors
       required_funds = max_quantity * leveraged_price
 
       if raw_available_balance < required_funds
-        raise "Insufficient funds: Required ₹#{required_funds}, Available ₹#{raw_available_balance} (Leverage: x#{leverage_factor})"
+        raise "Insufficient funds: Required ₹#{required_funds}, " \
+              "Available ₹#{raw_available_balance} (Leverage: x#{leverage_factor})"
       end
 
       [max_quantity, 1].max # Ensure at least one unit
     end
 
-    # Define leverage factor based on strategy type
+    # Defines the leverage factor based on the alert’s strategy type.
+    # If it's intraday, it returns the MIS leverage (or 1 if undefined).
+    # Otherwise, returns 1x leverage for swing/long_term.
+    #
+    # @return [Float] The numeric leverage multiplier.
     def leverage_factor
       return instrument.mis_detail&.mis_leverage.to_i || 1 if alert[:strategy_type] == 'intraday'
 
       1.0 # Default leverage for swing and long-term is 1x
     end
 
-    # Funds utilization percentage
+    # Defines what fraction of total funds is utilized.
+    # For intraday, we use 30% (0.3); for swing or long_term, 50% (0.5).
+    #
+    # @return [Float] A decimal representing fraction of total funds to use.
     def funds_utilization
       alert[:strategy_type] == 'intraday' ? 0.3 : 0.5
     end
 
-    # Fetch available balance
+    # Fetches available balance from Dhanhq::API::Funds.
+    # Raises an error if the API call fails.
+    #
+    # @return [Float] The current available balance in the trading account.
     def fetch_available_balance
       Dhanhq::API::Funds.balance['availabelBalance'].to_f
     rescue StandardError
