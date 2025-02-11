@@ -95,9 +95,7 @@ class Instrument < ApplicationRecord
   end
 
   def ltp
-    Rails.cache.fetch("instrument_ltp_#{id}", expires_in: CACHE_EXPIRY) do
-      fetch_ltp_from_api
-    end
+    fetch_ltp_from_api
   rescue StandardError => e
     Rails.logger.error("Failed to fetch LTP for Instrument #{id}: #{e.message}")
     nil
