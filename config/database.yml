@@ -82,7 +82,7 @@ production:
   primary: &primary_production
     adapter: postgresql
     encoding: unicode
-    url: <%= ENV['DATABASE_URL'] %>
+    url: <%= ENV['REMOTE_DATABASE_URL'] %>
   cache:
     <<: *primary_production
     database: algo_trading_app_production_cache
