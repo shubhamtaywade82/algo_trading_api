@@ -97,7 +97,7 @@ class Instrument < ApplicationRecord
   def ltp
     fetch_ltp_from_api
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch LTP for Instrument #{id}: #{e.message}")
+    Rails.logger.error("Failed to fetch LTP for Instrument #{security_id}: #{e.message}")
     nil
   end
 
