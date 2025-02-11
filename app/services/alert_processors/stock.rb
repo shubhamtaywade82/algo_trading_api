@@ -59,7 +59,8 @@ module AlertProcessors
     def verify_funds_and_place_order(order_params)
       # validate_margin(order_params)
       available_balance = fetch_available_balance
-      total_order_cost = order_params[:quantity] * instrument.ltp
+      leveraged_ltp = order_params[:strategy_type] == 'intraday' ? (ltp / leverage_factor) : ltp
+      total_order_cost = order_params[:quantity] * leveraged_ltp
 
       if available_balance < total_order_cost
         raise "Insufficient funds ₹#{available_balance - total_order_cost}: Required ₹#{total_order_cost}, Available ₹#{available_balance}"

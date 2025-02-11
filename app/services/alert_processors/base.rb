@@ -15,6 +15,10 @@ module AlertProcessors
 
     private
 
+    def ltp
+      @ltp ||= instrument.ltp
+    end
+
     def instrument
       @instrument ||= Instrument.find_by!(
         underlying_symbol: alert[:ticker],
