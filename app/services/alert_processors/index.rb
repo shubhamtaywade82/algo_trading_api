@@ -1,9 +1,25 @@
 # frozen_string_literal: true
 
 module AlertProcessors
+  # Index processes TradingView alerts for index instruments.
+  # It fetches the option chain, selects an optimal strike, retrieves
+  # the corresponding derivative instrument, and places an order if funds allow.
   class Index < Base
     attr_reader :alert, :exchange
 
+    # Main entry point for processing an index alert.
+    # 1) Grabs the first expiry for the index.
+    # 2) Fetches the option chain.
+    # 3) Selects the best strike based on combined metrics (OI, IV, Greeks, etc.).
+    # 4) Determines the option type (CE/PE) from the alert action (buy/sell).
+    # 5) Finds the derivative instrument matching strike + expiry + option_type.
+    # 6) Places an order (if PLACE_ORDER=true).
+    # 7) Updates alert status to 'processed' upon success.
+    #
+    # If any step fails, it rescues StandardError, updates the alert status
+    # to 'failed', logs the error, and bubbles up a message.
+    #
+    # @return [void]
     def call
       expiry = instrument.expiry_list.first
       option_chain = fetch_option_chain(expiry)
@@ -24,66 +40,43 @@ module AlertProcessors
 
     private
 
-    # Fetch option chain for the specified expiry
+    # Fetches the option chain for a given expiry date.
+    # Raises a StandardError if the API call or data parsing fails.
+    #
+    # @param expiry [String, Date, Time] The expiry date for the option chain.
+    # @return [Hash] The option chain data structure.
     def fetch_option_chain(expiry)
       instrument.fetch_option_chain(expiry)
     rescue StandardError => e
       raise "Failed to fetch option chain for #{alert[:ticker]} with expiry #{expiry}: #{e.message}"
     end
 
-    def fetch_instrument_for_strike(strike_price, expiry_date, option_type)
-      instrument.derivatives.find_by(strike_price: strike_price, expiry_date: expiry_date, option_type: option_type)
-    rescue ActiveRecord::RecordNotFound
-      raise "Instrument not found for #{alert[:ticker]}, strike #{strike_price}, expiry #{expiry_date}, and option type #{option_type}"
-    end
-
-    # Analyze and select the best strike for trading
-    # def select_best_strike(option_chain)
-    #   chain_analyzer = Option::ChainAnalyzer.new(option_chain)
-    #   chain_analyzer.analyze
-
-    #   # Determine the desired option type (CE/PE) based on the action
-    #   option_type = alert[:action].downcase == 'buy' ? 'ce' : 'pe'
-
-    #   strikes = option_chain[:oc].filter_map do |strike, data|
-    #     next unless data[option_type]
-
-    #     {
-    #       strike_price: strike.to_i,
-    #       last_price: data[option_type]['last_price'].to_f,
-    #       oi: data[option_type]['oi'].to_i,
-    #       iv: data[option_type]['implied_volatility'].to_f,
-    #       greeks: data[option_type]['greeks']
-    #     }
-    #   end
-
-    #   # Select based on OI, IV, and Greeks (customizable logic)
-    #   strikes.max_by do |s|
-    #     s[:oi] * s[:iv] * (s.dig(:greeks, :delta).abs || 0.5) # Example scoring formula
-    #   end
-    # end
-
-    # Analyze and select the best strike for trading
+    # Selects the "best" strike from the option chain using a scoring formula.
+    # The chain_analyzer may return additional metrics like max_pain, support, or resistance.
+    #
+    # @param option_chain [Hash] The option chain data structure.
+    # @return [Hash, nil] The selected strike's data, or nil if none found.
     def select_best_strike(option_chain)
       chain_analyzer = Option::ChainAnalyzer.new(option_chain)
       analysis = chain_analyzer.analyze
 
-      # Determine the desired option type (CE/PE) based on the action
-      option_type = alert[:action].downcase == 'buy' ? 'ce' : 'pe'
+      # CE if alert[:action] == 'buy', else PE
+      option_key = alert[:action].downcase == 'buy' ? 'ce' : 'pe'
 
+      # Build an array of potential strikes with relevant data
       strikes = option_chain[:oc].filter_map do |strike, data|
-        next unless data[option_type]
+        next unless data[option_key]
 
         {
           strike_price: strike.to_i,
-          last_price: data[option_type]['last_price'].to_f,
-          oi: data[option_type]['oi'].to_i,
-          iv: data[option_type]['implied_volatility'].to_f,
-          greeks: data[option_type]['greeks']
+          last_price: data[option_key]['last_price'].to_f,
+          oi: data[option_key]['oi'].to_i,
+          iv: data[option_key]['implied_volatility'].to_f,
+          greeks: data[option_key]['greeks']
         }
       end
 
-      # Select based on combined metrics using analysis results
+      # Score each strike and pick the max
       strikes.max_by do |s|
         score = s[:oi] * s[:iv] * (s.dig(:greeks, :delta).abs || 0.5) # Existing scoring formula
         score += 1 if s[:strike_price] == analysis[:max_pain] # Favor max pain level
@@ -93,24 +86,53 @@ module AlertProcessors
       end
     end
 
-    # Place the order for the selected strike
-    def place_order(instrument, strike)
+    # Determines whether this is a 'CE' (call) or 'PE' (put),
+    # based on the alert action (buy vs. sell).
+    #
+    # @return [String] 'CE' if buy, otherwise 'PE'
+    def resolve_option_type
+      alert[:action].downcase == 'buy' ? 'CE' : 'PE'
+    end
+
+    # Finds the matching derivative instrument for the selected strike.
+    # Raises StandardError if the record isn't found.
+    #
+    # @param strike_price [Float, Integer] The option strike price.
+    # @param expiry_date [String, Date]    The expiry date for the option.
+    # @param option_type [String]         'CE' or 'PE'.
+    # @return [Derivative] The matching derivative record.
+    def fetch_instrument_for_strike(strike_price, expiry_date, option_type)
+      instrument.derivatives.find_by(strike_price: strike_price, expiry_date: expiry_date, option_type: option_type)
+    rescue ActiveRecord::RecordNotFound
+      raise "Derivative Instrument not found for #{alert[:ticker]}, strike #{strike_price}, " \
+            "expiry #{expiry_date}, and option type #{option_type}"
+    end
+
+    # Places an order for the selected strike. If PLACE_ORDER=true, it calls
+    # the Dhanhq API to place the order. Otherwise, it logs a message but does not place an order.
+    #
+    # @param instrument [Derivative] The derivative instrument for this strike.
+    # @param strike [Hash]  The hash describing the best strike data (last_price, etc.).
+    # @return [void]
+    def place_order(derivative_instrument, strike)
       available_balance = fetch_available_balance
       max_allocation = available_balance * 0.5 # Use 50% of available balance
-      quantity = calculate_quantity(strike[:last_price], max_allocation, instrument.lot_size)
+      quantity = calculate_quantity(strike[:last_price], max_allocation, derivative_instrument.lot_size)
       total_order_cost = quantity * strike[:last_price]
 
       if available_balance < total_order_cost
-        raise "Insufficient funds ₹#{available_balance - total_order_cost}: Required ₹#{total_order_cost}, Available ₹#{available_balance}"
+        shortfall = total_order_cost - available_balance
+        raise "Insufficient funds ₹#{shortfall.round(2)}: Required ₹#{total_order_cost}, " \
+              "Available ₹#{available_balance}"
       end
 
       order_data = {
         transactionType: Dhanhq::Constants::BUY,
-        exchangeSegment: instrument.exchange_segment,
+        exchangeSegment: derivative_instrument.exchange_segment,
         productType: Dhanhq::Constants::MARGIN,
         orderType: alert[:order_type].upcase,
         validity: Dhanhq::Constants::DAY,
-        securityId: instrument.security_id,
+        securityId: derivative_instrument.security_id,
         quantity: quantity,
         price: strike[:last_price],
         triggerPrice: strike[:last_price].to_f || alert[:stop_price].to_f
@@ -118,50 +140,44 @@ module AlertProcessors
 
       if ENV['PLACE_ORDER'] == 'true'
         executed_order = Dhanhq::API::Orders.place(order_data)
-        Rails.logger.info("#{executed_order}, #{alert}")
+        Rails.logger.info("Executed order: #{executed_order}, alert: #{alert}")
       else
         Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
       end
-      # executed_order = Dhanhq::API::Orders.place(order_data)
-      # dhan_order = OrdersService.fetch_order(executed_order[:orderId])
-      # order = Order.new(
-      #   dhan_order_id: dhan_order[:orderId],
-      #   transaction_type: dhan_order[:transactionType],
-      #   product_type: dhan_order[:productType],
-      #   order_type: dhan_order[:orderType],
-      #   validity: dhan_order[:validity],
-      #   exchange_segment: dhan_order[:exchangeSegment],
-      #   security_id: dhan_order[:securityId],
-      #   quantity: dhan_order[:quantity],
-      #   disclosed_quantity: dhan_order[:disclosedQuantity],
-      #   price: dhan_order[:price],
-      #   trigger_price: dhan_order[:triggerPrice],
-      #   bo_profit_value: dhan_order[:boProfitValue],
-      #   bo_stop_loss_value: dhan_order[:boStopLossValue],
-      #   ltp: dhan_order[:price],
-      #   order_status: dhan_order[:orderStatus],
-      #   filled_qty: dhan_order[:filled_qty],
-      #   average_traded_price: (dhan_order[:price] * dhan_order[:quantity]),
-      #   alert_id: alert[:id]
-      # )
-      # order.save
     rescue StandardError => e
-      raise "Failed to place order for instrument #{instrument.symbol_name}: #{e.message}"
+      raise "Failed to place order for derivative_instrument #{derivative_instrument.symbol_name}: #{e.message}"
     end
 
-    # Fetch available balance from the API
+    # Fetches the available balance from Dhanhq::API::Funds.
+    # Raises an error if the call fails.
+    #
+    # @return [Float] The available balance as a float.
     def fetch_available_balance
       Dhanhq::API::Funds.balance['availabelBalance'].to_f
     rescue StandardError
       raise 'Failed to fetch available balance'
     end
 
-    # Calculate the maximum quantity to trade
+    # Calculates the quantity to trade, ensuring it aligns with the lot size.
+    # Uses at least one lot, if the computed max_allocation permits.
+    #
+    # @param price [Float]            The last price of the strike.
+    # @param max_allocation [Float]   The maximum funds to allocate.
+    # @param lot_size [Integer, Float] The contract lot size for this derivative.
+    # @return [Integer] The final quantity to trade.
     def calculate_quantity(price, max_allocation, lot_size)
-      max_quantity = (max_allocation / price).floor # Maximum quantity based on allocation
-      adjusted_quantity = (max_quantity / lot_size) * lot_size # Adjust to nearest lot size
-
-      [adjusted_quantity, lot_size].max # Ensure at least one lot
+      max_quantity      = (max_allocation / price).floor
+      adjusted_quantity = (max_quantity / lot_size) * lot_size
+      [adjusted_quantity, lot_size].max
     end
+
+    # @!attribute [r] alert
+    #   @return [Hash, ActionController::Parameters] The current alert data.
+    #
+    # @!method instrument
+    #   @return [Instrument] the base instrument model used by this processor
+    #
+    # Both `alert` and `instrument` are inherited from the `Base` class in
+    # AlertProcessors or included modules, so they are not explicitly defined here.
   end
 end
