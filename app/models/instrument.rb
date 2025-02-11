@@ -74,7 +74,7 @@ class Instrument < ApplicationRecord
 
     { last_price: data['last_price'], oc: filtered_data }
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch Option Chain for Instrument #{id}: #{e.message}")
+    Rails.logger.error("Failed to fetch Option Chain for Instrument #{security_id}: #{e.message}")
     nil
   end
 
@@ -105,7 +105,7 @@ class Instrument < ApplicationRecord
     response = Dhanhq::API::MarketFeed.ltp(exch_segment_enum)
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s, 'last_price') : nil
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch LTP for Instrument #{id}: #{e.message}")
+    Rails.logger.error("Failed to fetch LTP for Instrument #{security_id}: #{e.message}")
     nil
   end
 
@@ -113,7 +113,7 @@ class Instrument < ApplicationRecord
     response = Dhanhq::API::MarketFeed.ohlc(exch_segment_enum)
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch OHLC for Instrument #{id}: #{e.message}")
+    Rails.logger.error("Failed to fetch OHLC for Instrument #{security_id}: #{e.message}")
     nil
   end
 
@@ -121,7 +121,7 @@ class Instrument < ApplicationRecord
     response = Dhanhq::API::MarketFeed.quote(exch_segment_enum)
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s) : nil
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch Depth for Instrument #{id}: #{e.message}")
+    Rails.logger.error("Failed to fetch Depth for Instrument #{security_id}: #{e.message}")
     nil
   end
 
