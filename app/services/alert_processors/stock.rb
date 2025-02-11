@@ -49,23 +49,6 @@ module AlertProcessors
       place_order(order_params)
     end
 
-    # Builds a hash of order parameters common to all strategies, with a
-    # specified product type (e.g., INTRA or MARGIN).
-    #
-    # @param product_type [String] The product type constant (e.g. `Dhanhq::Constants::INTRA`).
-    # @return [Hash] The payload required by the Dhanhq::API::Orders.place method.
-    def build_order_payload(product_type)
-      {
-        transactionType: alert[:action].upcase,
-        orderType: alert[:order_type].upcase,
-        productType: product_type,
-        validity: Dhanhq::Constants::DAY,
-        securityId: instrument.security_id,
-        exchangeSegment: instrument.exchange_segment,
-        quantity: calculate_quantity(ltp)
-      }
-    end
-
     # Processes a swing strategy by building a MARGIN order payload
     # and placing the order.
     #
@@ -82,6 +65,23 @@ module AlertProcessors
     def process_long_term_strategy
       order_params = build_order_payload(Dhanhq::Constants::MARGIN)
       place_order(order_params)
+    end
+
+    # Builds a hash of order parameters common to all strategies, with a
+    # specified product type (e.g., INTRA or MARGIN).
+    #
+    # @param product_type [String] The product type constant (e.g. `Dhanhq::Constants::INTRA`).
+    # @return [Hash] The payload required by the Dhanhq::API::Orders.place method.
+    def build_order_payload(product_type)
+      {
+        transactionType: alert[:action].upcase,
+        orderType: alert[:order_type].upcase,
+        productType: product_type,
+        validity: Dhanhq::Constants::DAY,
+        securityId: instrument.security_id,
+        exchangeSegment: instrument.exchange_segment,
+        quantity: calculate_quantity(ltp)
+      }
     end
 
     # Places the order using Dhan API if PLACE_ORDER is set to 'true';
