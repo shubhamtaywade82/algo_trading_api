@@ -1,79 +1,128 @@
 # frozen_string_literal: true
 
 module Webhooks
+  ##
+  # AlertsController handles incoming TradingView alerts. It either processes
+  # an alert for 'index' or 'stock' instrument types, or returns a keep-alive
+  # response for other instrument types. Uses before_actions to keep the
+  # create action concise.
+  #
   class AlertsController < ApplicationController
+    before_action :return_keep_alive, only: :create
+    before_action :validate_alert,    only: :create
+
+    # Creates an Alert record if the instrument type is 'index' or 'stock',
+    # the alert parameters are valid, and the instrument is found in the DB.
+    #
+    # @return [JSON] JSON response indicating success or failure.
+    #
     def create
-      if valid_alert?(alert_params)
-        if instrument.nil?
-          return render json: { error: 'Instrument not found for the given parameters' },
-                        status: :not_found
-        end
+      # 1. At this point, we have:
+      #    - A relevant instrument type ('index' or 'stock').
+      #    - A valid alert (time present).
+      # 2. We fetch the instrument or return 404 if not found.
+      #
+      alert = instrument.alerts.build(alert_params)
+      if alert.save
+        processor = AlertProcessorFactory.build(alert)
+        processor.call
 
-        # Build the alert with the associated instrument
-        alert = instrument.alerts.build(alert_params)
-        if alert.save
-          processor = AlertProcessorFactory.build(alert)
-          processor.call
-
-          render json: { message: 'Alert processed successfully', alert: alert }, status: :created
-        else
-          render json: { error: 'Failed to save alert', details: alert.errors.full_messages },
-                 status: :unprocessable_entity
-        end
+        render json: { message: 'Alert processed successfully', alert: alert }, status: :created
       else
-        render json: { error: 'Invalid or delayed alert' }, status: :unprocessable_entity
+        render json: { error: 'Failed to save alert', details: alert.errors.full_messages },
+               status: :unprocessable_entity
       end
     end
 
     private
 
+    # Returns a "keep-alive" response if the instrument type is neither 'index'
+    # nor 'stock'. This is run before :validate_alert in the callback chain.
+    #
+    # @return [void]
+    def return_keep_alive
+      return if relevant_instrument_type?
+
+      render json: {
+        message: 'Keep-alive request. No instrument lookup performed.'
+      }, status: :ok and return
+    end
+
+    # Validates the "time" parameter to ensure the alert is not invalid or
+    # delayed. If invalid, it returns a 422 (Unprocessable Entity) response and
+    # halts the request.
+    #
+    # @return [void]
+    def validate_alert
+      return if valid_alert_time?(alert_params)
+
+      render json: { error: 'Invalid or delayed alert' },
+             status: :unprocessable_entity and return
+    end
+
+    # Determines whether the :time parameter is present and can be parsed.
+    #
+    # @param alert_hash [Hash] the strong params hash containing `:time`
+    # @return [Boolean] true if valid, false otherwise
+    #
+    def valid_alert_time?(alert_hash)
+      parsed_time = begin
+        Time.zone.parse(alert_hash[:time])
+      rescue StandardError
+        nil
+      end
+      parsed_time.present?
+    end
+
+    # Finds or memoizes the associated instrument based on alert_params.
+    # Returns 404 if not found.
+    #
+    # @return [Instrument] the matching instrument or renders a 404
     def instrument
       @instrument ||= Instrument.find_by(
         underlying_symbol: alert_params[:ticker],
         segment: segment_from_alert_type(alert_params[:instrument_type]),
         exchange: alert_params[:exchange]
       )
+
+      return @instrument if @instrument
+
+      render json: { error: 'Instrument not found for the given parameters' },
+             status: :not_found and return
     end
 
+    # Checks if the instrument type is 'index' or 'stock', ignoring case.
+    #
+    # @return [Boolean] true if relevant instrument type, false otherwise
+    #
+    def relevant_instrument_type?
+      %w[index stock].include?(alert_params[:instrument_type].to_s.downcase)
+    end
+
+    # Converts the incoming `instrument_type` to the segment expected
+    # by the Instrument model ('index' remains 'index', 'stock' -> 'equity',
+    # else returns instrument_type verbatim).
+    #
+    # @param instrument_type [String] the incoming type from the alert
+    # @return [String] the mapped segment
+    #
+    def segment_from_alert_type(instrument_type)
+      case instrument_type
+      when 'index' then 'index'
+      when 'stock' then 'equity'
+      else instrument_type
+      end
+    end
+
+    # Strong parameters for alert creation.
+    #
+    # @return [ActionController::Parameters] sanitized alert params
     def alert_params
       params.require(:alert).permit(
         :ticker, :instrument_type, :order_type, :current_position, :previous_position, :strategy_type, :current_price,
         :high, :low, :volume, :time, :chart_interval, :stop_loss, :stop_price, :take_profit, :limit_price,
         :trailing_stop_loss, :strategy_name, :strategy_id, :action, :exchange
       )
-    end
-
-    # Map instrument_type to segment
-    def segment_from_alert_type(instrument_type)
-      case instrument_type
-      when 'index' then 'index'
-      when 'stock' then 'equity'
-      else instrument_type # Default to the given type
-      end
-    end
-
-    # Validate the alert timing and time range
-    def valid_alert?(alert)
-      # current_time = Time.zone.now
-      alert_time = begin
-        Time.zone.parse(alert[:time])
-      rescue StandardError
-        nil
-      end
-      # Rails.logger.debug alert_time
-      # Rails.logger.debug current_time
-      # Rails.logger.debug(current_time - alert_time)
-      # (current_time - alert_time) < 70.seconds
-      Rails.logger.debug Time.zone.parse(alert[:time])
-      alert_time.present?
-    end
-
-    # NOTE: NOT USED
-    # Check if the alert time is within market hours (9:15 AM to 3:00 PM IST)
-    def within_time_range?(alert_time)
-      start_time = alert_time.beginning_of_day.change(hour: 9, min: 15)
-      end_time = alert_time.beginning_of_day.change(hour: 15, min: 0)
-      alert_time.between?(start_time, end_time)
     end
   end
 end
