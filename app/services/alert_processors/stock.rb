@@ -80,13 +80,6 @@ module AlertProcessors
       raise "Margin validation failed: #{e.message}"
     end
 
-    # Fetch available balance
-    def fetch_available_balance
-      Dhanhq::API::Funds.balance['availabelBalance'].to_f
-    rescue StandardError
-      raise 'Failed to fetch available balance'
-    end
-
     # Calculate the maximum quantity to trade
     def calculate_quantity(price)
       raw_available_balance = fetch_available_balance
@@ -106,19 +99,21 @@ module AlertProcessors
 
     # Define leverage factor based on strategy type
     def leverage_factor
-      return @leverage_factor ||= instrument.mis_detail&.mis_leverage.to_i || 1 if alert[:strategy_type] == 'intraday'
+      return instrument.mis_detail&.mis_leverage.to_i || 1 if alert[:strategy_type] == 'intraday'
 
       1.0 # Default leverage for swing and long-term is 1x
     end
 
     # Funds utilization percentage
     def funds_utilization
-      case alert[:strategy_type]
-      when 'intraday'
-        0.3 # 30% of available funds for intraday
-      else
-        0.5 # 50% of available funds for swing or long-term
-      end
+      alert[:strategy_type] == 'intraday' ? 0.3 : 0.5
+    end
+
+    # Fetch available balance
+    def fetch_available_balance
+      Dhanhq::API::Funds.balance['availabelBalance'].to_f
+    rescue StandardError
+      raise 'Failed to fetch available balance'
     end
   end
 end
