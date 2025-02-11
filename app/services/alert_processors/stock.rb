@@ -89,11 +89,16 @@ module AlertProcessors
 
     # Calculate the maximum quantity to trade
     def calculate_quantity(price)
-      available_funds = fetch_available_balance * funds_utilization * leverage_factor
-      max_quantity = (available_funds / price).floor
+      raw_available_balance = fetch_available_balance
+      effective_funds = raw_available_balance * funds_utilization
 
-      if available_funds < (max_quantity * price)
-        raise "Insufficient funds: Required ₹#{max_quantity * price}, Available ₹#{available_funds}"
+      leveraged_price = price / leverage_factor
+
+      max_quantity = (effective_funds / leveraged_price).floor
+      required_funds = max_quantity * leveraged_price
+
+      if raw_available_balance < required_funds
+        raise "Insufficient funds: Required ₹#{required_funds}, Available ₹#{raw_available_balance} (Leverage: x#{leverage_factor})"
       end
 
       [max_quantity, 1].max # Ensure at least one unit
@@ -101,7 +106,7 @@ module AlertProcessors
 
     # Define leverage factor based on strategy type
     def leverage_factor
-      return instrument.mis_detail&.mis_leverage.to_i || 1 if alert[:strategy_type] == 'intraday'
+      return @leverage_factor ||= instrument.mis_detail&.mis_leverage.to_i || 1 if alert[:strategy_type] == 'intraday'
 
       1.0 # Default leverage for swing and long-term is 1x
     end
