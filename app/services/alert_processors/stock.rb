@@ -80,7 +80,7 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
-        quantity: calculate_quantity(ltp)
+        quantity: validate_quantity(calculate_quantity(ltp))
       }
     end
 
@@ -137,7 +137,15 @@ module AlertProcessors
               "Available ₹#{raw_available_balance} (Leverage: x#{leverage_factor})"
       end
 
-      [max_quantity, 1].max # Ensure at least one unit
+      max_quantity
+    end
+
+    def validate_quantity(quantity)
+      if quantity <= 1
+        raise "Trade quantity is too small (#{quantity}). Minimum trade size should be greater than 1 to avoid high trading costs."
+      end
+
+      quantity
     end
 
     # Defines the leverage factor based on the alert’s strategy type.
