@@ -137,15 +137,32 @@ module AlertProcessors
               "Available ₹#{raw_available_balance} (Leverage: x#{leverage_factor})"
       end
 
-      max_quantity
+      [max_quantity, minimum_quantity_based_on_ltp(price)].max
     end
 
     def validate_quantity(quantity)
-      if quantity <= 1
-        raise "Trade quantity is too small (#{quantity}). Minimum trade size should be greater than 1 to avoid high trading costs."
+      min_qty = minimum_quantity_based_on_ltp(ltp)
+      if quantity < min_qty
+        Rails.logger.warn("Trade quantity (#{quantity}) is below minimum required (#{min_qty}). Adjusting.")
+        return min_qty
       end
 
       quantity
+    end
+
+    def minimum_quantity_based_on_ltp(ltp)
+      case ltp
+      when 0..50
+        500
+      when 51..200
+        100
+      when 201..500
+        50
+      when 501..1000
+        10
+      else
+        5
+      end
     end
 
     # Defines the leverage factor based on the alert’s strategy type.
