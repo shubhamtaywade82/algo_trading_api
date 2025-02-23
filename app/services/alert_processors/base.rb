@@ -36,5 +36,15 @@ module AlertProcessors
       else instrument_type
       end
     end
+
+    # Fetches available balance from Dhanhq::API::Funds.
+    # Raises an error if the API call fails.
+    #
+    # @return [Float] The current available balance in the trading account.
+    def fetch_available_balance
+      Dhanhq::API::Funds.balance['availabelBalance'].to_f
+    rescue StandardError
+      raise 'Failed to fetch available balance'
+    end
   end
 end

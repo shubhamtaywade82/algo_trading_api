@@ -12,14 +12,38 @@ module Option
       strategies = Strategy.all
       strategies = apply_filters(strategies, criteria)
 
-      # strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
+      affordable_strategies = strategies.select { |strategy| affordable?(strategy, criteria[:analysis]) }
+
       {
         index_details: index_details(criteria[:analysis]),
-        strategies: strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
+        strategies: affordable_strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
       }
     end
 
     private
+
+    # Fetches available balance from Dhanhq::API::Funds.
+    # Raises an error if the API call fails.
+    #
+    # @return [Float] The current available balance in the trading account.
+    def available_balance
+      @available_balance ||= Dhanhq::API::Funds.balance['availabelBalance'].to_f
+    rescue StandardError
+      raise 'Failed to fetch available balance'
+    end
+
+    def affordable?(strategy, analysis)
+      strategy_example = send("generate_#{strategy.name.parameterize(separator: '_')}", analysis)
+
+      return false if strategy_example.nil?
+
+      strategy_cost = strategy_example.sum do |leg|
+        leg[:max_loss].to_f
+      rescue StandardError
+        0.0
+      end
+      strategy_cost <= available_balance
+    end
 
     def apply_filters(strategies, criteria)
       strategies = filter_by_outlook(strategies, criteria[:outlook]) if criteria[:outlook]
@@ -31,7 +55,7 @@ module Option
     def format_strategy(strategy, analysis)
       {
         name: strategy.name,
-        example: send("generate_#{strategy.name.parameterize(separator: '_')}", analysis),
+        trade_legs: send("generate_#{strategy.name.parameterize(separator: '_')}", analysis),
         analysis: analysis
       }
     end
@@ -39,9 +63,9 @@ module Option
     def index_details(analysis)
       {
         ltp: @current_price,
-        atm_strikes: atm_strikes.take(3),
-        itm_strikes: itm_strikes.take(3),
-        otm_strikes: otm_strikes.take(3),
+        atm_strikes: atm_strikes.take(2),
+        itm_strikes: itm_strikes.take(2),
+        otm_strikes: otm_strikes.take(2),
         sentiment: analysis[:price_action_trends],
         key_levels: analysis[:support_resistance]
       }
@@ -73,29 +97,37 @@ module Option
       end
     end
 
+    # **Trade Leg Structuring**
+
     # Individual strategy methods
     def generate_long_call(_analysis)
       call_option = best_option('ce')
       return unless call_option
 
-      {
-        action: "Buy #{call_option[:symbol]} @ ₹#{call_option[:last_price]}",
+      [{
+        strike_price: call_option[:strike_price],
+        option_type: 'CE',
+        action: 'BUY',
+        ltp: call_option[:last_price],
         max_loss: call_option[:last_price],
-        max_profit: 'Unlimited (depending on price rise)',
+        max_profit: 'Unlimited',
         breakeven: call_option[:strike_price] + call_option[:last_price]
-      }
+      }]
     end
 
     def generate_long_put(_analysis)
       put_option = best_option('pe')
       return unless put_option
 
-      {
-        action: "Buy #{put_option[:symbol]} @ ₹#{put_option[:last_price]}",
+      [{
+        strike_price: put_option[:strike_price],
+        option_type: 'PE',
+        action: 'BUY',
+        ltp: put_option[:last_price],
         max_loss: put_option[:last_price],
-        max_profit: 'Substantial if the price drops sharply',
+        max_profit: 'Substantial if price drops',
         breakeven: put_option[:strike_price] - put_option[:last_price]
-      }
+      }]
     end
 
     def generate_long_straddle(_analysis)
@@ -103,61 +135,58 @@ module Option
       put_option = best_option('pe')
       return unless call_option && put_option
 
-      {
-        action: "Buy #{call_option[:symbol]} @ ₹#{call_option[:last_price]} and #{put_option[:symbol]} @ ₹#{put_option[:last_price]}",
-        max_loss: call_option[:last_price] + put_option[:last_price],
-        max_profit: 'Unlimited if price moves significantly in either direction',
-        breakeven: [
-          @current_price - (call_option[:last_price] + put_option[:last_price]),
-          @current_price + (call_option[:last_price] + put_option[:last_price])
-        ]
-      }
+      [
+        {
+          strike_price: call_option[:strike_price],
+          option_type: 'CE',
+          action: 'BUY',
+          ltp: call_option[:last_price]
+        },
+        {
+          strike_price: put_option[:strike_price],
+          option_type: 'PE',
+          action: 'BUY',
+          ltp: put_option[:last_price]
+        }
+      ]
     end
 
+    # **Long Strangle Strategy**
     def generate_long_strangle(_analysis)
       call_option = far_option('ce', 'OTM')
       put_option = far_option('pe', 'OTM')
       return unless call_option && put_option
 
-      {
-        action: "Buy #{call_option[:symbol]} @ ₹#{call_option[:last_price]} and #{put_option[:symbol]} @ ₹#{put_option[:last_price]}",
-        max_loss: call_option[:last_price] + put_option[:last_price],
-        max_profit: 'Unlimited if price moves sharply in either direction',
-        breakeven: [
-          put_option[:strike_price] - call_option[:last_price],
-          call_option[:strike_price] + put_option[:last_price]
-        ]
-      }
+      [
+        { strike_price: call_option[:strike_price], option_type: 'CE', action: 'BUY', ltp: call_option[:last_price] },
+        { strike_price: put_option[:strike_price], option_type: 'PE', action: 'BUY', ltp: put_option[:last_price] }
+      ]
     end
 
+    # **Long Butterfly Spread**
     def generate_long_butterfly_spread(_analysis)
       itm_option = far_option('pe', 'ITM')
       atm_option = best_option('pe')
       otm_option = far_option('pe', 'OTM')
       return unless itm_option && atm_option && otm_option
 
-      {
-        action: "Buy #{itm_option[:symbol]} and #{otm_option[:symbol]}, Sell #{atm_option[:symbol]}",
-        max_loss: 'Net premium paid',
-        max_profit: 'Limited but occurs if price stays near the middle strike',
-        breakeven: [
-          itm_option[:strike_price] - (atm_option[:last_price] + otm_option[:last_price]),
-          otm_option[:strike_price] + (atm_option[:last_price] + otm_option[:last_price])
-        ]
-      }
+      [
+        { strike_price: itm_option[:strike_price], option_type: 'PE', action: 'BUY', ltp: itm_option[:last_price] },
+        { strike_price: atm_option[:strike_price], option_type: 'PE', action: 'SELL', ltp: atm_option[:last_price] },
+        { strike_price: otm_option[:strike_price], option_type: 'PE', action: 'BUY', ltp: otm_option[:last_price] }
+      ]
     end
 
+    # **Long Calendar Spread**
     def generate_long_calendar_spread(_analysis)
       long_option = best_option('ce')
       short_option = far_option('ce', 'OTM')
       return unless long_option && short_option
 
-      {
-        action: "Buy #{long_option[:symbol]} (long-dated) and Sell #{short_option[:symbol]} (near-dated)",
-        max_loss: long_option[:last_price] - short_option[:last_price],
-        max_profit: 'Moderate if price moves in anticipated direction slowly',
-        breakeven: 'Depends on time decay differences'
-      }
+      [
+        { strike_price: long_option[:strike_price], option_type: 'CE', action: 'BUY', ltp: long_option[:last_price] },
+        { strike_price: short_option[:strike_price], option_type: 'CE', action: 'SELL', ltp: short_option[:last_price] }
+      ]
     end
 
     def generate_long_iron_condor(_analysis)
@@ -167,55 +196,49 @@ module Option
       put_sell = best_option('pe')
       return unless call_buy && put_buy && call_sell && put_sell
 
-      {
-        action: "Buy #{call_buy[:symbol]} and #{put_buy[:symbol]}, Sell #{call_sell[:symbol]} and #{put_sell[:symbol]}",
-        max_loss: (call_buy[:last_price] + put_buy[:last_price]) - (call_sell[:last_price] + put_sell[:last_price]),
-        max_profit: (call_sell[:last_price] + put_sell[:last_price]) - (call_buy[:last_price] + put_buy[:last_price]),
-        breakeven: [
-          call_sell[:strike_price] - (call_sell[:last_price] + put_sell[:last_price]),
-          put_sell[:strike_price] + (call_sell[:last_price] + put_sell[:last_price])
-        ]
-      }
+      [
+        { strike_price: call_buy[:strike_price], option_type: 'CE', action: 'BUY', ltp: call_buy[:last_price] },
+        { strike_price: put_buy[:strike_price], option_type: 'PE', action: 'BUY', ltp: put_buy[:last_price] },
+        { strike_price: call_sell[:strike_price], option_type: 'CE', action: 'SELL', ltp: call_sell[:last_price] },
+        { strike_price: put_sell[:strike_price], option_type: 'PE', action: 'SELL', ltp: put_sell[:last_price] }
+      ]
     end
 
+    # **Long Vega (Volatility Play)**
     def generate_long_vega_volatility_play(_analysis)
       otm_option = far_option('ce', 'OTM')
       return unless otm_option
 
-      {
-        action: "Buy #{otm_option[:symbol]} @ ₹#{otm_option[:last_price]}",
-        max_loss: otm_option[:last_price],
-        max_profit: 'Depends on IV increase before significant movement',
-        breakeven: 'Depends on volatility shift'
-      }
+      [
+        { strike_price: otm_option[:strike_price], option_type: 'CE', action: 'BUY', ltp: otm_option[:last_price] }
+      ]
     end
 
+    # **Protective Long Put**
     def generate_protective_long_put(_analysis)
       put_option = best_option('pe')
       return unless put_option
 
-      {
-        action: "Buy #{put_option[:symbol]} @ ₹#{put_option[:last_price]} to hedge",
-        max_loss: put_option[:last_price],
-        max_profit: 'Unlimited (depending on downside risk)',
-        breakeven: put_option[:strike_price] - put_option[:last_price]
-      }
+      [
+        { strike_price: put_option[:strike_price], option_type: 'PE', action: 'BUY', ltp: put_option[:last_price] }
+      ]
     end
 
+    # **Long Ratio Backspread**
     def generate_long_ratio_backspread(_analysis)
       otm_option_1 = far_option('ce', 'OTM')
       otm_option_2 = far_option('ce', 'OTM')
       itm_option = best_option('ce')
       return unless otm_option_1 && otm_option_2 && itm_option
 
-      {
-        action: "Buy 2 #{otm_option_1[:symbol]} and Sell 1 #{itm_option[:symbol]}",
-        max_loss: itm_option[:last_price] - (otm_option_1[:last_price] * 2),
-        max_profit: 'High if price moves significantly in expected direction',
-        breakeven: 'Depends on sharp price movements'
-      }
+      [
+        { strike_price: otm_option_1[:strike_price], option_type: 'CE', action: 'BUY', ltp: otm_option_1[:last_price] },
+        { strike_price: otm_option_2[:strike_price], option_type: 'CE', action: 'BUY', ltp: otm_option_2[:last_price] },
+        { strike_price: itm_option[:strike_price], option_type: 'CE', action: 'SELL', ltp: itm_option[:last_price] }
+      ]
     end
 
+    # **Iron Butterfly**
     def generate_iron_butterfly(_analysis)
       call_sell = best_option('ce')
       put_sell = best_option('pe')
@@ -223,75 +246,69 @@ module Option
       put_buy = far_option('pe', 'OTM')
       return unless call_sell && put_sell && call_buy && put_buy
 
-      {
-        action: "Sell #{call_sell[:symbol]} and #{put_sell[:symbol]}, Buy #{call_buy[:symbol]} and #{put_buy[:symbol]}",
-        max_loss: (call_buy[:last_price] + put_buy[:last_price]) - (call_sell[:last_price] + put_sell[:last_price]),
-        max_profit: (call_sell[:last_price] + put_sell[:last_price]) - (call_buy[:last_price] + put_buy[:last_price]),
-        breakeven: [
-          call_sell[:strike_price] - (call_sell[:last_price] + put_sell[:last_price]),
-          put_sell[:strike_price] + (call_sell[:last_price] + put_sell[:last_price])
-        ]
-      }
+      [
+        { strike_price: call_sell[:strike_price], option_type: 'CE', action: 'SELL', ltp: call_sell[:last_price] },
+        { strike_price: put_sell[:strike_price], option_type: 'PE', action: 'SELL', ltp: put_sell[:last_price] },
+        { strike_price: call_buy[:strike_price], option_type: 'CE', action: 'BUY', ltp: call_buy[:last_price] },
+        { strike_price: put_buy[:strike_price], option_type: 'PE', action: 'BUY', ltp: put_buy[:last_price] }
+      ]
     end
 
+    # **Short Straddle**
     def generate_short_straddle(_analysis)
       call_option = best_option('ce')
       put_option = best_option('pe')
-      return { error: 'Required options not found' } unless call_option && put_option
+      return unless call_option && put_option
 
-      {
-        action: "Sell #{call_option[:symbol]} @ ₹#{call_option[:last_price]} and Sell #{put_option[:symbol]} @ ₹#{put_option[:last_price]}",
-        max_loss: 'Unlimited (if the price moves significantly in either direction)',
-        max_profit: call_option[:last_price] + put_option[:last_price],
-        breakeven: [
-          @current_price - (call_option[:last_price] + put_option[:last_price]),
-          @current_price + (call_option[:last_price] + put_option[:last_price])
-        ]
-      }
+      [
+        { strike_price: call_option[:strike_price], option_type: 'CE', action: 'SELL', ltp: call_option[:last_price] },
+        { strike_price: put_option[:strike_price], option_type: 'PE', action: 'SELL', ltp: put_option[:last_price] }
+      ]
     end
 
+    # **Short Strangle**
     def generate_short_strangle(_analysis)
       call_option = far_option('ce', 'OTM')
       put_option = far_option('pe', 'OTM')
-      return { error: 'Required options not found' } unless call_option && put_option
+      return unless call_option && put_option
 
-      {
-        action: "Sell #{call_option[:symbol]} @ ₹#{call_option[:last_price]} and Sell #{put_option[:symbol]} @ ₹#{put_option[:last_price]}",
-        max_loss: 'Unlimited (if price moves significantly beyond OTM strikes)',
-        max_profit: call_option[:last_price] + put_option[:last_price],
-        breakeven: [
-          put_option[:strike_price] - (call_option[:last_price] + put_option[:last_price]),
-          call_option[:strike_price] + (call_option[:last_price] + put_option[:last_price])
-        ]
-      }
+      [
+        { strike_price: call_option[:strike_price], option_type: 'CE', action: 'SELL', ltp: call_option[:last_price] },
+        { strike_price: put_option[:strike_price], option_type: 'PE', action: 'SELL', ltp: put_option[:last_price] }
+      ]
     end
 
     def generate_bull_call_spread(_analysis)
-      call_buy = best_option('ce') # Closest strike price to the current price
-      call_sell = far_option('ce', 'OTM') # OTM option for the spread
+      call_buy = best_option('ce')
+      call_sell = far_option('ce', 'OTM')
+      return unless call_buy && call_sell
 
-      return { error: 'Required options not found for Bull Call Spread strategy' } unless call_buy && call_sell
-
-      {
-        action: "Buy #{call_buy[:symbol]} @ ₹#{call_buy[:last_price]} and Sell #{call_sell[:symbol]} @ ₹#{call_sell[:last_price]}",
-        max_loss: call_buy[:last_price] - call_sell[:last_price],
-        max_profit: (call_sell[:strike_price] - call_buy[:strike_price]) - (call_buy[:last_price] - call_sell[:last_price]),
-        breakeven: call_buy[:strike_price] + (call_buy[:last_price] - call_sell[:last_price])
-      }
+      [
+        {
+          strike_price: call_buy[:strike_price],
+          option_type: 'CE',
+          action: 'BUY',
+          ltp: call_buy[:last_price]
+        },
+        {
+          strike_price: call_sell[:strike_price],
+          option_type: 'CE',
+          action: 'SELL',
+          ltp: call_sell[:last_price]
+        }
+      ]
     end
 
+    # **Bear Put Spread**
     def generate_bear_put_spread(_analysis)
-      put_buy = best_option('pe') # Closest strike price to the current price
-      put_sell = far_option('pe', 'OTM') # OTM option for the spread
+      put_buy = best_option('pe')
+      put_sell = far_option('pe', 'OTM')
+      return unless put_buy && put_sell
 
-      return { error: 'Required options not found for Bear Put Spread strategy' } unless put_buy && put_sell
-
-      {
-        action: "Buy #{put_buy[:symbol]} @ ₹#{put_buy[:last_price]} and Sell #{put_sell[:symbol]} @ ₹#{put_sell[:last_price]}",
-        max_loss: put_buy[:last_price] - put_sell[:last_price],
-        max_profit: (put_buy[:strike_price] - put_sell[:strike_price]) - (put_buy[:last_price] - put_sell[:last_price]),
-        breakeven: put_buy[:strike_price] - (put_buy[:last_price] - put_sell[:last_price])
-      }
+      [
+        { strike_price: put_buy[:strike_price], option_type: 'PE', action: 'BUY', ltp: put_buy[:last_price] },
+        { strike_price: put_sell[:strike_price], option_type: 'PE', action: 'SELL', ltp: put_sell[:last_price] }
+      ]
     end
 
     # Additional methods for other strategies can follow the same structure.

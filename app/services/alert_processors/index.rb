@@ -5,7 +5,8 @@ module AlertProcessors
   # It fetches the option chain, selects an optimal strike, retrieves
   # the corresponding derivative instrument, and places an order if funds allow.
   class Index < Base
-    attr_reader :alert, :exchange
+    ATM_RANGE_PERCENT = 0.02 # ±2% range for ATM selection
+    MIN_OI_THRESHOLD = 50_000 # Ensure sufficient liquidity
 
     # Main entry point for processing an index alert.
     # 1) Grabs the first expiry for the index.
@@ -21,24 +22,46 @@ module AlertProcessors
     #
     # @return [void]
     def call
-      expiry = instrument.expiry_list.first
-      option_chain = fetch_option_chain(expiry)
-      best_strike = select_best_strike(option_chain)
-
-      raise 'Failed to find a suitable strike for trading' unless best_strike
-
-      option_type = alert[:action].downcase == 'buy' ? 'CE' : 'PE'
-      strike_price = best_strike[:strike_price]
-      strike_instrument = fetch_instrument_for_strike(strike_price, expiry, option_type)
-
-      place_order(strike_instrument, best_strike)
+      Rails.logger.info("Processing index alert: #{alert.inspect}")
+      process_index_strategy
       @alert.update(status: 'processed')
     rescue StandardError => e
-      @alert.update(status: 'failed', error_message: e.message)
+      @alert.update(status: 'failed', error_message: e)
       Rails.logger.error("Failed to process index alert: #{e}")
     end
 
     private
+
+    def process_index_strategy
+      expiry = instrument.expiry_list.first
+      option_chain = fetch_option_chain(expiry)
+
+      alert[:action].upcase
+
+      chain_analyzer = Option::ChainAnalyzer.new(option_chain)
+      analysis = chain_analyzer.analyze
+
+      # Use Strategy Suggester to find the best affordable strategy
+      suggester = Option::StrategySuggester.new(option_chain, { index_symbol: alert[:ticker] })
+      strategy_recommendation = suggester.suggest(analysis: analysis)
+
+      strategy_recommendation[:strategies].first
+      # best_strike = select_best_strike(option_chain)
+
+      selected_strategy = select_best_strategy(strategy_recommendation)
+      raise 'No valid strategy found' if selected_strategy.nil?
+
+      Rails.logger.info("Selected strategy: #{selected_strategy.inspect}")
+      # raise 'Failed to find a suitable strike for trading' unless best_strike
+
+      # option_type = alert[:action].downcase == 'buy' ? 'CE' : 'PE'
+      # strike_price = best_strike[:strike_price]
+      # strike_instrument = fetch_instrument_for_strike(strike_price, expiry, option_type)
+      execute_trade(selected_strategy, expiry)
+
+      # build_order_payload(selected_strategy)
+      # place_order(strike_instrument, best_strike)
+    end
 
     # Fetches the option chain for a given expiry date.
     # Raises a StandardError if the API call or data parsing fails.
@@ -49,6 +72,44 @@ module AlertProcessors
       instrument.fetch_option_chain(expiry)
     rescue StandardError => e
       raise "Failed to fetch option chain for #{alert[:ticker]} with expiry #{expiry}: #{e.message}"
+    end
+
+    def select_best_strategy(strategy_recommendation)
+      # bearish_strategies = ['Long Put', 'Bear Put Spread', 'Short Call']
+      # bullish_strategies = ['Long Call', 'Bull Call Spread', 'Short Put']
+
+      buy_strategies = ['Long Call', 'Bull Call Spread', 'Short Put']
+      sell_strategies = ['Long Put', 'Bear Put Spread', 'Short Call']
+
+      # sentiment = strategy_recommendation[:index_details][:sentiment]
+      action = alert[:action].upcase
+      strategies = strategy_recommendation[:strategies]
+
+      # if sentiment[:bullish]
+      #   strategies.find { |s| bullish_strategies.include?(s[:name]) }
+      # elsif sentiment[:bearish]
+      #   strategies.find { |s| bearish_strategies.include?(s[:name]) }
+      # else
+      #   strategies.first # Default to first available strategy
+      # end
+      if action == 'BUY'
+        strategies.find { |s| buy_strategies.include?(s[:name]) } || strategies.first
+      elsif action == 'SELL'
+        strategies.find { |s| sell_strategies.include?(s[:name]) } || strategies.first
+      else
+        strategies.first # Default to first available strategy
+      end
+    end
+
+    def execute_trade(strategy, expiry)
+      trade_legs = strategy[:trade_legs]
+      trade_legs.each do |trade_leg|
+        strike_instrument = fetch_instrument_for_strike(
+          trade_leg[:strike_price], expiry, trade_leg[:option_type]
+        )
+        order_params = build_order_payload(trade_leg, strike_instrument)
+        place_order(order_params)
+      end
     end
 
     # Selects the "best" strike from the option chain using a scoring formula.
@@ -114,48 +175,50 @@ module AlertProcessors
     # @param instrument [Derivative] The derivative instrument for this strike.
     # @param strike [Hash]  The hash describing the best strike data (last_price, etc.).
     # @return [void]
-    def place_order(derivative_instrument, strike)
-      available_balance = fetch_available_balance
-      max_allocation = available_balance * 0.5 # Use 50% of available balance
-      quantity = calculate_quantity(strike[:last_price], max_allocation, derivative_instrument.lot_size)
-      total_order_cost = quantity * strike[:last_price]
+    # def place_order(derivative_instrument, strike)
+    #   available_balance = fetch_available_balance
+    #   max_allocation = available_balance * 0.5 # Use 50% of available balance
+    #   quantity = calculate_quantity(strike[:last_price], max_allocation, derivative_instrument.lot_size)
+    #   total_order_cost = quantity * strike[:last_price]
 
-      if available_balance < total_order_cost
-        shortfall = total_order_cost - available_balance
-        raise "Insufficient funds ₹#{shortfall.round(2)}: Required ₹#{total_order_cost}, " \
-              "Available ₹#{available_balance}"
-      end
+    #   if available_balance < total_order_cost
+    #     shortfall = total_order_cost - available_balance
+    #     raise "Insufficient funds ₹#{shortfall.round(2)}: Required ₹#{total_order_cost}, " \
+    #           "Available ₹#{available_balance}"
+    #   end
 
-      order_data = {
-        transactionType: Dhanhq::Constants::BUY,
-        exchangeSegment: derivative_instrument.exchange_segment,
-        productType: Dhanhq::Constants::MARGIN,
-        orderType: alert[:order_type].upcase,
-        validity: Dhanhq::Constants::DAY,
-        securityId: derivative_instrument.security_id,
-        quantity: quantity,
-        price: strike[:last_price],
-        triggerPrice: strike[:last_price].to_f || alert[:stop_price].to_f
-      }
+    #   order_data = {
+    #     transactionType: Dhanhq::Constants::BUY,
+    #     exchangeSegment: derivative_instrument.exchange_segment,
+    #     productType: Dhanhq::Constants::MARGIN,
+    #     orderType: alert[:order_type].upcase,
+    #     validity: Dhanhq::Constants::DAY,
+    #     securityId: derivative_instrument.security_id,
+    #     quantity: quantity,
+    #     price: strike[:last_price],
+    #     triggerPrice: strike[:last_price].to_f || alert[:stop_price].to_f
+    #   }
 
+    #   if ENV['PLACE_ORDER'] == 'true'
+    #     executed_order = Dhanhq::API::Orders.place(order_data)
+    #     Rails.logger.info("Executed order: #{executed_order}, alert: #{alert}")
+    #   else
+    #     Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
+    #   end
+    # rescue StandardError => e
+    #   raise "Failed to place order for derivative_instrument #{derivative_instrument.symbol_name}: #{e.message}"
+    # end
+
+    # **Step 7: Place Order**
+    def place_order(order_params)
       if ENV['PLACE_ORDER'] == 'true'
-        executed_order = Dhanhq::API::Orders.place(order_data)
-        Rails.logger.info("Executed order: #{executed_order}, alert: #{alert}")
+        executed_order = Dhanhq::API::Orders.place(order_params)
+        Rails.logger.info("Order placed successfully: #{executed_order}")
       else
-        Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
+        Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_params}")
       end
     rescue StandardError => e
-      raise "Failed to place order for derivative_instrument #{derivative_instrument.symbol_name}: #{e.message}"
-    end
-
-    # Fetches the available balance from Dhanhq::API::Funds.
-    # Raises an error if the call fails.
-    #
-    # @return [Float] The available balance as a float.
-    def fetch_available_balance
-      Dhanhq::API::Funds.balance['availabelBalance'].to_f
-    rescue StandardError
-      raise 'Failed to fetch available balance'
+      raise "Failed to place order: #{e.message}"
     end
 
     # Calculates the quantity to trade, ensuring it aligns with the lot size.
@@ -165,10 +228,23 @@ module AlertProcessors
     # @param max_allocation [Float]   The maximum funds to allocate.
     # @param lot_size [Integer, Float] The contract lot size for this derivative.
     # @return [Integer] The final quantity to trade.
-    def calculate_quantity(price, max_allocation, lot_size)
-      max_quantity      = (max_allocation / price).floor
+    def calculate_quantity(price, lot_size)
+      max_allocation = fetch_available_balance * 0.5
+      max_quantity = (max_allocation / price).floor
       adjusted_quantity = (max_quantity / lot_size) * lot_size
       [adjusted_quantity, lot_size].max
+    end
+
+    def build_order_payload(trade_leg, derivative_instrument)
+      {
+        transactionType: trade_leg[:action],
+        orderType: alert[:order_type].upcase,
+        productType: Dhanhq::Constants::MARGIN,
+        validity: Dhanhq::Constants::DAY,
+        securityId: derivative_instrument.security_id,
+        exchangeSegment: derivative_instrument.exchange_segment,
+        quantity: calculate_quantity(trade_leg[:ltp], derivative_instrument.lot_size)
+      }
     end
 
     # @!attribute [r] alert
