@@ -13,7 +13,7 @@ set -o errexit
 
 # Install gems
 echo "📦 Installing dependencies..."
-bundle install --without development test
+bundle install
 
 # Run database migrations
 echo "🛠 Running migrations..."
