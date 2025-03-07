@@ -26,12 +26,12 @@ echo "⏳ Updating cron jobs..."
 
 # Uncomment below only if needed for fresh deployments
 # echo "🌱 Seeding database..."
-bundle exec rails db:seed
+# bundle exec rails db:seed
 
 # Optional data imports (comment if not needed)
 echo "📊 Importing instruments..."
-bundle exec rails import:instruments
-# bundle exec rails import:mis_details
+# bundle exec rails import:instruments
+bundle exec rails import:mis_details
 
 # echo "🔄 Updating levels..."
 # bundle exec rails levels:update
