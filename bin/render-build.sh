@@ -3,15 +3,6 @@
 set -o errexit
 
 # Install gems
-# bundle install
-# rails db:migrate
-
-# rails db:seed
-# rails import:instruments
-# rails import:mis_details
-# rails levels:update
-
-# Install gems
 echo "📦 Installing dependencies..."
 bundle install
 
@@ -29,9 +20,9 @@ echo "⏳ Updating cron jobs..."
 # bundle exec rails db:seed
 
 # Optional data imports (comment if not needed)
-echo "📊 Importing instruments..."
+# echo "📊 Importing instruments..."
 # bundle exec rails import:instruments
-bundle exec rails import:mis_details
+# bundle exec rails import:mis_details
 
 # echo "🔄 Updating levels..."
 # bundle exec rails levels:update
