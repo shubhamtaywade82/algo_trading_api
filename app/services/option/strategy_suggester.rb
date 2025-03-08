@@ -8,12 +8,22 @@ module Option
       @current_price = option_chain[:last_price].to_f
     end
 
+    # Takes the advanced `analysis` hash from the new ChainAnalyzer (including best_ce_strike, best_pe_strike, trend, etc.)
+    # plus any user-defined criteria (like outlook, volatility preference, risk tolerance).
+    #
+    # Returns a hash with `index_details` plus an array of `strategies`.
     def suggest(criteria)
+      # If we want to incorporate chain analyzer’s best_ce_strike / best_pe_strike directly, we can do it here,
+      # e.g. prefer the chain's best CE/PE for single-leg strategies. But let's keep it optional.
+
+      # 1) Gather all known strategies from DB
       strategies = Strategy.all
       strategies = apply_filters(strategies, criteria)
 
+      # 2) Filter out any “unaffordable” strategies, based on sum of max_loss in each multi-leg structure
       affordable_strategies = strategies.select { |strategy| affordable?(strategy, criteria[:analysis]) }
 
+      # 3) Build final structure
       {
         index_details: index_details(criteria[:analysis]),
         strategies: affordable_strategies.map { |strategy| format_strategy(strategy, criteria[:analysis]) }
@@ -32,12 +42,13 @@ module Option
       raise 'Failed to fetch available balance'
     end
 
+    # The strategy is “affordable” if sum of the :max_loss across all legs <= available_balance
     def affordable?(strategy, analysis)
-      strategy_example = send("generate_#{strategy.name.parameterize(separator: '_')}", analysis)
+      # This calls e.g. generate_long_call(analysis) => returns an array of legs
+      trade_legs = send("generate_#{strategy.name.parameterize(separator: '_')}", analysis)
+      return false if trade_legs.blank?
 
-      return false if strategy_example.nil?
-
-      strategy_cost = strategy_example.sum do |leg|
+      strategy_cost = trade_legs.sum do |leg|
         leg[:max_loss].to_f
       rescue StandardError
         0.0
@@ -46,6 +57,8 @@ module Option
     end
 
     def apply_filters(strategies, criteria)
+      # e.g. user may pass :outlook, :volatility, :risk, etc. to prune the Strategy.all
+      # This is optional & up to you to define filter_by_outlook, filter_by_volatility, etc.
       strategies = filter_by_outlook(strategies, criteria[:outlook]) if criteria[:outlook]
       strategies = filter_by_volatility(strategies, criteria[:volatility]) if criteria[:volatility]
       strategies = filter_by_risk(strategies, criteria[:risk]) if criteria[:risk]
@@ -60,15 +73,62 @@ module Option
       }
     end
 
+    # If you want to incorporate chain analyzer’s new fields for your “index_details” or “atm_strikes,”
+    # you can do so. Below just uses partial data.
     def index_details(analysis)
       {
         ltp: @current_price,
         atm_strikes: atm_strikes.take(2),
         itm_strikes: itm_strikes.take(2),
         otm_strikes: otm_strikes.take(2),
-        sentiment: analysis[:price_action_trends],
-        key_levels: analysis[:support_resistance]
+        # If the new chain analyzer includes e.g. :trend or :volatility, you can add them:
+        chain_trend: analysis[:trend],
+        chain_iv_info: analysis[:volatility],
+        # If you want to show “best_ce_strike” or “best_pe_strike” directly:
+        best_ce_strike: analysis[:best_ce_strike],
+        best_pe_strike: analysis[:best_pe_strike]
       }
+    end
+
+    # If you want to pick some “best strike” from chain analyzer for your single-leg strategies,
+    # you can adapt the code in best_option(type). E.g. if type=='ce', return analysis[:best_ce_strike].
+    # But for now, we keep the old approach that picks the nearest strike to @current_price.
+    def best_option(type)
+      # You can do something like:
+      #   return analysis[:best_ce_strike] if type == 'ce'
+      #   return analysis[:best_pe_strike] if type == 'pe'
+      #   ...
+      # Or keep the existing approach:
+      options = @option_chain[:oc].filter_map do |strike, data|
+        next unless data[type]
+
+        {
+          strike_price: strike.to_f,
+          last_price: data[type]['last_price'].to_f,
+          symbol: "#{@params[:index_symbol]}-#{strike}-#{type.upcase}"
+        }
+      end
+      options.min_by { |o| (o[:strike_price] - @current_price).abs }
+    end
+
+    # Example “far_option” remains unchanged. You could also incorporate best_pe_strike if you want.
+    def far_option(type, position)
+      options = @option_chain[:oc].filter_map do |strike, data|
+        next unless data[type]
+
+        {
+          strike_price: strike.to_f,
+          last_price: data[type]['last_price'].to_f,
+          symbol: "#{@params[:index_symbol]}-#{strike}-#{type.upcase}"
+        }
+      end
+
+      case position
+      when 'OTM'
+        options.select { |o| o[:strike_price] > @current_price }.min_by { |o| (o[:strike_price] - @current_price).abs }
+      when 'ITM'
+        options.select { |o| o[:strike_price] < @current_price }.max_by { |o| o[:strike_price] }
+      end
     end
 
     def atm_strikes

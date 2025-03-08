@@ -27,5 +27,5 @@ class Alert < ApplicationRecord
     commodity: 'commodity'
   }, prefix: :instrument
 
-  enum :status, { pending: 'pending', processed: 'processed', failed: 'failed' }
+  enum :status, { pending: 'pending', processed: 'processed', failed: 'failed', skipped: 'skipped' }
 end
