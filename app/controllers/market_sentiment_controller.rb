@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 class MarketSentimentController < ApplicationController
   def show
     # 1) Grab the index symbol & expiry from params
-    index_symbol = params[:index].to_s.upcase  # e.g. 'NIFTY'
+    index_symbol = params[:index].to_s.upcase # e.g. 'NIFTY'
     requested_expiry = params[:expiry]
 
     # 2) Find the instrument in the DB
