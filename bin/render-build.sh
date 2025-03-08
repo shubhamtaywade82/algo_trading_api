@@ -12,7 +12,7 @@ bundle exec rails db:migrate
 
 # Run whenever to update cron jobs (only relevant if using cron-based jobs)
 # Note: Render does NOT support system-level cron, so use a worker instead.
-echo "⏳ Updating cron jobs..."
+# echo "⏳ Updating cron jobs..."
 # bundle exec whenever --update-crontab || echo "Skipping whenever (not supported on Render)."
 
 # Uncomment below only if needed for fresh deployments
@@ -20,8 +20,8 @@ echo "⏳ Updating cron jobs..."
 # bundle exec rails db:seed
 
 # Optional data imports (comment if not needed)
-echo "📊 Importing instruments..."
-bundle exec rails import:instruments
+# echo "📊 Importing instruments..."
+# bundle exec rails import:instruments
 # bundle exec rails import:mis_details
 
 # echo "🔄 Updating levels..."
