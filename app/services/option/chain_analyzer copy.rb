@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Option
-  class ChainAnalyzer
+  class ChainAnalyzerCopy
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data
 
     # @param option_chain [Hash] => Real-time option chain from DhanHQ
