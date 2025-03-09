@@ -20,6 +20,19 @@ module AlertProcessors
     def call
       Rails.logger.info("Processing stock alert: #{alert.inspect}")
 
+      # Check if stock has derivatives (options)
+      if instrument.derivatives.exists?
+        option_chain = fetch_option_chain
+        analysis_result = analyze_option_chain(option_chain) if option_chain
+        @expiry = instrument.expiry_list.first
+        # Validate trade using option chain sentiment
+        unless should_trade_based_on_option_chain?(analysis_result)
+          Rails.logger.info('Stock option chain suggests avoiding trade.')
+          alert.update(status: 'skipped', error_message: 'Filtered by option chain analysis.')
+          return
+        end
+      end
+
       case alert[:strategy_type]
       when 'intraday'
         process_intraday_strategy
@@ -38,6 +51,55 @@ module AlertProcessors
     end
 
     private
+
+    # **Fetch Option Chain for the Stock's Derivative (if exists)**
+    def fetch_option_chain
+      instrument.fetch_option_chain(@expiry)
+    rescue StandardError => e
+      Rails.logger.error("Failed to fetch option chain: #{e.message}")
+      nil
+    end
+
+    # **Analyze Option Chain for Market Sentiment**
+    def analyze_option_chain(option_chain)
+      chain_analyzer = Option::ChainAnalyzer.new(
+        option_chain,
+        expiry: @expiry,
+        underlying_spot: instrument.ltp,
+        historical_data: fetch_historical_data
+      )
+      chain_analyzer.analyze_for_stock_trading
+    end
+
+    # **Decide Whether to Execute the Stock Trade Based on Option Chain**
+    def should_trade_based_on_option_chain?(analysis_result)
+      return true if analysis_result.nil? # If no option chain, proceed normally
+
+      sentiment = analysis_result[:sentiment]
+
+      if sentiment == 'bullish' && alert[:action] == 'SELL'
+        Rails.logger.info('Bearish sentiment detected; avoiding short trade.')
+        return false
+      elsif sentiment == 'bearish' && alert[:action] == 'BUY'
+        Rails.logger.info('Bullish sentiment missing; avoiding long trade.')
+        return false
+      end
+
+      true
+    end
+
+    # **Fetch Historical Data for Sentiment Analysis**
+    def fetch_historical_data
+      Dhanhq::API::Historical.daily(
+        securityId: instrument.security_id,
+        exchangeSegment: instrument.exchange_segment,
+        instrument: instrument.instrument_type,
+        fromDate: 5.days.ago.to_date.to_s,
+        toDate: Date.yesterday.to_s
+      )
+    rescue StandardError
+      []
+    end
 
     # Processes an intraday strategy by building an INTRA order payload
     # and placing the order.
@@ -80,7 +142,7 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
-        quantity: validate_quantity(calculate_quantity(ltp))
+        quantity: calculate_quantity
       }
     end
 
@@ -92,6 +154,7 @@ module AlertProcessors
     def place_order(order_params)
       if ENV['PLACE_ORDER'] == 'true'
         executed_order = Dhanhq::API::Orders.place(order_params)
+        validate_margin(order_params)
         Rails.logger.info("Order placed successfully: #{executed_order}")
       else
         Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_params}")
@@ -107,7 +170,7 @@ module AlertProcessors
     # @param params [Hash] A hash of order details used to calculate margin.
     # @return [Hash] The API response indicating margin details, if successful.
     def validate_margin(params)
-      params = params.merge(price: instrument.ltp)
+      params = params.merge(price: ltp)
       response = Dhanhq::API::Funds.margin_calculator(params)
       response['insufficientBalance']
 
@@ -123,25 +186,20 @@ module AlertProcessors
     #
     # @param price [Float] The current LTP (Last Traded Price) of the instrument.
     # @return [Integer] The final computed quantity to trade.
-    def calculate_quantity(price)
-      raw_available_balance = fetch_available_balance
-      effective_funds = raw_available_balance * funds_utilization
+    def calculate_quantity
+      min_quantity = minimum_quantity_based_on_ltp
+      max_quantity = maximum_quantity_based_on_funds
 
-      leveraged_price = price / leverage_factor
-
-      max_quantity = (effective_funds / leveraged_price).floor
-      required_funds = max_quantity * leveraged_price
-
-      if raw_available_balance < required_funds
-        raise "Insufficient funds: Required ₹#{required_funds}, " \
-              "Available ₹#{raw_available_balance} (Leverage: x#{leverage_factor})"
+      if max_quantity >= min_quantity
+        max_quantity
+      else
+        raise "Insufficient funds: Required minimum quantity for #{instrument.underlying_symbol} at ₹#{ltp} is #{min_quantity}, " \
+              "but available funds allow only #{max_quantity}. Skipping trade."
       end
-
-      [max_quantity, minimum_quantity_based_on_ltp(price)].max
     end
 
     def validate_quantity(quantity)
-      min_qty = minimum_quantity_based_on_ltp(ltp)
+      min_qty = minimum_quantity_based_on_ltp
       if quantity < min_qty
         Rails.logger.warn("Trade quantity (#{quantity}) is below minimum required (#{min_qty}). Adjusting.")
         return min_qty
@@ -150,19 +208,32 @@ module AlertProcessors
       quantity
     end
 
-    def minimum_quantity_based_on_ltp(ltp)
+    def maximum_quantity_based_on_funds
+      raw_available_balance = fetch_available_balance
+      effective_funds = raw_available_balance * funds_utilization
+
+      leveraged_price = ltp / leverage_factor
+
+      (effective_funds / leveraged_price).floor
+    end
+
+    def minimum_quantity_based_on_ltp
       case ltp
       when 0..50
-        500
+        intraday? ? 500 : 250
       when 51..200
-        100
+        intraday? ? 100 : 50
       when 201..500
-        50
+        intraday? ? 50 : 25
       when 501..1000
-        10
+        intraday? ? 10 : 5
       else
-        5
+        intraday? ? 5 : 1
       end
+    end
+
+    def intraday?
+      alert[:strategy_type].upcase == Dhanhq::Constants::INTRA
     end
 
     # Defines the leverage factor based on the alert’s strategy type.
@@ -171,9 +242,7 @@ module AlertProcessors
     #
     # @return [Float] The numeric leverage multiplier.
     def leverage_factor
-      return instrument.mis_detail&.mis_leverage.to_i || 1 if alert[:strategy_type] == 'intraday'
-
-      1.0 # Default leverage for swing and long-term is 1x
+      alert[:strategy_type] == 'intraday' ? instrument.mis_detail&.mis_leverage.to_i || 1 : 1.0
     end
 
     # Defines what fraction of total funds is utilized.

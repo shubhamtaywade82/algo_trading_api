@@ -7,6 +7,8 @@ module AlertProcessors
     def initialize(alert)
       @alert = alert
       @exchange = alert[:exchange]
+      ltp
+      sleep(2) if alert[:instrument_type] == 'stock'
     end
 
     def call

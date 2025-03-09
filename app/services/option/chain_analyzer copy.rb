@@ -135,66 +135,32 @@ module Option
 
     # Example scoring formula that uses OI, IV, delta, and changes
     def scoring_formula(strike_data)
-      delta_abs   = strike_data[:greeks][:delta].abs
-      iv          = strike_data[:iv].positive? ? strike_data[:iv] : 1.0
-      oi          = strike_data[:oi].positive? ? strike_data[:oi] : 1.0
-      oi_change   = strike_data[:oi_change]
-      price_change = strike_data[:price_change]
+      # Ensure values are present and positive to prevent calculation issues
+      oi             = strike_data[:oi].positive? ? strike_data[:oi] : 1.0
+      volume         = strike_data[:volume_change].positive? ? strike_data[:volume_change] : 1.0
+      iv             = strike_data[:iv].positive? ? strike_data[:iv] : 1.0
+      price_change   = strike_data[:price_change] || 0
+      delta_abs      = strike_data[:greeks][:delta].abs
+      theta          = strike_data[:greeks][:theta] || 0
+      vega           = strike_data[:greeks][:vega] || 0
+      gamma          = strike_data[:greeks][:gamma] || 0
+      top_bid_price  = strike_data[:top_bid_price] || 0
+      top_ask_price  = strike_data[:top_ask_price] || 0
+      bid_ask_spread = (top_ask_price - top_bid_price).abs || 0.1
 
-      # Basic approach:
-      #   base_score = (oi * iv * delta_abs)
-      #   + bonus for positive OI change
-      #   + small penalty if price changed negatively for a CE (or positively for a PE)...
+      bid_ask_spread = 0.1 unless bid_ask_spread.positive?
+      # **1. Liquidity Factor**
+      liquidity_score = (oi * volume) / bid_ask_spread
 
-      base_score = oi * iv * (delta_abs.zero? ? 0.4 : delta_abs)
+      # **2. Momentum & Price Action Score**
+      momentum_score = (price_change + (delta_abs * iv * 100))
 
-      # If OI is rising => more open interest => +score
-      base_score += oi_change.positive? ? (oi_change / 1000.0) : 0
+      # **3. Sensitivity to Price Movement (Greeks Impact)**
+      greeks_score = (delta_abs * 100) - (theta.abs * 5) + (vega * 2) + (gamma * 10)
 
-      # If price has changed in the same direction we want => +score
-      # e.g. for a CE, a positive price_change => more bullish
-      # For a CE: price_change > 0 => add
-      # For a PE: price_change < 0 => add
-      # We can do a simple check:
-      # We guess CE means we want positive price_change, PE means negative price_change
-      # This is optional
-      if strike_data[:greeks][:delta] >= 0 # means CE
-        base_score += price_change if price_change.positive?
-      elsif price_change.negative?
-        base_score += price_change.abs
-      end
-
-      base_score
+      # **4. Final Weighted Score**
+      (liquidity_score * 0.4) + (momentum_score * 0.3) + (greeks_score * 0.3)
     end
-
-    # # Example scoring formula that uses OI, IV, delta, and changes
-    # def scoring_formula(strike_data)
-    #   # Ensure values are present and positive to prevent calculation issues
-    #   oi             = strike_data[:oi].positive? ? strike_data[:oi] : 1.0
-    #   volume         = strike_data[:volume_change].positive? ? strike_data[:volume_change] : 1.0
-    #   iv             = strike_data[:iv].positive? ? strike_data[:iv] : 1.0
-    #   price_change   = strike_data[:price_change] || 0
-    #   delta_abs      = strike_data[:greeks][:delta].abs
-    #   theta          = strike_data[:greeks][:theta] || 0
-    #   vega           = strike_data[:greeks][:vega] || 0
-    #   gamma          = strike_data[:greeks][:gamma] || 0
-    #   top_bid_price  = strike_data[:top_bid_price] || 0
-    #   top_ask_price  = strike_data[:top_ask_price] || 0
-    #   bid_ask_spread = (top_ask_price - top_bid_price).abs || 0.1
-
-    #   bid_ask_spread = 0.1 unless bid_ask_spread.positive?
-    #   # **1. Liquidity Factor**
-    #   liquidity_score = (oi * volume) / bid_ask_spread
-
-    #   # **2. Momentum & Price Action Score**
-    #   momentum_score = (price_change + (delta_abs * iv * 100))
-
-    #   # **3. Sensitivity to Price Movement (Greeks Impact)**
-    #   greeks_score = (delta_abs * 100) - (theta.abs * 5) + (vega * 2) + (gamma * 10)
-
-    #   # **4. Final Weighted Score**
-    #   (liquidity_score * 0.4) + (momentum_score * 0.3) + (greeks_score * 0.3)
-    # end
 
     ## (3) Summarize greeks across the entire chain
     def summarize_greeks
