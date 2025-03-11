@@ -68,7 +68,10 @@ module AlertProcessors
         underlying_spot: instrument.ltp,
         historical_data: fetch_historical_data
       )
-      chain_analyzer.analyze_for_stock_trading
+      chain_analyzer.analyze(
+        strategy_type: alert[:strategy_type],
+        instrument_type: segment_from_alert_type(alert[:instrument_type])
+      )
     end
 
     # **Decide Whether to Execute the Stock Trade Based on Option Chain**

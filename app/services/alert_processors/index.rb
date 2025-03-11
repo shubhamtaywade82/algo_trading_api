@@ -52,10 +52,14 @@ module AlertProcessors
       chain_analyzer = Option::ChainAnalyzer.new(
         option_chain,
         expiry: expiry,
-        underlying_spot: instrument.ltp,
+        underlying_spot: ltp,
         historical_data: historical_data
       )
-      analysis_result = chain_analyzer.analyze
+
+      analysis_result = chain_analyzer.analyze(
+        strategy_type: alert[:strategy_type],
+        instrument_type: segment_from_alert_type(alert[:instrument_type])
+      )
 
       # 5) If trend is neutral, skip trade
       if analysis_result[:trend] == 'neutral'
@@ -63,11 +67,6 @@ module AlertProcessors
         Rails.logger.info(msg)
         # Record the skip reason in status & error_message
         alert.update!(status: 'skipped', error_message: msg)
-        return
-      end
-
-      unless best_strike
-        Rails.logger.info("No best strike found for action=#{action}. Skipping.")
         return
       end
 

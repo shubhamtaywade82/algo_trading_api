@@ -15,24 +15,24 @@ module Option
       @historical_data  = historical_data || []
     end
 
-    # Perform a comprehensive analysis:
-    # - Determine ATM strike
-    # - Find best CE & PE strikes with advanced scoring (including previous_* changes)
-    # - Summarize greeks across chain
-    # - Analyze implied volatility
-    # - Combine real-time & historical data to detect trend
-    #
-    # @return [Hash] The final analysis result
-    def analyze
-      {
-        atm_strike: determine_atm_strike,
-        best_ce_strike: best_strike_for(:ce),
-        best_pe_strike: best_strike_for(:pe),
-        trend: detect_trend,
-        volatility: analyze_volatility,
-        greeks_summary: summarize_greeks
-      }
-    end
+    # # Perform a comprehensive analysis:
+    # # - Determine ATM strike
+    # # - Find best CE & PE strikes with advanced scoring (including previous_* changes)
+    # # - Summarize greeks across chain
+    # # - Analyze implied volatility
+    # # - Combine real-time & historical data to detect trend
+    # #
+    # # @return [Hash] The final analysis result
+    # def analyze
+    #   {
+    #     atm_strike: determine_atm_strike,
+    #     best_ce_strike: best_strike_for(:ce),
+    #     best_pe_strike: best_strike_for(:pe),
+    #     trend: detect_trend,
+    #     volatility: analyze_volatility,
+    #     greeks_summary: summarize_greeks
+    #   }
+    # end
 
     def analyze_for_stock_trading
       call_oi = sum_open_interest(:ce)
@@ -54,7 +54,105 @@ module Option
       }
     end
 
+    def analyze(strategy_type:, instrument_type:)
+      trend = case strategy_type
+              when 'intraday'
+                intraday_trend
+              when 'swing', 'long_term'
+                swing_long_term_trend(instrument_type)
+              else
+                'neutral'
+              end
+
+      {
+        atm_strike: determine_atm_strike,
+        best_ce_strike: best_strike_for(:ce),
+        best_pe_strike: best_strike_for(:pe),
+        trend: trend,
+        volatility: analyze_volatility,
+        greeks_summary: summarize_greeks
+      }
+    end
+
     private
+
+    # # Intraday-specific short-term trend (for quick scalping, hourly/daily data)
+    # def analyze_intraday_trend
+    #   atm_strike = determine_atm_strike
+    #   return 'neutral' unless atm_strike
+
+    #   ce_data = @option_chain[:oc][format('%.6f', atm_strike)]['ce']
+    #   pe_data = @option_chain[:oc][format('%.6f', atm_strike)]['pe']
+
+    #   return 'neutral' unless ce_data && pe_data
+
+    #   ce_price_change = ce_data['last_price'] - ce_data['previous_close_price']
+    #   pe_data = @option_chain[:oc][format('%.6f', atm_strike)]['pe']
+    #   ce_data = @option_chain[:oc][format('%.6f', atm_strike)]['ce']
+    #   pe_price_change = pe_data['last_price'] - pe_data['previous_close_price']
+
+    #   return 'bullish' if ce_price_change > 0 && pe_price_change < 0
+    #   return 'bearish' if ce_price_change.negative? && pe_price_change.positive?
+
+    #   'neutral'
+    # rescue
+    #   'neutral'
+    # end
+
+    def intraday_trend
+      atm_strike = determine_atm_strike
+      return 'neutral' unless atm_strike
+
+      ce = @option_chain[:oc][format('%.6f', atm_strike)]['ce']
+      pe = @option_chain[:oc][format('%.6f', atm_strike)]['pe']
+      return 'neutral' unless ce && pe
+
+      ce_change = ce['last_price'] - ce['previous_close_price']
+      pe_change = pe['last_price'] - pe['previous_close_price']
+
+      return 'bullish' if ce_change.positive? && pe_change.negative?
+      return 'bearish' if ce_change.negative? && pe_change.positive?
+
+      'neutral'
+    rescue StandardError
+      'neutral'
+    end
+
+    # def swing_long_term_trend(instrument_type)
+    #   return stock_oi_based_trend if instrument_type == 'stock'
+
+    #   combined_trend
+    # end
+
+    def swing_long_term_trend(instrument_type)
+      instrument_type == 'stock' ? oi_sentiment_trend : historical_momentum_trend
+    end
+
+    def oi_sentiment_trend
+      call_oi = sum_open_interest(:ce)
+      put_oi = sum_open_interest(:pe)
+
+      if put_oi > call_oi * 1.5
+        'bearish'
+      elsif call_oi > put_oi * 1.5
+        'bullish'
+      else
+        'neutral'
+      end
+    end
+
+    def historical_momentum_trend
+      return 'neutral' if @historical_data.size < 20
+
+      closes = @historical_data.map { |row| row[:close].to_f }
+      sma5 = closes.last(5).sum / 5
+      sma20 = closes.last(20).sum / 20
+
+      return 'bullish' if sma5 > sma20
+      return 'bearish' if sma5 < sma20
+
+      'neutral'
+    end
 
     def sum_open_interest(option_type)
       @option_chain[:oc].sum do |_, data|
