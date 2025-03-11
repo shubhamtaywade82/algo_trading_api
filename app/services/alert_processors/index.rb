@@ -175,7 +175,7 @@ module AlertProcessors
     #   - We buy if action is 'BUY', else we sell
     #   - We set quantity by calling a helper that respects available funds
     def build_order_payload(best_strike, derivative_instrument)
-      action = alert[:action].to_s.upcase # 'BUY' or 'SELL'
+      action = "BUY" || alert[:action].to_s.upcase # 'BUY' or 'SELL'
 
       {
         transactionType: action,
