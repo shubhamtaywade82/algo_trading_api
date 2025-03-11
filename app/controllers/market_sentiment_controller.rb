@@ -30,7 +30,7 @@ class MarketSentimentController < ApplicationController
       underlying_spot: instrument.ltp,
       historical_data: historical_data
     )
-    analysis_result = chain_analyzer.analyze
+    analysis_result = chain_analyzer.analyze(strategy_type: params[:strategy_type], instrument_type: params(:instrument_type))
 
     # 7) Use the StrategySuggester to generate potential multi-leg strategies
     #    (We can pass user criteria, e.g. :outlook, :risk, etc., if we want.)

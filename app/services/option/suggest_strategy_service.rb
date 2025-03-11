@@ -26,7 +26,7 @@ module Option
       )
 
       # 6) Run the analyzer to get advanced insights
-      analysis = chain_analyzer.analyze
+      analysis = chain_analyzer.analyze(strategy_type: params[:strategy_type], instrument_type: params[:instrument_type])
       # => {
       #      atm_strike: 22550,
       #      best_ce_strike: {...},

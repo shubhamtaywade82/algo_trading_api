@@ -17,7 +17,7 @@ module Options
 
     def strategy_params
       params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference,
-                                     :target_profit, :max_loss)
+                                     :target_profit, :max_loss :strategy_type, :instrument_type)
     end
   end
 end
