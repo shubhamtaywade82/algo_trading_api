@@ -68,8 +68,7 @@ module Option
     def format_strategy(strategy, analysis)
       {
         name: strategy.name,
-        trade_legs: send("generate_#{strategy.name.parameterize(separator: '_')}", analysis),
-        analysis: analysis
+        trade_legs: send("generate_#{strategy.name.parameterize(separator: '_')}", analysis)
       }
     end
 
