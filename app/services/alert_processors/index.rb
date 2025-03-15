@@ -144,7 +144,7 @@ module AlertProcessors
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
         instrument: instrument.instrument_type,
-        fromDate: 5.days.ago.to_date.to_s,
+        fromDate: 45.days.ago.to_date.to_s,
         toDate: Date.yesterday.to_s
       )
     rescue StandardError
