@@ -78,7 +78,7 @@ group :development do
 end
 
 gem 'csv'
-gem 'faye-websocket'
+
 gem 'whenever', '~> 1.0', require: false
 
 gem 'kaminari', '~> 1.2'
