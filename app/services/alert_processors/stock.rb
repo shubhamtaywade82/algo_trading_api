@@ -7,6 +7,8 @@ module AlertProcessors
   # environment configuration (PLACE_ORDER). If any step fails, it updates
   # the alert status to "failed" and logs the error.
   class Stock < Base
+    attr_reader :option_chain
+
     # The main entry point for processing a stock alert.
     # Based on `alert[:strategy_type]`, it calls the relevant private method:
     #  - `process_intraday_strategy`
@@ -19,12 +21,14 @@ module AlertProcessors
     # @return [void]
     def call
       Rails.logger.info("Processing stock alert: #{alert.inspect}")
-
+      @option_chain = {}
       # Check if stock has derivatives (options)
       if instrument.derivatives.exists?
-        option_chain = fetch_option_chain
-        analysis_result = analyze_option_chain(option_chain) if option_chain
         @expiry = instrument.expiry_list.first
+        @option_chain = fetch_option_chain
+
+        analysis_result = analyze_option_chain(option_chain) if option_chain
+
         # Validate trade using option chain sentiment
         unless should_trade_based_on_option_chain?(analysis_result)
           Rails.logger.info('Stock option chain suggests avoiding trade.')
@@ -65,7 +69,7 @@ module AlertProcessors
       chain_analyzer = Option::ChainAnalyzer.new(
         option_chain,
         expiry: @expiry,
-        underlying_spot: instrument.ltp,
+        underlying_spot: option_chain[:last_price],
         historical_data: fetch_historical_data
       )
       chain_analyzer.analyze(
@@ -91,16 +95,35 @@ module AlertProcessors
       true
     end
 
-    # **Fetch Historical Data for Sentiment Analysis**
+    # **Fetch basic historical data** e.g. last 5 daily bars for momentum
     def fetch_historical_data
+      alert[:strategy_type] == 'intraday' ? fetch_intraday_candles : fetch_short_historical_data
+    end
+
+    # Example: fetch 5 days of daily candles
+    def fetch_short_historical_data
       Dhanhq::API::Historical.daily(
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
         instrument: instrument.instrument_type,
-        fromDate: 5.days.ago.to_date.to_s,
+        fromDate: 45.days.ago.to_date.to_s,
         toDate: Date.yesterday.to_s
       )
     rescue StandardError
+      []
+    end
+
+    def fetch_intraday_candles
+      Dhanhq::API::Historical.intraday(
+        securityId: instrument.security_id,
+        exchangeSegment: instrument.exchange_segment,
+        instrument: instrument.instrument_type,
+        interval: '5', # 5-min bars
+        fromDate: 5.days.ago.to_date.to_s,
+        toDate: Time.zone.today.to_s
+      )
+    rescue StandardError => e
+      Rails.logger.error("Failed to fetch intraday data => #{e.message}")
       []
     end
 
@@ -157,7 +180,7 @@ module AlertProcessors
     def place_order(order_params)
       if ENV['PLACE_ORDER'] == 'true'
         executed_order = Dhanhq::API::Orders.place(order_params)
-        validate_margin(order_params)
+        # validate_margin(order_params)
         Rails.logger.info("Order placed successfully: #{executed_order}")
       else
         Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_params}")
@@ -173,7 +196,7 @@ module AlertProcessors
     # @param params [Hash] A hash of order details used to calculate margin.
     # @return [Hash] The API response indicating margin details, if successful.
     def validate_margin(params)
-      params = params.merge(price: ltp)
+      params = params.merge(price: option_chain[:last_price] || ltp)
       response = Dhanhq::API::Funds.margin_calculator(params)
       response['insufficientBalance']
 
@@ -196,7 +219,7 @@ module AlertProcessors
       if max_quantity >= min_quantity
         max_quantity
       else
-        raise "Insufficient funds: Required minimum quantity for #{instrument.underlying_symbol} at ₹#{ltp} is #{min_quantity}, " \
+        raise "Insufficient funds: Required minimum quantity for #{instrument.underlying_symbol} at ₹#{option_chain[:last_price] || ltp} is #{min_quantity}, " \
               "but available funds allow only #{max_quantity}. Skipping trade."
       end
     end
@@ -215,13 +238,13 @@ module AlertProcessors
       raw_available_balance = fetch_available_balance
       effective_funds = raw_available_balance * funds_utilization
 
-      leveraged_price = ltp / leverage_factor
+      leveraged_price = option_chain[:last_price] || (ltp / leverage_factor)
 
       (effective_funds / leveraged_price).floor
     end
 
     def minimum_quantity_based_on_ltp
-      case ltp
+      case option_chain[:last_price] || ltp
       when 0..50
         intraday? ? 500 : 250
       when 51..200

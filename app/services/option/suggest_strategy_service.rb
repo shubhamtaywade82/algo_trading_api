@@ -5,7 +5,7 @@ module Option
     def self.call(index_symbol:, expiry_date:, params:)
       # 1) Find the instrument by index_symbol (NIFTY, BANKNIFTY, etc.)
       instrument = Instrument.segment_index.find_by(underlying_symbol: index_symbol)
-      Rails.logger.debug { "Found instrument => #{instrument}" }
+      Rails.logger.debug { "Found instrument => #{instrument.inspect}" }
       raise "Invalid index symbol: #{index_symbol}" unless instrument
 
       # 2) Determine which expiry to use
@@ -21,12 +21,13 @@ module Option
       chain_analyzer = Option::ChainAnalyzer.new(
         option_chain,
         expiry: expiry,
-        underlying_spot: instrument.ltp,         # pass the real-time spot
-        historical_data: historical_data         # pass short daily bars
+        underlying_spot: instrument.ltp || option_chain[:last_price], # pass the real-time spot
+        historical_data: historical_data # pass short daily bars
       )
 
       # 6) Run the analyzer to get advanced insights
-      analysis = chain_analyzer.analyze(strategy_type: params[:strategy_type], instrument_type: params[:instrument_type])
+      analysis = chain_analyzer.analyze(strategy_type: params[:strategy_type],
+                                        instrument_type: params[:instrument_type])
       # => {
       #      atm_strike: 22550,
       #      best_ce_strike: {...},

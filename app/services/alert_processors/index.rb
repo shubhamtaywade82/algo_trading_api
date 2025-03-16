@@ -46,14 +46,13 @@ module AlertProcessors
 
       # 3) Gather historical data for advanced analysis
       #    (We've already got an example from your code: 5-day daily data)
-      historical_data = fetch_historical_data
 
       # 4) Build ChainAnalyzer with new parameters
       chain_analyzer = Option::ChainAnalyzer.new(
         option_chain,
         expiry: expiry,
-        underlying_spot: ltp,
-        historical_data: historical_data
+        underlying_spot: option_chain[:last_price] || ltp,
+        historical_data: fetch_historical_data
       )
 
       analysis_result = chain_analyzer.analyze(
@@ -105,26 +104,6 @@ module AlertProcessors
       # 8) Build an order payload and place the order
       order_params = build_order_payload(best_strike, strike_instrument)
       place_order(order_params)
-      # # Use Strategy Suggester to find the best affordable strategy
-      # suggester = Option::StrategySuggester.new(option_chain, { index_symbol: alert[:ticker] })
-      # strategy_recommendation = suggester.suggest(analysis: analysis)
-
-      # strategy_recommendation[:strategies].first
-      # # best_strike = select_best_strike(option_chain)
-
-      # selected_strategy = select_best_strategy(strategy_recommendation)
-      # raise 'No valid strategy found' if selected_strategy.nil?
-
-      # Rails.logger.info("Selected strategy: #{selected_strategy.inspect}")
-      # # raise 'Failed to find a suitable strike for trading' unless best_strike
-
-      # # option_type = alert[:action].downcase == 'buy' ? 'CE' : 'PE'
-      # # strike_price = best_strike[:strike_price]
-      # # strike_instrument = fetch_instrument_for_strike(strike_price, expiry, option_type)
-      # execute_trade(selected_strategy, expiry)
-
-      # # build_order_payload(selected_strategy)
-      # # place_order(strike_instrument, best_strike)
     end
 
     # Fetches the option chain for a given expiry date.
@@ -140,6 +119,11 @@ module AlertProcessors
 
     # **Fetch basic historical data** e.g. last 5 daily bars for momentum
     def fetch_historical_data
+      alert[:strategy_type] == 'intraday' ? fetch_intraday_candles : fetch_short_historical_data
+    end
+
+    # Example: fetch 5 days of daily candles
+    def fetch_short_historical_data
       Dhanhq::API::Historical.daily(
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
@@ -148,6 +132,20 @@ module AlertProcessors
         toDate: Date.yesterday.to_s
       )
     rescue StandardError
+      []
+    end
+
+    def fetch_intraday_candles
+      Dhanhq::API::Historical.intraday(
+        securityId: instrument.security_id,
+        exchangeSegment: instrument.exchange_segment,
+        instrument: instrument.instrument_type,
+        interval: '5', # 5-min bars
+        fromDate: 5.days.ago.to_date.to_s,
+        toDate: Time.zone.today.to_s
+      )
+    rescue StandardError => e
+      Rails.logger.error("Failed to fetch intraday data => #{e.message}")
       []
     end
 
@@ -175,8 +173,9 @@ module AlertProcessors
     #   - We buy if action is 'BUY', else we sell
     #   - We set quantity by calling a helper that respects available funds
     def build_order_payload(best_strike, derivative_instrument)
-      action = "BUY" || alert[:action].to_s.upcase # 'BUY' or 'SELL'
-
+      action = 'BUY' || alert[:action].to_s.upcase # 'BUY' or 'SELL'
+      quantity = calculate_quantity(best_strike[:last_price], derivative_instrument.lot_size)
+      Rails.logger.debug quantity
       {
         transactionType: action,
         orderType: alert[:order_type].to_s.upcase,
@@ -184,7 +183,7 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: derivative_instrument.security_id,
         exchangeSegment: derivative_instrument.exchange_segment,
-        quantity: calculate_quantity(best_strike[:last_price], derivative_instrument.lot_size)
+        quantity: quantity
       }
     end
 
@@ -214,152 +213,35 @@ module AlertProcessors
     # @param lot_size [Integer, Float] The contract lot size for this derivative.
     # @return [Integer] The final quantity to trade.
     def calculate_quantity(price, lot_size)
-      max_allocation = fetch_available_balance * 0.5
-      max_quantity = (max_allocation / price).floor
-      adjusted_quantity = (max_quantity / lot_size) * lot_size
-      [adjusted_quantity, lot_size].max
+      available_balance = fetch_available_balance
+      required_margin = price * lot_size
+
+      # 1. Use 50% of the available_balance, or adapt the fraction if you want.
+      adjusted_alloc_qty = buyable_lots(available_balance, 0.5, price, lot_size)
+      return adjusted_alloc_qty if adjusted_alloc_qty >= lot_size
+
+      # 2. If half was too small, let’s try the entire available_balance
+      adjusted_qty = buyable_lots(available_balance, 1.0, price, lot_size)
+      return adjusted_qty if adjusted_qty >= lot_size
+
+      # 3) Insufficient to buy even 1 lot:
+      raise "Insufficient funds to buy at least 1 lot. Price=#{price}, lot_size=#{lot_size}, " \
+            "available_balance=#{available_balance}, trade margin=#{required_margin}, required_balance=#{required_margin - available_balance}"
     end
 
-    # def select_best_strategy(strategy_recommendation)
-    #   # bearish_strategies = ['Long Put', 'Bear Put Spread', 'Short Call']
-    #   # bullish_strategies = ['Long Call', 'Bull Call Spread', 'Short Put']
-
-    #   buy_strategies = ['Long Call', 'Bull Call Spread', 'Short Put']
-    #   sell_strategies = ['Long Put', 'Bear Put Spread', 'Short Call']
-
-    #   # sentiment = strategy_recommendation[:index_details][:sentiment]
-    #   action = alert[:action].upcase
-    #   strategies = strategy_recommendation[:strategies]
-
-    #   # if sentiment[:bullish]
-    #   #   strategies.find { |s| bullish_strategies.include?(s[:name]) }
-    #   # elsif sentiment[:bearish]
-    #   #   strategies.find { |s| bearish_strategies.include?(s[:name]) }
-    #   # else
-    #   #   strategies.first # Default to first available strategy
-    #   # end
-    #   if action == 'BUY'
-    #     strategies.find { |s| buy_strategies.include?(s[:name]) } || strategies.first
-    #   elsif action == 'SELL'
-    #     strategies.find { |s| sell_strategies.include?(s[:name]) } || strategies.first
-    #   else
-    #     strategies.first # Default to first available strategy
-    #   end
-    # end
-
-    # def execute_trade(strategy, expiry)
-    #   trade_legs = strategy[:trade_legs]
-    #   trade_legs.each do |trade_leg|
-    #     strike_instrument = fetch_instrument_for_strike(
-    #       trade_leg[:strike_price], expiry, trade_leg[:option_type]
-    #     )
-    #     order_params = build_order_payload(trade_leg, strike_instrument)
-    #     place_order(order_params)
-    #   end
-    # end
-
-    # # Selects the "best" strike from the option chain using a scoring formula.
-    # # The chain_analyzer may return additional metrics like max_pain, support, or resistance.
-    # #
-    # # @param option_chain [Hash] The option chain data structure.
-    # # @return [Hash, nil] The selected strike's data, or nil if none found.
-    # def select_best_strike(option_chain)
-    #   chain_analyzer = Option::ChainAnalyzer.new(option_chain)
-    #   analysis = chain_analyzer.analyze
-
-    #   # CE if alert[:action] == 'buy', else PE
-    #   option_key = alert[:action].downcase == 'buy' ? 'ce' : 'pe'
-
-    #   # Build an array of potential strikes with relevant data
-    #   strikes = option_chain[:oc].filter_map do |strike, data|
-    #     next unless data[option_key]
-
-    #     {
-    #       strike_price: strike.to_i,
-    #       last_price: data[option_key]['last_price'].to_f,
-    #       oi: data[option_key]['oi'].to_i,
-    #       iv: data[option_key]['implied_volatility'].to_f,
-    #       greeks: data[option_key]['greeks']
-    #     }
-    #   end
-
-    #   # Score each strike and pick the max
-    #   strikes.max_by do |s|
-    #     score = s[:oi] * s[:iv] * (s.dig(:greeks, :delta).abs || 0.5) # Existing scoring formula
-    #     score += 1 if s[:strike_price] == analysis[:max_pain] # Favor max pain level
-    #     score += 1 if s[:strike_price] == analysis[:support_resistance][:support] # Favor support
-    #     score += 1 if s[:strike_price] == analysis[:support_resistance][:resistance] # Favor resistance
-    #     score
-    #   end
-    # end
-
-    # # Determines whether this is a 'CE' (call) or 'PE' (put),
-    # # based on the alert action (buy vs. sell).
-    # #
-    # # @return [String] 'CE' if buy, otherwise 'PE'
-    # def resolve_option_type
-    #   alert[:action].downcase == 'buy' ? 'CE' : 'PE'
-    # end
-
-    # Places an order for the selected strike. If PLACE_ORDER=true, it calls
-    # the Dhanhq API to place the order. Otherwise, it logs a message but does not place an order.
+    # Calculates how many total units we can buy if we allocate
+    # `fraction` of `balance`, at a given `price`.
+    # Then we snap that down to a multiple of `lot_size`.
     #
-    # @param instrument [Derivative] The derivative instrument for this strike.
-    # @param strike [Hash]  The hash describing the best strike data (last_price, etc.).
-    # @return [void]
-    # def place_order(derivative_instrument, strike)
-    #   available_balance = fetch_available_balance
-    #   max_allocation = available_balance * 0.5 # Use 50% of available balance
-    #   quantity = calculate_quantity(strike[:last_price], max_allocation, derivative_instrument.lot_size)
-    #   total_order_cost = quantity * strike[:last_price]
-
-    #   if available_balance < total_order_cost
-    #     shortfall = total_order_cost - available_balance
-    #     raise "Insufficient funds ₹#{shortfall.round(2)}: Required ₹#{total_order_cost}, " \
-    #           "Available ₹#{available_balance}"
-    #   end
-
-    #   order_data = {
-    #     transactionType: Dhanhq::Constants::BUY,
-    #     exchangeSegment: derivative_instrument.exchange_segment,
-    #     productType: Dhanhq::Constants::MARGIN,
-    #     orderType: alert[:order_type].upcase,
-    #     validity: Dhanhq::Constants::DAY,
-    #     securityId: derivative_instrument.security_id,
-    #     quantity: quantity,
-    #     price: strike[:last_price],
-    #     triggerPrice: strike[:last_price].to_f || alert[:stop_price].to_f
-    #   }
-
-    #   if ENV['PLACE_ORDER'] == 'true'
-    #     executed_order = Dhanhq::API::Orders.place(order_data)
-    #     Rails.logger.info("Executed order: #{executed_order}, alert: #{alert}")
-    #   else
-    #     Rails.logger.info("PLACE_ORDER is disabled. Order parameters: #{order_data}")
-    #   end
-    # rescue StandardError => e
-    #   raise "Failed to place order for derivative_instrument #{derivative_instrument.symbol_name}: #{e.message}"
-    # end
-
-    # def build_order_payload(trade_leg, derivative_instrument)
-    #   {
-    #     transactionType: trade_leg[:action],
-    #     orderType: alert[:order_type].upcase,
-    #     productType: Dhanhq::Constants::MARGIN,
-    #     validity: Dhanhq::Constants::DAY,
-    #     securityId: derivative_instrument.security_id,
-    #     exchangeSegment: derivative_instrument.exchange_segment,
-    #     quantity: calculate_quantity(trade_leg[:ltp], derivative_instrument.lot_size)
-    #   }
-    # end
-
-    # @!attribute [r] alert
-    #   @return [Hash, ActionController::Parameters] The current alert data.
-    #
-    # @!method instrument
-    #   @return [Instrument] the base instrument model used by this processor
-    #
-    # Both `alert` and `instrument` are inherited from the `Base` class in
-    # AlertProcessors or included modules, so they are not explicitly defined here.
+    # @param balance [Numeric] Total account balance
+    # @param fraction [Numeric] 0.5 => 50% of account; 1.0 => 100%; etc.
+    # @param price [Numeric] Price per contract
+    # @param lot_size [Integer] Contract lot size
+    # @return [Integer] The maximum quantity aligned to lot size
+    def buyable_lots(balance, fraction, price, lot_size)
+      allocation     = balance * fraction
+      max_whole_qty  = (allocation / price).floor
+      (max_whole_qty / lot_size) * lot_size
+    end
   end
 end

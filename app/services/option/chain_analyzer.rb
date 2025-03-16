@@ -76,29 +76,6 @@ module Option
 
     private
 
-    # # Intraday-specific short-term trend (for quick scalping, hourly/daily data)
-    # def analyze_intraday_trend
-    #   atm_strike = determine_atm_strike
-    #   return 'neutral' unless atm_strike
-
-    #   ce_data = @option_chain[:oc][format('%.6f', atm_strike)]['ce']
-    #   pe_data = @option_chain[:oc][format('%.6f', atm_strike)]['pe']
-
-    #   return 'neutral' unless ce_data && pe_data
-
-    #   ce_price_change = ce_data['last_price'] - ce_data['previous_close_price']
-    #   pe_data = @option_chain[:oc][format('%.6f', atm_strike)]['pe']
-    #   ce_data = @option_chain[:oc][format('%.6f', atm_strike)]['ce']
-    #   pe_price_change = pe_data['last_price'] - pe_data['previous_close_price']
-
-    #   return 'bullish' if ce_price_change > 0 && pe_price_change < 0
-    #   return 'bearish' if ce_price_change.negative? && pe_price_change.positive?
-
-    #   'neutral'
-    # rescue
-    #   'neutral'
-    # end
-
     def intraday_trend
       atm_strike = determine_atm_strike
       return 'neutral' unless atm_strike
@@ -117,12 +94,6 @@ module Option
     rescue StandardError
       'neutral'
     end
-
-    # def swing_long_term_trend(instrument_type)
-    #   return stock_oi_based_trend if instrument_type == 'stock'
-
-    #   combined_trend
-    # end
 
     def swing_long_term_trend(instrument_type)
       instrument_type == 'stock' ? oi_sentiment_trend : historical_momentum_trend
@@ -174,7 +145,7 @@ module Option
       return nil if all_strikes.empty?
 
       float_strikes = all_strikes.map(&:to_f)
-      float_strikes.min_by { |strike| (strike - @underlying_spot).abs }
+      float_strikes.min_by { |strike| (strike - underlying_spot).abs }
     end
 
     ## (2) Score & pick best strike for CE or PE
@@ -338,54 +309,11 @@ module Option
       }
     end
 
-    ## (5) Detect Trend by combining chain-based price action & historical momentum
-    def detect_trend
-      chain_trend = analyze_price_action_from_chain
-      hist_trend  = momentum_trend(@historical_data)
-
-      return 'bullish' if chain_trend == 'bullish' && hist_trend == 'bullish'
-      return 'bearish' if chain_trend == 'bearish' && hist_trend == 'bearish'
-
-      'neutral'
-    end
-
-    # Simple chain-based approach -> short/long term average of CE prices
-    def analyze_price_action_from_chain
-      prices = @option_chain[:oc]&.values&.map { |data| data.dig('ce', 'last_price').to_f } || []
-      return 'neutral' if prices.size < 5
-
-      short_ma = moving_average(prices, 5).last
-      long_ma  = moving_average(prices, 20).last || short_ma
-      return 'bullish' if short_ma > long_ma
-      return 'bearish' if short_ma < long_ma
-
-      'neutral'
-    end
-
-    # Basic momentum from historical_data using 5 vs. 20 closes
-    def momentum_trend(historical_data)
-      return 'neutral' if historical_data.size < 20
-
-      closes = historical_data.map { |row| row[:close].to_f }
-      sma5 = closes.last(5).sum / 5
-      sma20 = closes.last(20).sum / 20
-
-      return 'bullish' if sma5 > sma20
-      return 'bearish' if sma5 < sma20
-
-      'neutral'
-    end
-
     # Helpers
     def average(values)
       return 0.0 if values.empty?
 
       values.sum / values.size
-    end
-
-    def moving_average(data, period)
-      # each_cons => consecutive subarrays
-      data.each_cons(period).map { |slice| slice.sum / slice.size.to_f }
     end
   end
 end

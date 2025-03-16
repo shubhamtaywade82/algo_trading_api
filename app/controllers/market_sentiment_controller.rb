@@ -21,16 +21,17 @@ class MarketSentimentController < ApplicationController
     option_chain = instrument.fetch_option_chain(expiry)
 
     # 5) Optionally fetch short historical data for chain analysis
-    historical_data = fetch_short_historical_data(instrument)
+    historical_data = params[:strategy_type] == 'intraday' ? fetch_intraday_candles(instrument) : fetch_short_historical_data(instrument)
 
     # 6) Instantiate the new advanced ChainAnalyzer
     chain_analyzer = Option::ChainAnalyzer.new(
       option_chain,
       expiry: expiry,
-      underlying_spot: instrument.ltp,
+      underlying_spot: instrument.ltp || option_chain[:last_price],
       historical_data: historical_data
     )
-    analysis_result = chain_analyzer.analyze(strategy_type: params[:strategy_type], instrument_type: params[:instrument_type])
+    analysis_result = chain_analyzer.analyze(strategy_type: params[:strategy_type],
+                                             instrument_type: params[:instrument_type])
 
     # 7) Use the StrategySuggester to generate potential multi-leg strategies
     #    (We can pass user criteria, e.g. :outlook, :risk, etc., if we want.)
@@ -54,10 +55,24 @@ class MarketSentimentController < ApplicationController
       securityId: instrument.security_id,
       exchangeSegment: instrument.exchange_segment,
       instrument: instrument.instrument_type,
-      fromDate: 5.days.ago.to_date.to_s,
+      fromDate: 45.days.ago.to_date.to_s,
       toDate: Date.yesterday.to_s
     )
   rescue StandardError
+    []
+  end
+
+  def fetch_intraday_candles(instrument)
+    Dhanhq::API::Historical.intraday(
+      securityId: instrument.security_id,
+      exchangeSegment: instrument.exchange_segment,
+      instrument: instrument.instrument_type,
+      interval: '5', # 5-min bars
+      fromDate: 5.days.ago.to_date.to_s,
+      toDate: Time.zone.today.to_s
+    )
+  rescue StandardError => e
+    Rails.logger.error("Failed to fetch intraday data => #{e.message}")
     []
   end
 end

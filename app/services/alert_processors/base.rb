@@ -7,8 +7,6 @@ module AlertProcessors
     def initialize(alert)
       @alert = alert
       @exchange = alert[:exchange]
-      ltp
-      sleep(2) if alert[:instrument_type] == 'stock'
     end
 
     def call
@@ -18,7 +16,12 @@ module AlertProcessors
     private
 
     def ltp
-      @ltp ||= instrument.ltp
+      @ltp ||= begin
+        fetched = instrument.ltp
+        raise 'Failed to fetch LTP from Dhan' if fetched.blank?
+
+        fetched
+      end
     end
 
     def instrument
