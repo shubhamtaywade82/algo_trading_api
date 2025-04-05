@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_18_171303) do
+ActiveRecord::Schema[8.0].define(version: 2025_04_05_105811) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,15 +21,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_18_171303) do
     t.string "current_position"
     t.string "previous_position"
     t.decimal "current_price", precision: 15, scale: 2, null: false
-    t.decimal "high", precision: 15, scale: 2
-    t.decimal "low", precision: 15, scale: 2
-    t.decimal "volume", precision: 15, scale: 6
     t.datetime "time", null: false
     t.string "chart_interval"
-    t.decimal "stop_price", precision: 15, scale: 2
-    t.decimal "take_profit", precision: 15, scale: 2
-    t.decimal "trailing_stop_loss", precision: 15, scale: 2
-    t.decimal "limit_price", precision: 15, scale: 2
     t.string "strategy_name", null: false
     t.string "strategy_id", null: false
     t.string "status", default: "pending", null: false
@@ -37,10 +30,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_18_171303) do
     t.string "action"
     t.string "exchange"
     t.string "strategy_type"
-    t.decimal "stop_loss", precision: 15, scale: 2
     t.bigint "instrument_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "signal_type"
     t.index ["instrument_id"], name: "index_alerts_on_instrument_id"
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"

@@ -119,9 +119,20 @@ module Webhooks
     # @return [ActionController::Parameters] sanitized alert params
     def alert_params
       params.require(:alert).permit(
-        :ticker, :instrument_type, :order_type, :current_position, :previous_position, :strategy_type, :current_price,
-        :high, :low, :volume, :time, :chart_interval, :stop_loss, :stop_price, :take_profit, :limit_price,
-        :trailing_stop_loss, :strategy_name, :strategy_id, :action, :exchange
+        :ticker,
+        :instrument_type,
+        :exchange,
+        :time,
+        :strategy_type,
+        :order_type,
+        :action,
+        :current_position,
+        :previous_position,
+        :current_price,
+        :chart_interval,
+        :strategy_name,
+        :strategy_id,
+        :signal_type
       )
     end
   end
