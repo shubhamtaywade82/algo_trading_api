@@ -37,6 +37,11 @@ module AlertProcessors
         end
       end
 
+      unless trade_signal_valid?
+        alert.update(status: 'skipped', error_message: 'Signal type did not match current position.')
+        return
+      end
+
       case alert[:strategy_type]
       when 'intraday'
         process_intraday_strategy
@@ -161,6 +166,12 @@ module AlertProcessors
     # @param product_type [String] The product type constant (e.g. `Dhanhq::Constants::INTRA`).
     # @return [Hash] The payload required by the Dhanhq::API::Orders.place method.
     def build_order_payload(product_type)
+      quantity = if exit_signal?
+                   fetch_exit_quantity
+                 else
+                   calculate_quantity
+                 end
+
       {
         transactionType: alert[:action].upcase,
         orderType: alert[:order_type].upcase,
@@ -168,7 +179,7 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
-        quantity: calculate_quantity
+        quantity: quantity
       }
     end
 
@@ -260,6 +271,61 @@ module AlertProcessors
 
     def intraday?
       alert[:strategy_type].upcase == Dhanhq::Constants::INTRA
+    end
+
+    def exit_signal?
+      %w[long_exit short_exit].include?(alert[:signal_type])
+    end
+
+    def fetch_exit_quantity
+      positions = Dhanhq::API::Portfolio.positions
+      position = positions.find { |pos| pos['securityId'].to_s == instrument.security_id.to_s }
+
+      if position.nil? || position['netQty'].to_i.zero?
+        raise "No open position found for exit on #{instrument.underlying_symbol}"
+      end
+
+      position['netQty'].abs
+    end
+
+    def trade_signal_valid?
+      stock_position = dhan_positions.find { |p| p['securityId'].to_s == instrument.security_id.to_s }
+
+      size = stock_position&.dig('netQty').to_i
+
+      case alert[:signal_type]
+      when 'long_entry'
+        return true if size.zero?
+
+        Rails.logger.info("Skipping long_entry — existing position found for #{instrument.underlying_symbol}.")
+        false
+
+      when 'short_entry'
+        return true if size.zero?
+
+        Rails.logger.info("Skipping short_entry — existing position found for #{instrument.underlying_symbol}.")
+        false
+
+      when 'long_exit'
+        if size.positive?
+          true
+        else
+          Rails.logger.info("Skipping long_exit — no long position open for #{instrument.underlying_symbol}.")
+          false
+        end
+
+      when 'short_exit'
+        if size.negative?
+          true
+        else
+          Rails.logger.info("Skipping short_exit — no short position open for #{instrument.underlying_symbol}.")
+          false
+        end
+
+      else
+        Rails.logger.warn("Unknown signal_type #{alert[:signal_type]}. Skipping.")
+        false
+      end
     end
 
     # Defines the leverage factor based on the alert’s strategy type.

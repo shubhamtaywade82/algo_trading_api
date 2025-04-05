@@ -51,5 +51,9 @@ module AlertProcessors
     rescue StandardError
       raise 'Failed to fetch available balance'
     end
+
+    def dhan_positions
+      @dhan_positions ||= Dhanhq::API::Portfolio.positions
+    end
   end
 end
