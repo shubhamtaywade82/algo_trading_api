@@ -22,7 +22,7 @@ module TradingServices
 
     def handle_demand_zone_trade
       Rails.logger.debug { "#{symbol_name} near demand zone. Buying CALL option." }
-      execute_trade_for_option(:call, levels.demand_zone)
+      execute_trade_for_option(:ce, levels.demand_zone)
     end
 
     def handle_supply_zone_trade
@@ -109,7 +109,6 @@ module TradingServices
     end
 
     def place_order_for_strike(strike_instrument, best_strike)
-      available_balance = fetch_available_balance
       max_allocation = available_balance * 0.5 # Allocate 50% of available balance
       quantity = calculate_quantity(best_strike[:last_price], max_allocation, strike_instrument.lot_size)
 

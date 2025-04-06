@@ -25,7 +25,7 @@ module Positions
         decision[:exit] ? place_exit_order(position, decision[:quantity]) : adjust_trailing_stop(position, analysis)
       end
     rescue StandardError
-      Rails.logger.error("PositionManager execution error: \#{e.message}")
+      Rails.logger.error("PositionManager execution error: #{e.message}")
     end
 
     private
@@ -79,12 +79,12 @@ module Positions
 
       response = Dhanhq::API::Orders.place(order_payload)
       if response.success?
-        Rails.logger.info("Order placed successfully for \#{position['tradingSymbol']}")
+        Rails.logger.info("Order placed successfully for #{position['tradingSymbol']}")
       else
-        Rails.logger.error("Order placement failed for \#{position['tradingSymbol']}: \#{response.status} - \#{response.body}")
+        Rails.logger.error("Order placement failed for #{position['tradingSymbol']}: #{response.status} - #{response.body}")
       end
     rescue StandardError
-      Rails.logger.error("Order placement error for \#{position['tradingSymbol']}: \#{e.message}")
+      Rails.logger.error("Order placement error for #{position['tradingSymbol']}: #{e.message}")
     end
 
     # ✅ **Adjust trailing stop-loss dynamically**
@@ -94,12 +94,12 @@ module Positions
 
       response = Dhanhq::API::Orders.modify(position['orderId'], modify_payload)
       if response['status'] == 'success'
-        Rails.logger.info("Trailing stop updated for \#{position['tradingSymbol']} to \#{trailing_stop_price}")
+        Rails.logger.info("Trailing stop updated for #{position['tradingSymbol']} to #{trailing_stop_price}")
       else
-        Rails.logger.error("Failed to update trailing stop for \#{position['tradingSymbol']}: \#{response['omsErrorDescription']}")
+        Rails.logger.error("Failed to update trailing stop for #{position['tradingSymbol']}: #{response['omsErrorDescription']}")
       end
     rescue StandardError
-      Rails.logger.error("Error updating trailing stop for \#{position['tradingSymbol']}: \#{e.message}")
+      Rails.logger.error("Error updating trailing stop for #{position['tradingSymbol']}: #{e.message}")
     end
 
     def calculate_charges(_position, analysis)

@@ -44,7 +44,7 @@ class NiftyTradeService
 
   def handle_demand_zone_trade(ltp, option_chain)
     Rails.logger.debug { "Nifty near demand zone. LTP: #{ltp}, Demand Zone: #{@levels[:demand_zone]}" }
-    strike_to_buy = find_strike_near_zone(option_chain, @levels[:demand_zone], :call)
+    strike_to_buy = find_strike_near_zone(option_chain, @levels[:demand_zone], :ce)
     order_data = {
       securityId: strike_to_buy[:security_id],
       transactionType: 'BUY',
@@ -88,7 +88,7 @@ class NiftyTradeService
   def find_strike_near_zone(option_chain, zone, option_type)
     strikes = option_chain['strikes']
     valid_strikes = strikes.select do |strike|
-      option_type == :call ? strike['strikePrice'] >= zone : strike['strikePrice'] <= zone
+      option_type == :ce ? strike['strikePrice'] >= zone : strike['strikePrice'] <= zone
     end
 
     valid_strikes.min_by { |strike| (strike['strikePrice'] - zone).abs }

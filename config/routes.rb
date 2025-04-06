@@ -17,6 +17,11 @@ Rails.application.routes.draw do
   get '/statements/ledger', to: 'statements#ledger'
   get '/statements/trade_history', to: 'statements#trade_history'
   get '/market_sentiment', to: 'market_sentiment#show'
+  resources :options do
+    collection do
+      get :analysis
+    end
+  end
 
   resources :instruments, only: %i[index show]
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html

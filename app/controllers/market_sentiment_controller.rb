@@ -23,11 +23,12 @@ class MarketSentimentController < ApplicationController
     # 5) Optionally fetch short historical data for chain analysis
     historical_data = params[:strategy_type] == 'intraday' ? fetch_intraday_candles(instrument) : fetch_short_historical_data(instrument)
 
+    last_price = instrument.ltp || option_chain[:last_price]
     # 6) Instantiate the new advanced ChainAnalyzer
     chain_analyzer = Option::ChainAnalyzer.new(
       option_chain,
       expiry: expiry,
-      underlying_spot: instrument.ltp || option_chain[:last_price],
+      underlying_spot: last_price,
       historical_data: historical_data
     )
     analysis_result = chain_analyzer.analyze(strategy_type: params[:strategy_type],
@@ -36,7 +37,7 @@ class MarketSentimentController < ApplicationController
     # 7) Use the StrategySuggester to generate potential multi-leg strategies
     #    (We can pass user criteria, e.g. :outlook, :risk, etc., if we want.)
     user_criteria = { analysis: analysis_result } # minimal. Or merge in user param filters, e.g. params[:outlook]
-    suggester     = Option::StrategySuggester.new(option_chain, params)
+    suggester     = Option::StrategySuggester.new(option_chain, last_price, params)
     strategies    = suggester.suggest(user_criteria)
 
     render json: {

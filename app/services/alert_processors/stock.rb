@@ -246,8 +246,7 @@ module AlertProcessors
     end
 
     def maximum_quantity_based_on_funds
-      raw_available_balance = fetch_available_balance
-      effective_funds = raw_available_balance * funds_utilization
+      effective_funds = available_balance * funds_utilization
 
       leveraged_price = option_chain[:last_price] || (ltp / leverage_factor)
 

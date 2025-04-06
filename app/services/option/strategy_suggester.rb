@@ -2,10 +2,10 @@
 
 module Option
   class StrategySuggester
-    def initialize(option_chain, params)
+    def initialize(option_chain, last_price, params)
       @option_chain = option_chain.with_indifferent_access
       @params = params
-      @current_price = option_chain[:last_price].to_f
+      @current_price = last_price
     end
 
     # Takes the advanced `analysis` hash from the new ChainAnalyzer (including best_ce_strike, best_pe_strike, trend, etc.)
