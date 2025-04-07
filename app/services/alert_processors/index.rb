@@ -348,14 +348,14 @@ module AlertProcessors
     def open_long_ce_position?
       dhan_positions.any? do |pos|
         pos['positionType'] == 'LONG' &&
-          pos['securityId'].to_s == ce_security_ids
+          ce_security_ids.include?(pos['securityId'].to_s)
       end
     end
 
     def open_long_pe_position?
       dhan_positions.any? do |pos|
         pos['positionType'] == 'LONG' &&
-          pos['securityId'].to_s == pe_security_ids
+          pe_security_ids.include?(pos['securityId'].to_s)
       end
     end
 
