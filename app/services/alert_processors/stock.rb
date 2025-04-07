@@ -22,20 +22,21 @@ module AlertProcessors
     def call
       Rails.logger.info("Processing stock alert: #{alert.inspect}")
       @option_chain = {}
-      # Check if stock has derivatives (options)
-      if instrument.derivatives.exists?
-        @expiry = instrument.expiry_list.first
-        @option_chain = fetch_option_chain
+      pp  instrument.derivatives.exists?
+      # # Check if stock has derivatives (options)
+      # if instrument.derivatives.exists?
+      #   @expiry = instrument.expiry_list.first
+      #   @option_chain = fetch_option_chain
 
-        analysis_result = analyze_option_chain(option_chain) if option_chain
+      #   analysis_result = analyze_option_chain(option_chain) if option_chain
 
-        # Validate trade using option chain sentiment
-        unless should_trade_based_on_option_chain?(analysis_result)
-          Rails.logger.info('Stock option chain suggests avoiding trade.')
-          alert.update(status: 'skipped', error_message: 'Filtered by option chain analysis.')
-          return
-        end
-      end
+      #   # Validate trade using option chain sentiment
+      #   unless should_trade_based_on_option_chain?(analysis_result)
+      #     Rails.logger.info('Stock option chain suggests avoiding trade.')
+      #     alert.update(status: 'skipped', error_message: 'Filtered by option chain analysis.')
+      #     return
+      #   end
+      # end
 
       unless trade_signal_valid?
         alert.update(status: 'skipped', error_message: 'Signal type did not match current position.')
