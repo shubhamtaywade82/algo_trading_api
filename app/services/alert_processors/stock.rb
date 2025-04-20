@@ -22,7 +22,6 @@ module AlertProcessors
     def call
       Rails.logger.info("Processing stock alert: #{alert.inspect}")
       @option_chain = {}
-      pp  instrument.derivatives.exists?
       # # Check if stock has derivatives (options)
       # if instrument.derivatives.exists?
       #   @expiry = instrument.expiry_list.first
