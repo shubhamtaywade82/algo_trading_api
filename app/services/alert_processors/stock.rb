@@ -18,6 +18,14 @@ module AlertProcessors
   # trade can actually settle. :contentReference[oaicite:0]{index=0}&#8203;:contentReference[oaicite:1]{index=1}
   #
   class Stock < Base
+    include Strategies
+
+    STRATEGY_CLASS_FOR = {
+      'intraday' => Strategies::Intraday,
+      'swing' => Strategies::Swing,
+      'long_term' => Strategies::LongTerm
+    }.freeze
+
     FUNDS_UTILIZATION = 0.3 # % of Total equity can be used
 
     PRODUCT_TYPE_FOR = {
@@ -27,6 +35,7 @@ module AlertProcessors
     }.freeze
 
     LONG_ONLY_STRATEGIES = %w[swing long_term].freeze
+
     LONG_SIGNALS         = %w[long_entry long_exit].freeze
     SHORT_SIGNALS        = %w[short_entry short_exit].freeze
 
@@ -75,29 +84,24 @@ module AlertProcessors
       Rails.logger.error("Stock alert failed ⇒ #{e.message}")
     end
 
-    private
+    # mini-service describing the chosen strategy -----------------------
+    def strat
+      @strat ||= STRATEGY_CLASS_FOR.fetch(alert[:strategy_type]).new(self)
+    end
 
     # GUARD-CLAUSES
     def signal_guard!
       # 1-a  Are we trying to short-sell in swing / long-term?
-      if LONG_ONLY_STRATEGIES.include?(alert[:strategy_type]) &&
-         SHORT_SIGNALS.include?(alert[:signal_type])
-        raise "Short-selling is not supported for #{alert[:strategy_type]} " \
-              'strategies on cash equities (Dhan CNC).'
+      unless strat.allowed_signal?(alert[:signal_type])
+        raise "Short-selling is not allowed for #{alert[:strategy_type]}"
       end
 
       # 1-b  Do we already hold / not hold the stock?
-      current_net_qty = fetch_current_net_quantity # positive, negative, or 0
-
       case alert[:signal_type]
-      when 'long_entry'
-        raise 'Already in a long position.' if current_net_qty.positive?
-      when 'long_exit'
-        raise 'No long position to exit.'    if current_net_qty.zero?
-      when 'short_entry'
-        raise 'Already in a short position.' if current_net_qty.negative?
-      when 'short_exit'
-        raise 'No short position to exit.'   if current_net_qty.zero?
+      when 'long_entry'  then raise 'Already long.'  if current_qty.positive?
+      when 'long_exit'   then raise 'No long pos.'   if current_qty.zero?
+      when 'short_entry' then raise 'Already short.' if current_qty.negative?
+      when 'short_exit'  then raise 'No short pos.'  if current_qty.zero?
       end
     end
 
@@ -128,22 +132,53 @@ module AlertProcessors
     SWING_MAX_FRACTION  = 0.50   # never tie up more than 50 % of funds
     INTRADAY_FRACTION   = 0.30
 
-    # BUY / SELL
-    def calculate_quantity!(product, transaction_type)
-      return fetch_current_net_quantity.abs if transaction_type == 'SELL' # exit → just flatten the existing position
+    # ------------------------------------------------------------------
+    # SIZING
+    #
+    # • For CNC  (Swing / Long-term) we spend at most
+    #       utilisation_fraction × free-cash
+    #
+    # • For INTRADAY the same cash-cap is multiplied by the MIS-leverage
+    #   that the broker gives on that scrip.  (If the scrip doesn’t carry
+    #   MIS leverage the factor gracefully falls back to 1×.)
+    #
+    # The final quantity is the *smaller* of:
+    #   – risk based position size   (RISK_PER_TRADE × balance / price)
+    #   – cash / margin based size   (see above)
+    #   – AND it must respect a sensible “minimum lot” based on LTP.
+    # ------------------------------------------------------------------
+    def calculate_quantity!(product, txn)
+      # ------------------------------------------------------------------
+      # 1.  If this is a *position-closing* trade, just flatten the size
+      # ------------------------------------------------------------------
+      if txn == 'SELL' && current_qty.positive?                       # long_exit
+        return current_qty
+      elsif txn == 'BUY' && current_qty.negative?                     # short_exit
+        return current_qty.abs
+      end
 
-      price     = ltp
-      balance   = available_balance
-      util_frac = product == Dhanhq::Constants::INTRA ? INTRADAY_FRACTION : SWING_MAX_FRACTION
-      risk_cap  = balance * RISK_PER_TRADE
-      max_cash  = balance * util_frac
-      qty_by_risk = (risk_cap / price).floor
-      qty_by_cash = (max_cash / price).floor
+      # From this point on we are either opening or adding *to* a position
+      # (long_entry / short_entry).  We therefore size the trade exactly
+      # the same way irrespective of the transaction side.
+      # ------------------------------------------------------------------
+      # 2.  risk-based cap
+      risk_qty = (available_balance * RISK_PER_TRADE / ltp).floor
 
-      quantity = [qty_by_risk, qty_by_cash].min
-      raise "Insufficient balance to buy even 1 share of #{instrument.symbol_name}" if quantity.zero?
+      # 3.  cash / margin based cap
+      buying_power =
+        if strat.product_type == Dhanhq::Constants::INTRA
+          available_balance * strat.utilisation_fraction * leverage_factor
+        else
+          available_balance * strat.utilisation_fraction # CNC
+        end
+      cash_qty = (buying_power / ltp).floor
 
-      quantity
+      qty = [risk_qty, cash_qty].min
+      qty = validate_quantity(qty)
+
+      raise "Not enough buying power for 1 share of #{instrument.symbol_name}" if qty.zero?
+
+      qty
     end
 
     def execute_order!(payload)
@@ -194,9 +229,47 @@ module AlertProcessors
       end
     end
 
+    # ───────────── helpers delegated to Base / outside ────────────────
+    def current_qty = fetch_current_net_quantity
+
     def fetch_current_net_quantity
       pos = dhan_positions.find { |p| p['securityId'].to_s == instrument.security_id.to_s }
       pos&.dig('netQty').to_i
+    end
+
+    # ------------------------------------------------------------------
+    # The broker won’t let you place *tiny* ticket-sizes on high-priced
+    # shares, or *huge* ticket-sizes on penny stocks.  We keep the same
+    # bucket-logic as Dhan’s front-end.
+    # ------------------------------------------------------------------
+    def minimum_quantity_based_on_ltp
+      price = ltp
+      case price
+      when 0..50    then strat.product_type == Dhanhq::Constants::INTRA ? 500 : 250
+      when 51..200  then strat.product_type == Dhanhq::Constants::INTRA ? 100 :  50
+      when 201..500 then strat.product_type == Dhanhq::Constants::INTRA ? 50 : 25
+      when 501..1_000 then strat.product_type == Dhanhq::Constants::INTRA ? 10 : 5
+      else
+        strat.product_type == Dhanhq::Constants::INTRA ? 5 : 1
+      end
+    end
+
+    # Ensures we never go below the broker’s “odd lot” threshold
+    def validate_quantity(qty)
+      [qty, minimum_quantity_based_on_ltp].max
+    end
+
+    # Defines the leverage factor based on the alert’s strategy type.
+    # If it's intraday, it returns the MIS leverage (or 1 if undefined).
+    # Otherwise, returns 1x leverage for swing/long_term.
+    #
+    # @return [Float] The numeric leverage multiplier.
+    def leverage_factor
+      return 1.0 unless strat.product_type == Dhanhq::Constants::INTRA
+
+      # `mis_detail.mis_leverage` is typically like “5” for 5× margin.
+      lev = instrument.mis_detail&.mis_leverage.to_i
+      lev.positive? ? lev : 1.0
     end
 
     # # **Fetch Option Chain for the Stock's Derivative (if exists)**
@@ -373,37 +446,12 @@ module AlertProcessors
     #   end
     # end
 
-    # def validate_quantity(quantity)
-    #   min_qty = minimum_quantity_based_on_ltp
-    #   if quantity < min_qty
-    #     Rails.logger.warn("Trade quantity (#{quantity}) is below minimum required (#{min_qty}). Adjusting.")
-    #     return min_qty
-    #   end
-
-    #   quantity
-    # end
-
     # def maximum_quantity_based_on_funds
     #   effective_funds = available_balance * FUNDS_UTILIZATION
 
     #   leveraged_price = option_chain[:last_price] || (ltp / leverage_factor)
 
     #   (effective_funds / leveraged_price).floor
-    # end
-
-    # def minimum_quantity_based_on_ltp
-    #   case option_chain[:last_price] || ltp
-    #   when 0..50
-    #     intraday? ? 500 : 250
-    #   when 51..200
-    #     intraday? ? 100 : 50
-    #   when 201..500
-    #     intraday? ? 50 : 25
-    #   when 501..1000
-    #     intraday? ? 10 : 5
-    #   else
-    #     intraday? ? 5 : 1
-    #   end
     # end
 
     # def intraday?
@@ -463,15 +511,6 @@ module AlertProcessors
     #     Rails.logger.warn("Unknown signal_type #{alert[:signal_type]}. Skipping.")
     #     false
     #   end
-    # end
-
-    # # Defines the leverage factor based on the alert’s strategy type.
-    # # If it's intraday, it returns the MIS leverage (or 1 if undefined).
-    # # Otherwise, returns 1x leverage for swing/long_term.
-    # #
-    # # @return [Float] The numeric leverage multiplier.
-    # def leverage_factor
-    #   alert[:strategy_type] == 'intraday' ? instrument.mis_detail&.mis_leverage.to_i || 1 : 1.0
     # end
   end
 end

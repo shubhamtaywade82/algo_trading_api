@@ -41,6 +41,7 @@ module AlertProcessors
 
     def process_index_strategy
       return unless pre_trade_validation
+
       # 1) Identify the first expiry
       expiry = instrument.expiry_list.first
 

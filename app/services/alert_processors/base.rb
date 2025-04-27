@@ -13,8 +13,6 @@ module AlertProcessors
       raise NotImplementedError, "#{self.class} must implement #call"
     end
 
-    private
-
     def ltp
       @ltp ||= begin
         fetched = instrument.ltp
