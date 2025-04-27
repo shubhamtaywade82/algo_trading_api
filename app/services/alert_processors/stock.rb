@@ -72,21 +72,39 @@ module AlertProcessors
       true
     end
 
-    # ------------------------------------------------------------------------
-    #  Order building  -------------------------------------------------------
-    # ------------------------------------------------------------------------
+    # --------------------------------------------------------------------
+    #  Order building – honours DhanHQ field-matrix
+    # --------------------------------------------------------------------
     def build_order_payload!
-      {
-        transactionType: side_for(alert[:signal_type]),
-        orderType: alert[:order_type].upcase,
+      order_type  = alert[:order_type].to_s.upcase
+      txn_side    = side_for(alert[:signal_type])
+
+      payload = {
+        transactionType: txn_side,
+        orderType: order_type, # MARKET / LIMIT / SL / SLM
         productType: PRODUCT.fetch(alert[:strategy_type]),
         validity: Dhanhq::Constants::DAY,
         exchangeSegment: instrument.exchange_segment,
         securityId: instrument.security_id,
-        quantity: calculate_quantity!,
-        price: ltp, # ignored for MARKET
-        triggerPrice: alert[:stop_price].to_f
+        quantity: calculate_quantity!
       }
+
+      case order_type
+      when 'MARKET'
+      # price is **omitted** for true market orders
+      when 'LIMIT'
+        payload[:price] = ltp.round(2)
+      when 'STOP_LOSS', 'STOP_LOSS_MARKET'
+        trigger = alert[:stop_price].to_f
+        raise 'stop_price missing for SL order' unless trigger.positive?
+
+        payload[:triggerPrice] = trigger.round(2)
+        payload[:price]        = (order_type == 'STOP_LOSS_MARKET' ? 0 : ltp.round(2))
+      else
+        raise "Unknown order_type #{order_type}"
+      end
+
+      payload
     end
 
     def side_for(sig)
