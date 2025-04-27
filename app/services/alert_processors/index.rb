@@ -44,24 +44,45 @@ module AlertProcessors
     # ----------------------------------------------------------------
     private
 
+    # ------------------------------------------------------------------
+    #           0. Signal-→-Intent helpers  (NEW / CHANGED)
+    # ------------------------------------------------------------------
+    #
+    # • *_entry  ⇒ BUY   the option (Call for long_entry, Put for short_entry)
+    # • *_exit   ⇒ SELL  the option that was previously bought
+    #
+    SIGNAL_TO_OPTION = {
+      'long_entry' => :ce,
+      'long_exit' => :ce,
+      'short_entry' => :pe,
+      'short_exit' => :pe
+    }.freeze
+
+    SIGNAL_TO_SIDE = {
+      'long_entry' => 'BUY',
+      'short_entry' => 'BUY',
+      'long_exit' => 'SELL',
+      'short_exit' => 'SELL'
+    }.freeze
+
     # ----------------------------------------------------------------
 
     # -- Main orchestration ---------------------------------------------------
     def execute_trade_plan!
       expiry   = instrument.expiry_list.first
       chain    = safe_fetch_option_chain(expiry)
-      dir      = direction(alert[:action]) # :ce / :pe
+      option   = SIGNAL_TO_OPTION.fetch(alert[:signal_type]) # :ce / :pe
       iv_rank  = iv_rank_for(chain)
       analyzer = build_analyzer(chain, expiry, iv_rank)
 
       strikes  = analyzer.analyze(strategy_type: alert[:strategy_type],
-                                  signal_type: dir)
+                                  signal_type: option)
       return skip!(:no_analyzer_output) if strikes.blank?
 
       strike = pick_affordable_strike(strikes)
       return skip!(:no_affordable_strike) unless strike
 
-      derivative = fetch_derivative(strike, expiry, dir)
+      derivative = fetch_derivative(strike, expiry, option)
       return skip!(:no_derivative) unless derivative
 
       order = build_order_payload(strike, derivative)
@@ -71,7 +92,7 @@ module AlertProcessors
 
     # -- Validation helpers ---------------------------------------------------
     def pre_trade_validation
-      case alert[:signal_type].to_s
+      case alert[:signal_type]
       when 'long_entry'  then ensure_no_position!(:ce)
       when 'short_entry' then ensure_no_position!(:pe)
       when 'long_exit'   then exit_position!(:ce)
@@ -178,7 +199,7 @@ module AlertProcessors
     # -- Order building & execution ------------------------------------------
     def build_order_payload(strike, derivative)
       {
-        transactionType: alert[:action].to_s.upcase, # BUY / SELL
+        transactionType: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY / SELL
         orderType: alert[:order_type].to_s.upcase, # MARKET / LIMIT
         productType: Dhanhq::Constants::MARGIN,
         validity: Dhanhq::Constants::DAY,
