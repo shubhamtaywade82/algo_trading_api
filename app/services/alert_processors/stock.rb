@@ -7,6 +7,7 @@ module AlertProcessors
   # environment configuration (PLACE_ORDER). If any step fails, it updates
   # the alert status to "failed" and logs the error.
   class Stock < Base
+    FUNDS_UTILIZATION = 0.3
     attr_reader :option_chain
 
     # The main entry point for processing a stock alert.
@@ -246,7 +247,7 @@ module AlertProcessors
     end
 
     def maximum_quantity_based_on_funds
-      effective_funds = available_balance * funds_utilization
+      effective_funds = available_balance * FUNDS_UTILIZATION
 
       leveraged_price = option_chain[:last_price] || (ltp / leverage_factor)
 
@@ -334,14 +335,6 @@ module AlertProcessors
     # @return [Float] The numeric leverage multiplier.
     def leverage_factor
       alert[:strategy_type] == 'intraday' ? instrument.mis_detail&.mis_leverage.to_i || 1 : 1.0
-    end
-
-    # Defines what fraction of total funds is utilized.
-    # For intraday, we use 30% (0.3); for swing or long_term, 50% (0.5).
-    #
-    # @return [Float] A decimal representing fraction of total funds to use.
-    def funds_utilization
-      alert[:strategy_type] == 'intraday' ? 0.3 : 0.5
     end
   end
 end
