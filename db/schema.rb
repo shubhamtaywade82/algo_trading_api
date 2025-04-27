@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_04_05_105811) do
+ActiveRecord::Schema[8.0].define(version: 2025_04_27_101947) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -34,6 +34,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_04_05_105811) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "signal_type"
+    t.jsonb "metadata"
     t.index ["instrument_id"], name: "index_alerts_on_instrument_id"
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"
