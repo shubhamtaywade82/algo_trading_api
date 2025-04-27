@@ -13,7 +13,7 @@ module AlertProcessors
     ATM_RANGE_PERCENT = 0.01 # ±2% range for ATM selection
     MIN_DELTA = 0.3 # Minimum delta for CE/PE selection
     MIN_OI_THRESHOLD = 50_000 # Ensure sufficient liquidity
-    MIN_PREMIUM = ENV.fetch('MIN_OPTION_PREMIUM', 50).to_f
+    MIN_PREMIUM = ENV.fetch('MIN_OPTION_PREMIUM', 5).to_f
 
     # Main entry point for processing an index alert.
     #
