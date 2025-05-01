@@ -21,29 +21,28 @@ module Option
     end
 
     def analyze(signal_type:, strategy_type:)
-      return [] if iv_rank_outside_range?
+      return { proceed: false, reason: 'IV rank outside range' } if iv_rank_outside_range?
+      return { proceed: false, reason: 'Late entry, theta risk' } if discourage_late_entry_due_to_theta?
 
-      all_filtered = gather_filtered_strikes(signal_type)
+      trend = intraday_trend
+      return { proceed: false, reason: 'Trend does not confirm signal' } unless trend_confirms?(trend, signal_type)
 
-      return [] if all_filtered.empty?
+      filtered = gather_filtered_strikes(signal_type)
+      return { proceed: false, reason: 'No tradable strikes found' } if filtered.empty?
 
-      ranked = all_filtered.map do |opt|
+      ranked = filtered.map do |opt|
         opt.merge(score: score_for(opt, strategy_type))
       end.sort_by { |o| -o[:score] }
 
       top_candidates = ranked.first(3)
 
-      if need_historical_fallback?(top_candidates)
-        trend = intraday_trend
-        return [] unless trend_confirms?(trend, signal_type)
-      end
-
-      if discourage_late_entry_due_to_theta?
-        Rails.logger.info 'Theta decay risk detected (post 2:30 PM on expiry), skipping trade'
-        return []
-      end
-
-      top_candidates
+      {
+        proceed: true,
+        trend: trend,
+        signal_type: signal_type,
+        selected: top_candidates.first,
+        ranked: top_candidates
+      }
     end
 
     private
@@ -106,7 +105,6 @@ module Option
       oi_chg     = opt[:oi_change]
       vol_chg    = opt[:volume_change]
 
-      # Weights based on strategy
       lw, mw, gw = strategy == 'intraday' ? [0.35, 0.35, 0.3] : [0.25, 0.25, 0.5]
 
       liquidity_score = ((oi * volume) + vol_chg.abs) / spread
@@ -141,14 +139,6 @@ module Option
       (trend == :bullish && signal_type == :ce) || (trend == :bearish && signal_type == :pe)
     end
 
-    def need_historical_fallback?(ranked)
-      top = ranked.first
-      return true if top[:score] < 5.0
-      return true if ranked.size > 1 && (ranked[0][:score] - ranked[1][:score]).abs < 0.2
-
-      false
-    end
-
     def discourage_late_entry_due_to_theta?
       now = Time.zone.now
       expiry_today = @expiry == now.to_date
@@ -161,37 +151,6 @@ module Option
       return nil if strikes.empty?
 
       strikes.min_by { |s| (s - @underlying_spot).abs }
-    end
-
-    def summarize_greeks
-      greeks = %w[delta gamma theta vega].index_with { [] }
-
-      @option_chain[:oc].each_value do |row|
-        %w[ce pe].each do |side|
-          next unless row[side]
-
-          g = row[side]['greeks'] || {}
-          greeks.each_key { |k| greeks[k] << g[k].to_f if g[k] }
-        end
-      end
-
-      greeks.transform_values { |vals| average(vals) }
-    end
-
-    def analyze_volatility
-      ivs = []
-      @option_chain[:oc].each_value do |row|
-        ivs << row.dig(:ce, 'implied_volatility').to_f if row[:ce]
-        ivs << row.dig(:pe, 'implied_volatility').to_f if row[:pe]
-      end
-      avg = average(ivs)
-      { average_iv: avg, high_volatility: avg > 20 }
-    end
-
-    def average(array)
-      return 0.0 if array.empty?
-
-      array.sum / array.size
     end
   end
 end

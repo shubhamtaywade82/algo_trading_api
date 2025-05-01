@@ -75,9 +75,15 @@ module AlertProcessors
       iv_rank  = iv_rank_for(chain)
       analyzer = build_analyzer(chain, expiry, iv_rank)
 
-      strikes  = analyzer.analyze(strategy_type: alert[:strategy_type],
-                                  signal_type: option)
-      return skip!(:no_analyzer_output) if strikes.blank?
+      result = analyzer.analyze(
+        strategy_type: alert[:strategy_type],
+        signal_type: option
+      )
+
+      return skip!(result[:reason] || :analyzer_rejected) unless result[:proceed]
+
+      strikes = result[:strikes]
+      return skip!(:no_viable_strikes) if strikes.blank?
 
       strike = pick_affordable_strike(strikes)
       return skip!(:no_affordable_strike) unless strike
