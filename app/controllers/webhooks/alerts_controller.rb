@@ -23,6 +23,7 @@ module Webhooks
       # 2. We fetch the instrument or return 404 if not found.
       #
       alert = instrument.alerts.build(alert_params)
+
       if alert.save
         processor = AlertProcessorFactory.build(alert)
         processor.call

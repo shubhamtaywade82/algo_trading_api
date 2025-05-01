@@ -8,6 +8,8 @@ module Option
     ATM_RANGE_PCT   = 0.01 # 1%
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
 
+    TOP_RANKED_LIMIT = 10
+
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank
 
     def initialize(option_chain, expiry:, underlying_spot:, iv_rank:, historical_data: [])
@@ -17,6 +19,7 @@ module Option
       @iv_rank          = iv_rank.to_f
       @historical_data  = historical_data || []
 
+      Rails.logger.debug { "Analysing Options for #{expiry}" }
       raise ArgumentError, 'Option Chain is missing or empty!' if @option_chain[:oc].blank?
     end
 
@@ -34,7 +37,7 @@ module Option
         opt.merge(score: score_for(opt, strategy_type))
       end.sort_by { |o| -o[:score] }
 
-      top_candidates = ranked.first(3)
+      top_candidates = ranked.first(TOP_RANKED_LIMIT)
 
       {
         proceed: true,
@@ -53,13 +56,21 @@ module Option
 
     def gather_filtered_strikes(signal_type)
       side = signal_type.to_sym
+
       @option_chain[:oc].filter_map do |strike_str, data|
         option = data[side]
         next unless option
 
+        # ⛔ Skip strikes with no valid IV or price
+        next if option['implied_volatility'].to_f.zero? || option['last_price'].to_f.zero?
+
         strike_price = strike_str.to_f
         delta = option.dig('greeks', 'delta').to_f.abs
+
+        # ⛔ Skip strikes with delta below minimum threshold
         next if delta < MIN_DELTA
+
+        # ⛔ Skip if strike is outside ATM range
         next unless within_atm_range?(strike_price)
 
         build_strike_data(strike_price, option, data['volume'])

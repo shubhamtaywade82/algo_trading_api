@@ -46,7 +46,6 @@ class OptionsController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
-
   private
 
   def expiry_date

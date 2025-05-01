@@ -82,10 +82,27 @@ module AlertProcessors
 
       return skip!(result[:reason] || :analyzer_rejected) unless result[:proceed]
 
-      strikes = result[:strikes]
-      return skip!(:no_viable_strikes) if strikes.blank?
+      log_result_summary(result)
+      selected = result[:selected]
+      ranked   = result[:ranked]
+      return skip!(:no_viable_strikes) unless selected
 
-      strike = pick_affordable_strike(strikes)
+      # Check affordability of selected first
+      strike = if strike_affordable?(selected, expiry, option)
+                 log :info, "✅ Selected strike is affordable (≥1 lot): #{format_strike(selected)}"
+                 selected
+               else
+                 fallback = pick_affordable_strike(ranked, expiry, option)
+                 if fallback && strike_affordable?(fallback, expiry, option)
+                   log :info, "⚠️ Selected strike not affordable. Fallback chosen: #{format_strike(fallback)}"
+                   fallback
+                 else
+                   log :warn, '🚫 No affordable strike found after fallback attempt.'
+                   nil
+                 end
+               end
+
+      return skip!(:no_affordable_strike) unless strike
       return skip!(:no_affordable_strike) unless strike
 
       derivative = fetch_derivative(strike, expiry, option)
@@ -189,9 +206,18 @@ module AlertProcessors
     end
 
     # -- Strike / derivative selection ---------------------------------------
-    def pick_affordable_strike(strikes)
-      strikes.detect { |s| s[:last_price].to_f * instrument.lot_size <= available_balance } ||
-        strikes.min_by { |s| s[:last_price] }
+    def strike_affordable?(strike, expiry, option)
+      return false unless strike
+
+      lot_size = lot_size_for(expiry, option)
+      return false if lot_size.zero?
+
+      total_cost = strike[:last_price].to_f * lot_size
+      total_cost <= available_balance
+    end
+
+    def pick_affordable_strike(ranked, expiry, option)
+      ranked.detect { |s| strike_affordable?(s, expiry, option) } || ranked.min_by { |s| s[:last_price] }
     end
 
     def fetch_derivative(strike, expiry, dir)
@@ -233,11 +259,28 @@ module AlertProcessors
     # -- Sizing ---------------------------------------------------------------
     def calculate_quantity(price, lot_size)
       lot_size = lot_size.to_i
-      raise 'invalid lot size (0)' if lot_size.zero?
+      if lot_size.zero?
+        log :error, "❗ Invalid lot size (0) for instrument: #{instrument.id}"
+        return 0
+      end
 
-      half_lots  = ((available_balance * 0.5) / (price * lot_size)).floor
-      lots       = half_lots.positive? ? half_lots : (available_balance / (price * lot_size)).floor
-      raise 'insufficient funds for 1 lot' if lots.zero?
+      max_investment = (available_balance * 0.3)
+      per_lot_cost = price * lot_size
+      lots = (max_investment / per_lot_cost).floor
+
+      if lots.zero? && per_lot_cost <= available_balance
+        lots = 1
+        log :info,
+            "💡 Not enough margin for 30% allocation, but can buy 1 lot. Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
+      elsif lots.zero?
+        shortfall = per_lot_cost - available_balance
+        log :warn,
+            "🚫 Insufficient margin. Required for 1 lot: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
+        return 0
+      else
+        log :info,
+            "✅ Allocating #{lots} lot(s) (~#{lots * lot_size} qty). Per lot cost: ₹#{per_lot_cost.round(2)}, Total: ₹#{(lots * per_lot_cost).round(2)}."
+      end
 
       lots * lot_size
     end
@@ -256,11 +299,11 @@ module AlertProcessors
     end
 
     def ce_security_ids
-      @ce_ids ||= instrument.derivatives.where(option_type: 'CE').pluck(:security_id).map(&:to_s)
+      @ce_security_ids ||= instrument.derivatives.where(option_type: 'CE').pluck(:security_id).map(&:to_s)
     end
 
     def pe_security_ids
-      @pe_ids ||= instrument.derivatives.where(option_type: 'PE').pluck(:security_id).map(&:to_s)
+      @pe_security_ids ||= instrument.derivatives.where(option_type: 'PE').pluck(:security_id).map(&:to_s)
     end
 
     # -- Exit helpers ---------------------------------------------------------
@@ -298,6 +341,42 @@ module AlertProcessors
 
     def log(level, msg)
       Rails.logger.send(level, "[Index #{alert.id}] #{msg}")
+    end
+
+    def log_result_summary(result)
+      log :info, "Analyzer Result → Trend: #{result[:trend]}, Signal: #{result[:signal_type]}"
+      log :info, "Selected: #{format_strike(result[:selected])}"
+      ranked_list = result[:ranked].map { |r| format_strike(r) }.join("\n")
+      log :info, "Top Ranked Options:\n#{ranked_list}"
+    end
+
+    def format_strike(strike)
+      return 'nil' unless strike
+
+      "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]} | IV: #{strike[:iv]} | OI: #{strike[:oi]} | Δ: #{strike.dig(
+        :greeks, :delta
+      )}"
+    end
+
+    def log_pretty_error(error)
+      log :error, "🚨 #{error.class}: #{error.message}\n#{error.backtrace.first(5).join("\n")}"
+    end
+
+    def lot_size_for(expiry, option_type)
+      @lot_sizes ||= {}
+      key = "#{expiry}-#{option_type}"
+      @lot_sizes[key] ||= begin
+        derivative = instrument.derivatives.find_by(
+          expiry_date: expiry,
+          option_type: option_type.to_s.upcase
+        )
+        if derivative.nil?
+          log :warn, "⚠️ Could not find derivative for memoized lot size (#{expiry}, #{option_type.upcase})"
+          0
+        else
+          derivative.lot_size
+        end
+      end
     end
   end
 end
