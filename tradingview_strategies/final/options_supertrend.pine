@@ -1,0 +1,71 @@
+//@version=6
+strategy("Supertrend Strategy - Custom", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+atrPeriod = input(10, "ATR Length")
+factor = input.float(1.2, "Factor", step = 0.01)
+
+strategyType = input.string("intraday",  "Strategy Type", options=["intraday","swing","long_term"])
+orderType    = input.string("market",    "Order Type",    options=["market","limit"])
+
+strategyTitle = "Supertrend"
+jsonAlert(_signal, _action, _currPos, _prevPos) =>
+    '{ "alert": {'  + '"ticker":"' + syminfo.ticker + '",' + '"instrument_type":"' + syminfo.type + '",' +'"exchange":"' + syminfo.prefix + '",' +'"time":"' + str.format_time(time, "yyyy-MM-dd\'T\'HH:mm:ssZ", syminfo.timezone) + '",' + '"strategy_type":"' +  strategyType + '",' + '"order_type":"'        + orderType  + '",' + '"action":"' + _action + '",' + '"current_position":"'  + _currPos + '",' + '"previous_position":"' + _prevPos  + '",' + '"current_price":' + str.tostring(close, "#.##") + ','  + '"chart_interval":"' + timeframe.period + '",' + '"strategy_name":"' + strategyTitle + '",' + '"strategy_id":"' + syminfo.ticker + "_" + strategyType + '",' + '"signal_type":"' + _signal + '"'+'} }'
+
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+
+longCondition = ta.change(direction) < 0
+shortCondition = ta.change(direction) > 0
+
+var lastDirection = 0
+newLong  = longCondition and direction < 0 and lastDirection != -1
+newShort = shortCondition and direction > 0 and lastDirection != 1
+
+if newLong
+    strategy.entry("Long", strategy.long)
+    alert(jsonAlert("long_entry", "buy", "long", "short"), alert.freq_once_per_bar_close)
+    lastDirection := -1
+
+if newShort
+    strategy.entry("Short", strategy.short)
+    alert(jsonAlert("short_entry", "sell", "short", "long"), alert.freq_once_per_bar_close)
+    lastDirection := 1
+
+supertrend := barstate.isfirst ? na : supertrend
+upTrend =    plot(direction < 0 ? supertrend : na, "Up Trend",   color = color.blue, style = plot.style_linebr)
+downTrend =  plot(direction < 0 ? na : supertrend, "Down Trend", color = color.red,   style = plot.style_linebr)
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle",display = display.none)
+
+fill(bodyMiddle, upTrend,   title = "Uptrend background",   color = color.new(color.blue, 95), fillgaps = false)
+fill(bodyMiddle, downTrend, title = "Downtrend background", color = color.new(color.red,   95), fillgaps = false)
+
+// Stats table
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    colorAvg = avgProfit > 0 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)
