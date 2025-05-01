@@ -209,11 +209,7 @@ module AlertProcessors
     def strike_affordable?(strike, expiry, option)
       return false unless strike
 
-      lot_size = lot_size_for(expiry, option)
-      return false if lot_size.zero?
-
-      total_cost = strike[:last_price].to_f * lot_size
-      total_cost <= available_balance
+      check_affordability_and_log(strike, expiry, option)
     end
 
     def pick_affordable_strike(ranked, expiry, option)
@@ -237,7 +233,7 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: derivative.security_id,
         exchangeSegment: derivative.exchange_segment,
-        quantity: calculate_quantity(strike[:last_price], derivative.lot_size)
+        quantity: calculate_quantity(strike, derivative.lot_size)
       }
     end
 
@@ -257,10 +253,13 @@ module AlertProcessors
     end
 
     # -- Sizing ---------------------------------------------------------------
-    def calculate_quantity(price, lot_size)
+    def calculate_quantity(strike, lot_size)
       lot_size = lot_size.to_i
+      price = strike[:last_price].to_f
+      strike_info = "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]}"
+
       if lot_size.zero?
-        log :error, "❗ Invalid lot size (0) for instrument: #{instrument.id}"
+        log :error, "❗ Invalid lot size (0) for instrument: #{instrument.id} (#{strike_info})"
         return 0
       end
 
@@ -271,15 +270,15 @@ module AlertProcessors
       if lots.zero? && per_lot_cost <= available_balance
         lots = 1
         log :info,
-            "💡 Not enough margin for 30% allocation, but can buy 1 lot. Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
+            "💡 Not enough margin for 30% allocation, but can buy 1 lot. (#{strike_info}) Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
       elsif lots.zero?
         shortfall = per_lot_cost - available_balance
         log :warn,
-            "🚫 Insufficient margin. Required for 1 lot: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
+            "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
         return 0
       else
         log :info,
-            "✅ Allocating #{lots} lot(s) (~#{lots * lot_size} qty). Per lot cost: ₹#{per_lot_cost.round(2)}, Total: ₹#{(lots * per_lot_cost).round(2)}."
+            "✅ Allocating #{lots} lot(s) (~#{lots * lot_size} qty). (#{strike_info}) Per lot cost: ₹#{per_lot_cost.round(2)}, Total: ₹#{(lots * per_lot_cost).round(2)}."
       end
 
       lots * lot_size
@@ -378,5 +377,29 @@ module AlertProcessors
         end
       end
     end
+
+    def check_affordability_and_log(strike, expiry, option)
+      lot_size = lot_size_for(expiry, option)
+      strike_info = "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]}"
+
+      if lot_size.zero?
+        log :error, "❗ Invalid lot size (0) for instrument: #{instrument.id} (#{strike_info})"
+        return false
+      end
+
+      per_lot_cost = strike[:last_price].to_f * lot_size
+
+      if per_lot_cost > available_balance
+        shortfall = per_lot_cost - available_balance
+        log :warn,
+            "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
+        false
+      else
+        log :info,
+            "✅ Can afford at least 1 lot. (#{strike_info}) Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
+        true
+      end
+    end
+
   end
 end
