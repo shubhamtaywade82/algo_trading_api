@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_05_12_085023) do
+ActiveRecord::Schema[8.0].define(version: 2025_05_12_174316) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -78,6 +78,17 @@ ActiveRecord::Schema[8.0].define(version: 2025_05_12_085023) do
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_derivatives_unique", unique: true
+  end
+
+  create_table "exit_logs", force: :cascade do |t|
+    t.string "trading_symbol"
+    t.string "security_id"
+    t.string "reason"
+    t.string "order_id"
+    t.decimal "exit_price"
+    t.datetime "exit_time"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "holdings", force: :cascade do |t|

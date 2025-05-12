@@ -1,0 +1,2 @@
+class ExitLog < ApplicationRecord
+end

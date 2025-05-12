@@ -1,118 +1,186 @@
 # frozen_string_literal: true
 
-# app/services/position_manager.rb
-
 module Positions
   class Manager < ApplicationService
-    RISK_REWARD_RATIO = 2.0
-    MAX_ACCEPTABLE_LOSS_PERCENT = 50.0
-    TRAILING_SL_PERCENT = 10.0
-    TRAILING_TP_PERCENT = 20.0
-    BROKERAGE = 20.0
-    GST_RATE = 0.18
-    STT_RATE = 0.025 / 100
-    TRANSACTION_CHARGES_RATE = 0.003503 / 100
-    SEBI_FEES_RATE = 0.0001 / 100
-    STAMP_DUTY_RATE = 0.003 / 100
-    IPFT_RATE = 0.00005 / 100
+    # ─── CHARGES CONSTANTS (rough) ──────────────────────────────────────────
+    BROKERAGE                = 20.0
+    GST_RATE                 = 0.18
+    TRANSACTION_CHARGE_RATE  = 0.003503 / 100
+    STT_RATE                 = 0.025 / 100
+    SEBI_RATE                = 0.0001 / 100
+    STAMP_DUTY_RATE          = 0.003 / 100
+    IPFT_RATE                = 0.00005 / 100
 
+    # ─── PERCENTAGE THRESHOLDS (can be ENV‑driven) ─────────────────────────
+    EQ_TP_PCT        = ENV.fetch('EQ_TAKE_PROFIT_PCT',        20).to_f
+    EQ_SL_PCT        = ENV.fetch('EQ_STOP_LOSS_PCT',          10).to_f
+    EQ_TRAIL_PCT     = ENV.fetch('EQ_TRAILING_SL_PCT', 7).to_f
+
+    OPT_TP_PCT       = ENV.fetch('OPT_TAKE_PROFIT_PCT',       40).to_f
+    OPT_SL_PCT       = ENV.fetch('OPT_STOP_LOSS_PCT',         25).to_f
+    OPT_TRAIL_PCT    = ENV.fetch('OPT_TRAILING_SL_PCT',       15).to_f
+
+    TRAIL_BUFFER_PCT = 1.0 # small buffer to avoid frequent churn
+
+    STORAGE_FILE = Rails.root.join('tmp/max_pnl_cache.yml')
+
+    # ────────────────────────────────────────────────────────────────────────
     def call
-      positions.each do |position|
-        analysis = analyze_position(position)
-        charges = calculate_charges(position, analysis)
-        decision = decide_exit(position, analysis, charges)
+      @peak_cache = load_cache
 
-        decision[:exit] ? place_exit_order(position, decision[:quantity]) : adjust_trailing_stop(position, analysis)
+      fetch_positions.each do |pos|
+        next unless tradable?(pos)
+
+        analysis = analyse(pos)
+        update_peak(pos, analysis)
+        charges  = est_charges(analysis)
+        decision = decide(pos, analysis, charges)
+
+        place_exit_order(pos, analysis, decision[:reason]) if decision[:exit]
       end
-    rescue StandardError
-      Rails.logger.error("PositionManager execution error: #{e.message}")
+
+      persist_cache
+    rescue StandardError => e
+      Rails.logger.error "[PositionManager] fatal: #{e.class} – #{e.message}"
     end
 
-    private
-
-    def positions
-      @positions ||= Dhanhq::API::Portfolio.positions
+    # ─────────────────────────── HELPERS ────────────────────────────────────
+    def fetch_positions
+      Dhanhq::API::Portfolio.positions
+    rescue StandardError => e
+      Rails.logger.error "[PositionManager] fetch error – #{e.message}"
+      []
     end
 
-    def analyze_position(position)
-      entry_price = position['buyAvg'].to_f
-      current_price = position['ltp'].to_f
-      quantity = position['netQty'].abs
-      pnl = (current_price - entry_price) * ((position['netQty']).positive? ? 1 : -1) * quantity
+    def tradable?(p)
+      p['netQty'].to_i.nonzero? && p['buyAvg'].to_f.positive?
+    end
 
+    def analyse(p)
+      qty  = p['netQty'].abs
+      buy  = p['buyAvg'].to_f
+      ltp  = p['ltp'].to_f
+      cost = buy * qty
+      # pnl  = (ltp - buy) * (p['netQty'].positive? ? 1 : -1) * qty
+      pnl  = p['unrealizedProfit'].to_f
       {
-        entry_price: entry_price,
-        current_price: current_price,
-        quantity: quantity,
+        symbol: p['tradingSymbol'],
+        qty: qty,
+        buy_price: buy,
+        ltp: ltp,
         pnl: pnl,
-        pnl_percent: (pnl / (entry_price * quantity).abs * 100).round(2),
-        risk_reward_ratio: (pnl / entry_price.abs).round(2)
+        pnl_pct: (pnl / cost * 100).round(2),
+        cost: cost,
+        inst_type: p['instrument'] || infer_type(p) # EQUITY / OPTIDX / etc
       }
     end
 
-    # **Determine if an exit should be executed**
-    def decide_exit(_position, analysis, charges)
-      net_profit = analysis[:pnl] - charges
-      loss_threshold = analysis[:entry_price] * MAX_ACCEPTABLE_LOSS_PERCENT / 100.0
-      profit_target = analysis[:entry_price] * RISK_REWARD_RATIO
+    def infer_type(p)
+      seg = p['exchangeSegment']
+      return 'OPTION' if seg&.include?('FNO') && p['drvOptionType']
 
-      if net_profit >= profit_target
-        { exit: true, quantity: analysis[:quantity] }
-      elsif analysis[:pnl] <= -loss_threshold
-        { exit: true, quantity: analysis[:quantity] }
+      seg&.include?('EQ') ? 'EQUITY' : 'OTHER'
+    end
+
+    # ─── PEAK PNL TRACKING FOR TRAILING STOP ───────────────────────────────
+    def cache_key(p) = "#{p['securityId']}_#{p['exchangeSegment']}"
+
+    def update_peak(p, analysis)
+      key = cache_key(p)
+      @peak_cache[key] ||= analysis[:pnl_pct]
+      @peak_cache[key] = analysis[:pnl_pct] if analysis[:pnl_pct] > @peak_cache[key]
+    end
+
+    def decide(p, analysis, charges)
+      cfg = cfg_for(analysis[:inst_type])
+      current = analysis[:pnl_pct]
+      key     = cache_key(p)
+      peak    = @peak_cache[key]
+
+      # 1. Exit if SL / TP directly hit
+      reason =
+        if current >= cfg[:tp]
+          "TP #{current}%"
+        elsif current <= -cfg[:sl]
+          "SL #{current}%"
+        # 2. Trailing stop only if current profit > charges
+        elsif current > 0 && (analysis[:pnl] - charges) > 0 && trail_hit?(current, peak, cfg[:trail])
+          "TRAIL #{current}% (peak #{peak}%)"
+        end
+
+      reason ? { exit: true, reason: reason } : { exit: false }
+    end
+
+    def cfg_for(type)
+      if type == 'OPTION'
+        { tp: OPT_TP_PCT, sl: OPT_SL_PCT, trail: OPT_TRAIL_PCT }
       else
-        { exit: false }
+        { tp: EQ_TP_PCT,  sl: EQ_SL_PCT,  trail: EQ_TRAIL_PCT }
       end
     end
 
-    # ✅ **Place exit order directly**
-    def place_exit_order(position, quantity)
-      order_payload = {
-        securityId: position['securityId'],
-        quantity: quantity,
-        transactionType: (position['netQty']).positive? ? 'SELL' : 'BUY',
-        exchangeSegment: position['exchangeSegment'],
-        productType: position['productType'],
-        orderType: 'MARKET',
-        validity: 'DAY'
-      }
+    def trail_hit?(current, peak, trail_pct)
+      return false unless peak
 
-      response = Dhanhq::API::Orders.place(order_payload)
-      if response.success?
-        Rails.logger.info("Order placed successfully for #{position['tradingSymbol']}")
-      else
-        Rails.logger.error("Order placement failed for #{position['tradingSymbol']}: #{response.status} - #{response.body}")
-      end
-    rescue StandardError
-      Rails.logger.error("Order placement error for #{position['tradingSymbol']}: #{e.message}")
+      drop = peak - current
+      drop >= trail_pct && current < peak - TRAIL_BUFFER_PCT
     end
 
-    # ✅ **Adjust trailing stop-loss dynamically**
-    def adjust_trailing_stop(position, analysis)
-      trailing_stop_price = (analysis[:current_price] * (1 - (TRAILING_SL_PERCENT / 100.0))).round(2)
-      modify_payload = { triggerPrice: trailing_stop_price }
-
-      response = Dhanhq::API::Orders.modify(position['orderId'], modify_payload)
-      if response['status'] == 'success'
-        Rails.logger.info("Trailing stop updated for #{position['tradingSymbol']} to #{trailing_stop_price}")
-      else
-        Rails.logger.error("Failed to update trailing stop for #{position['tradingSymbol']}: #{response['omsErrorDescription']}")
-      end
-    rescue StandardError
-      Rails.logger.error("Error updating trailing stop for #{position['tradingSymbol']}: #{e.message}")
-    end
-
-    def calculate_charges(_position, analysis)
-      turnover = (analysis[:entry_price] + analysis[:current_price]) * analysis[:quantity]
+    # ─── CHARGE ESTIMATE ───────────────────────────────────────────────────
+    def est_charges(a)
+      turnover = (a[:buy_price] + a[:ltp]) * a[:qty]
       brokerage = BROKERAGE
-      transaction_charges = turnover * TRANSACTION_CHARGES_RATE
-      sebi_fees = turnover * SEBI_FEES_RATE
-      stt = turnover * STT_RATE
-      stamp_duty = turnover * STAMP_DUTY_RATE
+      txn  = turnover * TRANSACTION_CHARGE_RATE
+      stt  = turnover * STT_RATE
+      sebi = turnover * SEBI_RATE
+      stamp = turnover * STAMP_DUTY_RATE
       ipft = turnover * IPFT_RATE
-      gst = (brokerage + transaction_charges + sebi_fees + stt + stamp_duty + ipft) * GST_RATE
+      gst  = (brokerage + txn) * GST_RATE
+      (brokerage + txn + stt + sebi + stamp + ipft + gst).round(2)
+    end
 
-      (brokerage + transaction_charges + sebi_fees + stt + stamp_duty + ipft + gst).round(2)
+    # ─── EXIT EXECUTION ────────────────────────────────────────────────────
+    def place_exit_order(pos, a, reason)
+      payload = {
+        transactionType: pos['netQty'].positive? ? 'SELL' : 'BUY',
+        orderType: 'MARKET',
+        productType: pos['productType'],
+        validity: 'DAY',
+        securityId: pos['securityId'],
+        exchangeSegment: pos['exchangeSegment'],
+        quantity: a[:qty]
+      }
+
+      resp = Dhanhq::API::Orders.place(payload)
+      if resp['status'] == 'success'
+        Rails.logger.info "[PositionManager] ✔ exited #{a[:symbol]} – #{reason}"
+      else
+        Rails.logger.error "[PositionManager] ✖ exit failed #{a[:symbol]} – #{resp}"
+      end
+
+      ExitLog.create!(
+        trading_symbol: a[:symbol],
+        security_id: pos['securityId'],
+        reason: reason,
+        order_id: resp['orderId'],
+        exit_price: a[:ltp],
+        exit_time: Time.zone.now
+      )
+    rescue StandardError => e
+      Rails.logger.error "[PositionManager] order error #{a[:symbol]} – #{e.message}"
+    end
+
+    # ─── PEAK‑CACHE PERSISTENCE ────────────────────────────────────────────
+    def load_cache
+      if File.exist?(STORAGE_FILE)
+        YAML.safe_load_file(STORAGE_FILE) || {}
+      else
+        {}
+      end
+    end
+
+    def persist_cache
+      File.write(STORAGE_FILE, @peak_cache.to_yaml)
     end
   end
 end
