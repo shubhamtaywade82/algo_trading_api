@@ -13,4 +13,5 @@ class Order < ApplicationRecord
 
   # Associations
   belongs_to :alert, optional: true
+  validates :dhan_order_id, presence: true
 end

@@ -7,6 +7,7 @@ Rails.application.routes.draw do
   resources :mis_details
   namespace :webhooks do
     post :tradingview, to: 'alerts#create'
+    post :dhan_postback, to: 'dhan_postbacks#create'
   end
 
   get '/funds', to: 'funds#index'

@@ -1,0 +1,2 @@
+class PostbackLog < ApplicationRecord
+end

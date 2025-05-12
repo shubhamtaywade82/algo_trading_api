@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_04_27_101947) do
+ActiveRecord::Schema[8.0].define(version: 2025_05_12_085023) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -203,6 +203,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_04_27_101947) do
     t.bigint "alert_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "oms_error_code"
+    t.string "oms_error_description"
     t.index ["alert_id"], name: "index_orders_on_alert_id"
   end
 
@@ -225,6 +227,15 @@ ActiveRecord::Schema[8.0].define(version: 2025_04_27_101947) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_positions_on_instrument_id"
+  end
+
+  create_table "postback_logs", force: :cascade do |t|
+    t.bigint "order_id"
+    t.string "dhan_order_id"
+    t.string "event"
+    t.jsonb "payload"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "strategies", force: :cascade do |t|
