@@ -1,0 +1,340 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+// -------------------------------------------------------------------------------------
+// MACHINE LEARNING ADAPTIVE SUPERTREND + ATR EXITS (STRATEGY)
+// Based on "Machine Learning Adaptive SuperTrend [AlgoAlpha]" (© AlgoAlpha) - adapted.
+// - We place trades when `dir` crosses under/over zero
+// - We use an ATR-based stop loss & take profit for each position.
+// -------------------------------------------------------------------------------------
+strategy(title = "ML Adaptive ST + ATR Strategy", shorttitle = "ML ST Strategy", overlay = true, max_labels_count = 500, default_qty_type = strategy.fixed, default_qty_value= 10)
+
+// -------------------------------------------------------------------------------------
+// INPUTS
+// -------------------------------------------------------------------------------------
+
+// --- Original SuperTrend & Clustering Inputs ---
+atr_len = input.int(10,  "ATR Length", group="SuperTrend Settings")
+fact    = input.float(3, "SuperTrend Factor", group="SuperTrend Settings")
+
+training_data_period = input.int(100, "Training Data Length", group="K-Means Settings")
+highvol  = input.float(0.75, "High Vol. Percentile Guess", maxval=1, group="K-Means Settings")
+midvol   = input.float(0.5,  "Med. Vol. Percentile Guess", maxval=1, group="K-Means Settings")
+lowvol   = input.float(0.25, "Low Vol. Percentile Guess",  maxval=1, group="K-Means Settings")
+
+t1 = input.int(70, "Transparency 1", maxval=100, minval=0, group="Appearance")
+t2 = input.int(95, "Transparency 2", maxval=100, minval=0, group="Appearance")
+green = input.color(#00ffbb, "Bullish Color", group="Appearance")
+red   = input.color(#ff1100, "Bearish Color", group="Appearance")
+
+// --- New ATR-based Exit Inputs ---
+exitAtrLen   = input.int(14, "Exit ATR Period", group="Exit Settings")
+atrSLMult    = input.float(1.5, "ATR SL Multiple", group="Exit Settings", step=0.1)
+atrTPMult    = input.float(3.0, "ATR TP Multiple", group="Exit Settings", step=0.1)
+
+// -------------------------------------------------------------------------------------
+// REUSABLE FUNCTION: pine_supertrend()
+// -------------------------------------------------------------------------------------
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+
+    var int   _direction = na
+    var float superTrend = na
+
+    prevSuperTrend = superTrend[1]
+
+    // Decide direction based on ST location
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+// -------------------------------------------------------------------------------------
+// 1) Compute Volatility & Clustering (K-Means) - Original Logic
+// -------------------------------------------------------------------------------------
+volatility = ta.atr(atr_len)
+
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility,  training_data_period)
+
+high_volatility   = lower + (upper - lower) * highvol
+medium_volatility = lower + (upper - lower) * midvol
+low_volatility    = lower + (upper - lower) * lowvol
+
+var int iterations = 0
+var int size_a = 0
+var int size_b = 0
+var int size_c = 0
+
+hv = array.new_float()
+mv = array.new_float()
+lv = array.new_float()
+
+amean = array.new_float(1, high_volatility)
+bmean = array.new_float(1, medium_volatility)
+cmean = array.new_float(1, low_volatility)
+
+if nz(volatility) > 0 and bar_index >= training_data_period - 1
+    while ((amean.size() == 1 ? true : (amean.first() != amean.get(1))) or (bmean.size() == 1 ? true : (bmean.first() != bmean.get(1))) or (cmean.size() == 1 ? true : (cmean.first() != cmean.get(1))))
+        hv.clear()
+        mv.clear()
+        lv.clear()
+        for i = training_data_period - 1 to 0
+            _1 = math.abs(volatility[i] - amean.first())
+            _2 = math.abs(volatility[i] - bmean.first())
+            _3 = math.abs(volatility[i] - cmean.first())
+            if _1 < _2 and _1 < _3
+                hv.unshift(volatility[i])
+            if _2 < _1 and _2 < _3
+                mv.unshift(volatility[i])
+            if _3 < _1 and _3 < _2
+                lv.unshift(volatility[i])
+
+        amean.unshift(hv.avg())
+        bmean.unshift(mv.avg())
+        cmean.unshift(lv.avg())
+
+        size_a := hv.size()
+        size_b := mv.size()
+        size_c := lv.size()
+        iterations += 1
+
+hv_new = amean.first()
+mv_new = bmean.first()
+lv_new = cmean.first()
+
+vdist_a = math.abs(volatility - hv_new)
+vdist_b = math.abs(volatility - mv_new)
+vdist_c = math.abs(volatility - lv_new)
+
+distances = array.new_float()
+centroids = array.new_float()
+
+array.push(distances, vdist_a)
+array.push(distances, vdist_b)
+array.push(distances, vdist_c)
+
+array.push(centroids, hv_new)
+array.push(centroids, mv_new)
+array.push(centroids, lv_new)
+
+cluster = distances.indexof(distances.min()) // 0=high, 1=medium, 2=low
+assigned_centroid = cluster == -1 ? na : centroids.get(cluster)
+
+// -------------------------------------------------------------------------------------
+// 2) Get Final ST from pine_supertrend()
+//    (Original script: ST, dir) = pine_supertrend(fact, assigned_centroid)
+// -------------------------------------------------------------------------------------
+[ST, dir] = pine_supertrend(fact, assigned_centroid)
+
+// *Important*: This script defines dir < 0 => "Bullish Trend", dir > 0 => "Bearish Trend"
+isBullish() => dir < 0
+isBearish() => dir > 0
+
+// -------------------------------------------------------------------------------------
+// 3) Plot the Supertrend lines (same as original, plus or minus minor changes)
+// -------------------------------------------------------------------------------------
+upTrend   = plot(close > ST ? ST : na, "UpTrend",   color=color.new(green, t1), style=plot.style_linebr)
+downTrend = plot(close < ST ? ST : na, "DownTrend", color=color.new(red,   t1), style=plot.style_linebr)
+
+// Additional fill logic
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle", display=display.none)
+fill(bodyMiddle, upTrend,   (open + close)/2, ST, color.new(green, t2), color.new(green, t1))
+fill(bodyMiddle, downTrend, ST, (open + close)/2, color.new(red, t1), color.new(red, t2))
+
+// Plot bull/bear shapes
+plotshape(ta.crossunder(dir, 0) ? ST : na, "Bullish Trend",
+     style=shape.labelup,   location=location.absolute, color=green,
+     text="▲", textcolor=chart.fg_color, size=size.small)
+plotshape(ta.crossover(dir, 0)  ? ST : na, "Bearish Trend",
+     style=shape.labeldown, location=location.absolute, color=red,
+     text="▼", textcolor=chart.fg_color, size=size.small)
+
+// Label for cluster
+label.new(bar_index,
+     dir > 0 ? ST + ta.atr(7) : ST - ta.atr(7),
+     text       = str.tostring(4 - (cluster + 1)),
+     style      = label.style_none,
+     textcolor  = color.from_gradient(cluster + 1, 1, 3, color.new(dir > 0 ? red : green, 30), color.new(dir > 0 ? red : green, 90)))
+
+// -------------------------------------------------------------------------------------
+// 4) Strategy ENTRY Logic
+//    The original script says:
+//    - "Bullish Trend" if dir crossunder 0 => dir from >0 to <0
+//    - "Bearish Trend" if dir crossover 0  => dir from <0 to >0
+// -------------------------------------------------------------------------------------
+bool bullishSignal  = ta.crossunder(dir, 0)  // dir from above 0 to below 0
+bool bearishSignal  = ta.crossover(dir, 0)   // dir from below 0 to above 0
+
+if bullishSignal
+    // We consider that a "buy" signal
+    strategy.entry("Long", strategy.long)
+
+if bearishSignal
+    // We consider that a "sell" signal
+    strategy.entry("Short", strategy.short)
+
+// -------------------------------------------------------------------------------------
+// 5) ATR-based Exits
+//    We'll exit if the user-specified SL/TP is hit
+// -------------------------------------------------------------------------------------
+exitAtr = ta.atr(exitAtrLen)
+
+// For a LONG position, Stop = average_price - atrSLMult * exitAtr
+//                Target= average_price + atrTPMult * exitAtr
+float longStop = strategy.position_avg_price - (atrSLMult * exitAtr)
+float longTP   = strategy.position_avg_price + (atrTPMult * exitAtr)
+
+// For a SHORT position, Stop = average_price + atrSLMult * exitAtr
+//                 Target= average_price - atrTPMult * exitAtr
+float shortStop = strategy.position_avg_price + (atrSLMult * exitAtr)
+float shortTP   = strategy.position_avg_price - (atrTPMult * exitAtr)
+
+// Actually place the exit orders:
+if strategy.position_size > 0
+    strategy.exit("Long Exit", "Long", stop=longStop, limit=longTP)
+
+if strategy.position_size < 0
+    strategy.exit("Short Exit", "Short", stop=shortStop, limit=shortTP)
+
+// -------------------------------------------------------------------------------------
+// 6) Plot Stop Loss & Take Profit lines (optional visualization)
+// -------------------------------------------------------------------------------------
+plot(strategy.position_size > 0 ? longStop : na,
+     "Long SL", color=color.red, style=plot.style_linebr)
+plot(strategy.position_size > 0 ? longTP   : na,
+     "Long TP", color=color.lime, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? shortStop : na,
+     "Short SL", color=color.red, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? shortTP   : na,
+     "Short TP", color=color.lime, style=plot.style_linebr)
+
+// // -------------------------------------------------------------------------------------
+// // 7) Table-based Dashboard (unchanged from original, except for version=6 syntax fixes)
+// // -------------------------------------------------------------------------------------
+// if barstate.islast
+//     var data_table = table.new(position=position.top_right, columns=4, rows=4,
+//                                bgcolor=chart.bg_color, border_width=1,
+//                                border_color=chart.fg_color, frame_color=chart.fg_color, frame_width=1)
+
+//     table.cell(data_table, 0, 0, "Cluster Number (Volatility Level)",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 1, 0, "Cluster Centroid (ATR)",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 2, 0, "Cluster Size (# of Points)",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 3, 0, "Current Volatility",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 0, 1, "3 (High)", text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 0, 2, "2 (Medium)", text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 0, 3, "1 (Low)",    text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 1, 1, str.format("{0,number,#.##}", hv_new),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 1, 2, str.format("{0,number,#.##}", mv_new),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 1, 3, str.format("{0,number,#.##}", lv_new),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 2, 1, str.format("{0,number,#.##}", size_c),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 2, 2, str.format("{0,number,#.##}", size_b),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 2, 3, str.format("{0,number,#.##}", size_a),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 3, 1,
+//                "HIGH (ATR: " + str.format("{0,number,#.##}", volatility) + ")",
+//                text_color=chart.bg_color, text_halign=text.align_center)
+//     table.cell(data_table, 3, 2,
+//                "MEDIUM (ATR: " + str.format("{0,number,#.##}", volatility) + ")",
+//                text_color=chart.bg_color, text_halign=text.align_center)
+//     table.cell(data_table, 3, 3,
+//                "LOW (ATR: " + str.format("{0,number,#.##}", volatility) + ")",
+//                text_color=chart.bg_color, text_halign=text.align_center)
+
+//     // Highlight the current cluster
+//     if cluster == 0
+//         data_table.cell_set_bgcolor(3, 1, chart.fg_color)
+//     else
+//         data_table.cell_set_bgcolor(3, 1, chart.bg_color)
+
+//     if cluster == 1
+//         data_table.cell_set_bgcolor(3, 2, chart.fg_color)
+//     else
+//         data_table.cell_set_bgcolor(3, 2, chart.bg_color)
+
+//     if cluster == 2
+//         data_table.cell_set_bgcolor(3, 3, chart.fg_color)
+//     else
+//         data_table.cell_set_bgcolor(3, 3, chart.bg_color)
+
+// -------------------------------------------------------------------------------------
+// 8) Alert Conditions (Optional) - If you want to keep the old style
+// -------------------------------------------------------------------------------------
+alertcondition(ta.crossunder(dir, 0) and barstate.isconfirmed,
+     title="Bullish Trend Shift",
+     message="Adaptive ST turned bullish")
+
+alertcondition(ta.crossover(dir, 0) and barstate.isconfirmed,
+     title="Bearish Trend Shift",
+     message="Adaptive ST turned bearish")
+
+alertcondition(cluster == 0 and cluster[1] != 0 and barstate.isconfirmed,
+     title="High Volatility",
+     message="Volatility just classified as High")
+
+alertcondition(cluster == 1 and cluster[1] != 1 and barstate.isconfirmed,
+     title="Medium Volatility",
+     message="Volatility just classified as Medium")
+
+alertcondition(cluster == 2 and cluster[1] != 2 and barstate.isconfirmed,
+     title="Low Volatility",
+     message="Volatility just classified as Low")
+
+// Stats table
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    colorAvg = avgProfit > 0 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)

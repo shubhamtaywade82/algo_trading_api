@@ -1,0 +1,182 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+contractSize = input.int(1, "Contracts per Trade", tooltip="Lot size when trading options")
+strategy(title = "Adaptive-Supertrend-(ML)-+-Multi-Filter Engine | NIFTY50 Scalping", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 1, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+//──────────────────────── 1 • ADAPTIVE SUPERTREND CORE ─────────────────────
+grpAS   = "①-Adaptive Supertrend"
+
+// length / factor rails for volatility regimes
+baseATRlen = input.int(8 ,  "Base ATR Len" , group=grpAS, minval=1)
+baseFactor = input.float(1.3, "Base ATR Mult" , group=grpAS, step=0.1)
+
+minATRlen  = input.int(5 ,  "Min ATR Len"  , group=grpAS)
+maxATRlen  = input.int(14,  "Max ATR Len"  , group=grpAS)
+minFactor  = input.float(1.5, "Min ATR Mult", group=grpAS, step=0.1)
+maxFactor  = input.float(2.5, "Max ATR Mult", group=grpAS, step=0.1)
+
+volLookback = input.int(30, "Vol Look-back", group=grpAS)
+
+// —- Pre-compute three fixed-length ATRs (called once per bar)
+atrBase = ta.atr(baseATRlen)
+atrMin  = ta.atr(minATRlen)
+atrMax  = ta.atr(maxATRlen)
+
+// —- Quartile regime detection (uses atrBase only)
+atrQuartile() =>
+    float[] buf = array.new_float(volLookback, 0.)
+    for i = 0 to volLookback - 1
+        array.set(buf, i, atrBase[i])
+    array.sort(buf)
+    [ array.get(buf, math.floor(volLookback*0.25)) , array.get(buf, math.floor(volLookback*0.50)) , array.get(buf, math.floor(volLookback*0.75)) ]
+
+[lowATR, midATR, highATR] = atrQuartile()
+distLow  = math.abs(atrBase - lowATR)
+distMid  = math.abs(atrBase - midATR)
+distHigh = math.abs(atrBase - highATR)
+regime   = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0   // 1-=-high-vol, -1-=-low-vol
+
+// adapt factor / length with EMA smoothing
+smoothingAlpha = regime==0 ? 0.2 : regime==1 ? 0.1 : 0.3
+var float currFactor = baseFactor
+targetFactor = regime==1 ? maxFactor : regime==-1 ? minFactor : baseFactor
+currFactor := currFactor + smoothingAlpha*(targetFactor-currFactor)
+
+atrUsed = regime==1 ? atrMax : regime==-1 ? atrMin : atrBase
+
+//—-price bands / trend flip
+price      = hl2
+upperBand  = price + currFactor*atrUsed
+lowerBand  = price - currFactor*atrUsed
+var float st   = na
+var int   dir  = 1
+
+prevSt   = nz(st[1], price)
+prevDir  = nz(dir[1], 1)
+stTmp    = prevSt
+dirTmp   = prevDir
+
+if prevDir==1
+    if close < lowerBand[1]
+        dirTmp := -1
+        stTmp := upperBand
+    else
+        stTmp := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        dirTmp := 1
+        stTmp := lowerBand
+    else
+        stTmp := math.min(upperBand, prevSt)
+
+dir := dirTmp
+st  := stTmp
+flip = ta.change(dir)
+
+//──────────────────────── 2 • EXTRA FILTERS ────────────────────────────────
+grpRSI = "②-RSI"
+rsiLen = input.int(14, "RSI Length", group=grpRSI)
+rsi    = ta.rsi(close, rsiLen)
+
+grpMACD= "③-MACD"
+macdFast = input.int(12, "Fast Len",  group=grpMACD)
+macdSlow = input.int(26, "Slow Len",  group=grpMACD)
+macdSig  = input.int(9 , "Signal Len",group=grpMACD)
+[macdL, macdS, _] = ta.macd(close, macdFast, macdSlow, macdSig)
+
+grpEMA = "④-EMA Cross"
+emaFastLen = input.int(9 , "Fast EMA", group=grpEMA)
+emaSlowLen = input.int(21, "Slow EMA", group=grpEMA)
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+
+grpADX = "⑤-ADX Filter"
+adxLen  = input.int(14, "ADX Length", group=grpADX)
+adxTh   = input.float(25, "ADX-Threshold", group=grpADX)
+[_,_,adx] = ta.dmi(adxLen, adxLen)
+
+grpHTF = "⑥-HTF Confirmation"
+htfTf  = input.timeframe("60", "HTF TF", group=grpHTF)
+htfDir = request.security(syminfo.tickerid, htfTf, dir)
+
+// Enable toggles
+grpTog = "⑦-Enable Filters?"
+useRSI  = input.bool(true ,"Use RSI",  group=grpTog)
+useMACD = input.bool(true ,"Use MACD", group=grpTog)
+useEMA  = input.bool(true ,"Use EMA" , group=grpTog)
+useADX  = input.bool(true ,"Use ADX" , group=grpTog)
+useHTF  = input.bool(true ,"Use HTF", group=grpTog)
+
+//──────────────────────── 3 • COMPOSITE ENTRY LOGIC ────────────────────────
+longOK  = dir==1  and
+         (not useRSI  or rsi>50) and
+         (not useMACD or macdL>macdS) and
+         (not useEMA  or emaFast>emaSlow) and
+         (not useADX  or adx>adxTh) and
+         (not useHTF  or htfDir==1)
+
+shortOK = dir==-1 and
+         (not useRSI  or rsi<50) and
+         (not useMACD or macdL<macdS) and
+         (not useEMA  or emaFast<emaSlow) and
+         (not useADX  or adx>adxTh) and
+         (not useHTF  or htfDir==-1)
+
+//──────────────────────── 4 • ATR-BASED EXITS ──────────────────────────────
+grpExit = "⑧-Exit Settings"
+slMult  = input.float(1.2, "SL × ATR", group=grpExit, step=0.1)
+tpMult  = input.float(2.0, "TP × ATR", group=grpExit, step=0.1)
+
+longSL  = strategy.position_avg_price - slMult*atrUsed
+longTP  = strategy.position_avg_price + tpMult*atrUsed
+shortSL = strategy.position_avg_price + slMult*atrUsed
+shortTP = strategy.position_avg_price - tpMult*atrUsed
+
+//──────────────────────── 5 • EXECUTION ────────────────────────────────────
+if (longOK)  and strategy.position_size<=0
+    strategy.entry("Long",  strategy.long)
+if (shortOK) and strategy.position_size>=0
+    strategy.entry("Short", strategy.short)
+
+if strategy.position_size>0
+    strategy.exit("L-Exit", "Long" , stop=longSL , limit=longTP)
+if strategy.position_size<0
+    strategy.exit("S-Exit", "Short", stop=shortSL, limit=shortTP)
+
+//──────────────────────── 6 • STATS DASHBOARD ──────────────────────────────
+enableStats = input.bool(true, title="Show Stats Dashboard?", group="Stats")
+
+var table statsTable = table.new(position.top_right, 2, 6, border_width=1)
+
+if enableStats and bar_index%5==0
+    int    tot  = strategy.closedtrades
+    int    wins = strategy.wintrades
+    int    loss = strategy.losstrades
+    float  wRate= tot>0 ? (wins/tot)*100 : 0
+    float  avgP = tot>0 ? strategy.netprofit/tot : 0
+    float  netP = strategy.netprofit
+    cNet  = netP>0?color.green:color.red
+    cWin  = wRate>50?color.green:color.orange
+    cAvg  = avgP>0?color.green:color.red
+    bg    = color.new(color.black,75)
+
+    table.cell(statsTable,0,0,"Total Trades",text_color=color.white,bgcolor=bg,text_halign=text.align_left)
+    table.cell(statsTable,1,0, str.tostring(tot),               text_color=color.white,bgcolor=bg)
+    table.cell(statsTable,0,1,"Wins",       text_color=color.white,bgcolor=bg,text_halign=text.align_left)
+    table.cell(statsTable,1,1,str.tostring(wins),              text_color=color.white,bgcolor=bg)
+    table.cell(statsTable,0,2,"Losses",     text_color=color.white,bgcolor=bg,text_halign=text.align_left)
+    table.cell(statsTable,1,2,str.tostring(loss),              text_color=color.white,bgcolor=bg)
+    table.cell(statsTable,0,3,"Win-Rate",   text_color=color.white,bgcolor=bg,text_halign=text.align_left)
+    table.cell(statsTable,1,3,str.tostring(wRate,"#.##")+"%",text_color=cWin ,bgcolor=bg)
+    table.cell(statsTable,0,4,"Avg-Profit", text_color=color.white,bgcolor=bg,text_halign=text.align_left)
+    table.cell(statsTable,1,4,str.tostring(avgP,"#.##"),     text_color=cAvg ,bgcolor=bg)
+    table.cell(statsTable,0,5,"Net-Profit", text_color=color.white,bgcolor=bg,text_halign=text.align_left)
+    table.cell(statsTable,1,5,str.tostring(netP,"#.##"),     text_color=cNet ,bgcolor=bg)
+
+//──────────────────── 7 • PLOTS ───────────────────────────────────
+plot(dir==1 ? st : na,  title="ST-Up",  color=color.green, linewidth=2, style=plot.style_linebr)
+plot(dir==-1? st : na,  title="ST-Dn",  color=color.red,   linewidth=2, style=plot.style_linebr)
+plot(emaFast, title="EMA-Fast", color=color.aqua)
+plot(emaSlow, title="EMA-Slow", color=color.orange)
+plotshape(flip!=0, title="Trend-Flip", style=shape.triangledown, location=location.absolute, color=color.yellow, size=size.tiny)

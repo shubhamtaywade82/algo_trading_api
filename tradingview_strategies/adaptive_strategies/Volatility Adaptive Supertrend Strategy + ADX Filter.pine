@@ -1,0 +1,145 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("*Volatility Adaptive Supertrend Strategy + ADX Filter", shorttitle = "VST-Adap-ADX", overlay=true, default_qty_type=strategy.fixed, default_qty_value=10, calc_on_every_tick = true)
+
+//───────────────────────────── Inputs ─────────────────────────────
+groupSettings = "① Core Settings"
+enableAdaptive = input.bool(true, "Enable Volatility Adaptive?", group=groupSettings)
+useAdx = input.bool(true, "Use ADX Filter?", group=groupSettings)
+useAtrExit = input.bool(true, "Use ATR-based Exits?", group=groupSettings)
+
+groupSupertrend = "② Supertrend + Volatility"
+atrPeriod = input.int(10, "ATR Period", group=groupSupertrend)
+factor = input.float(1, "Base Factor", step=0.1, group=groupSupertrend)
+window = input.int(100, "Volatility Training Window", group=groupSupertrend)
+
+groupADX = "③ ADX Filter"
+adxLen = input.int(14, "ADX Length", group=groupADX)
+adxThreshold = input.float(20, "Min ADX Threshold", group=groupADX)
+
+groupExit = "④ Exit Settings"
+slMultBase = input.float(1.0, "Base SL Multiplier", group=groupExit)
+tpMultBase = input.float(2.0, "Base TP Multiplier", group=groupExit)
+
+//───────────────────────────── ATR history & clustering ─────────────────────────────
+var float[] atrArray = array.new_float()
+atr = ta.atr(atrPeriod)
+
+// Default cluster and adaptive factor
+var int cluster = 1  // 0=high, 1=med, 2=low
+adaptiveFactor = factor
+
+// Percentile function
+getPercentile(arr, p) =>
+    sorted = array.copy(arr)
+    array.sort(sorted, order.ascending)
+    idx = math.floor((p / 100) * array.size(sorted))
+    array.get(sorted, math.min(idx, array.size(sorted) - 1))
+
+if enableAdaptive
+    if not na(atr)
+        array.unshift(atrArray, atr)
+        if array.size(atrArray) > window
+            array.pop(atrArray)
+
+    // Cluster logic
+    var float lowVol = na
+    var float midVol = na
+    var float highVol = na
+
+    if array.size(atrArray) >= window
+        lowVol := getPercentile(atrArray, 25)
+        midVol := getPercentile(atrArray, 50)
+        highVol := getPercentile(atrArray, 75)
+
+        cluster := atr >= highVol ? 0 : atr >= midVol ? 1 : 2
+        adaptiveFactor := cluster == 0 ? factor * 1.5 : cluster == 1 ? factor * 1.1 : factor * 0.9
+
+//───────────────────────────── Supertrend ─────────────────────────────
+[supertrend, direction] = ta.supertrend(adaptiveFactor, atrPeriod)
+longCondition = ta.change(direction) < 0
+shortCondition = ta.change(direction) > 0
+
+//───────────────────────────── ADX Filter ─────────────────────────────
+[_, _, adxVal] = ta.dmi(adxLen, adxLen)
+adxOk = not useAdx or (adxVal >= adxThreshold)
+
+//───────────────────────────── Entry logic ─────────────────────────────
+flatVol = math.abs(atr - atr[5]) < 0.01 * atr  // Less than 1% movement in ATR
+var int lastDir = 0
+
+newLong = longCondition and direction < 0 and lastDir != -1 and not flatVol and adxOk
+newShort = shortCondition and direction > 0 and lastDir != 1 and not flatVol and adxOk
+
+if newLong
+    strategy.entry("Long", strategy.long)
+    lastDir := -1
+
+if newShort
+    strategy.entry("Short", strategy.short)
+    lastDir := 1
+
+//───────────────────────────── Adaptive Exit ─────────────────────────────
+slMult = cluster == 0 ? slMultBase * 1.5 : cluster == 1 ? slMultBase * 1.0 : slMultBase * 0.7
+tpMult = cluster == 0 ? tpMultBase * 1.5 : cluster == 1 ? tpMultBase * 1.0 : tpMultBase * 0.7
+
+if useAtrExit
+    if newLong
+        strategy.exit("Long Exit", "Long",
+             stop = strategy.position_avg_price - slMult * atr,
+             limit = strategy.position_avg_price + tpMult * atr)
+    if newShort
+        strategy.exit("Short Exit", "Short",
+             stop = strategy.position_avg_price + slMult * atr,
+             limit = strategy.position_avg_price - tpMult * atr)
+
+//───────────────────────────── Plot ─────────────────────────────
+plot(supertrend, "Supertrend", color = direction < 0 ? color.blue : color.yellow, style=plot.style_linebr)
+
+//───────────────────────────── Cluster Label + Debug ─────────────────────────────
+clusterLabel = enableAdaptive ? (cluster == 0 ? "HIGH VOL" : cluster == 1 ? "MED VOL" : "LOW VOL") : "Adaptive OFF"
+adxStatus = adxOk ? "ADX OK" : "ADX Weak"
+atrExitStatus = useAtrExit ? "ATR Exit ON" : "ATR Exit OFF"
+
+if barstate.islast
+    label.new(bar_index, high,
+     clusterLabel +
+     "\nSL Mult: " + str.tostring(slMult, "#.##") +
+     "\nTP Mult: " + str.tostring(tpMult, "#.##") +
+     "\nADX: " + str.tostring(adxVal, "#.##") +
+     "\n" + adxStatus +
+     "\n" + atrExitStatus,
+     style=label.style_label_down, color=color.gray, textcolor=color.white, size=size.small)
+
+//───────────────────────────── Stats table ─────────────────────────────
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)

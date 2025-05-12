@@ -1,0 +1,96 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("* Volatility Adaptive Supertrend Strategy", shorttitle = "VST-Adap", overlay=true, default_qty_type=strategy.fixed, default_qty_value=10, calc_on_every_tick = true)
+
+// Inputs
+atrPeriod = input.int(10, "ATR Period")
+factor = input.float(1, "Base Factor", step=0.1)
+window = input.int(100, "Volatility Training Window")
+
+// ATR history collection
+var float[] atrArray = array.new_float()
+atr = ta.atr(atrPeriod)
+
+if not na(atr)
+    array.unshift(atrArray, atr)
+    if array.size(atrArray) > window
+        array.pop(atrArray)
+
+// Percentile function
+getPercentile(arr, p) =>
+    sorted = array.copy(arr)
+    array.sort(sorted, order.ascending)
+    idx = math.floor((p / 100) * array.size(sorted))
+    array.get(sorted, math.min(idx, array.size(sorted) - 1))
+
+// Cluster logic
+var float lowVol = na
+var float midVol = na
+var float highVol = na
+
+if array.size(atrArray) >= window
+    lowVol := getPercentile(atrArray, 25)
+    midVol := getPercentile(atrArray, 50)
+    highVol := getPercentile(atrArray, 75)
+
+cluster = atr >= highVol ? 0 : atr >= midVol ? 1 : 2
+adaptiveFactor = cluster == 0 ? factor * 1.5 : cluster == 1 ? factor * 1.0 : factor * 0.7
+
+// Supertrend
+[supertrend, direction] = ta.supertrend(adaptiveFactor, atrPeriod)
+longCondition = ta.change(direction) < 0
+shortCondition = ta.change(direction) > 0
+
+flatVol = math.abs(atr - atr[5]) < 0.01 * atr  // Less than 1% movement in ATR
+var int lastDir = 0
+newLong = longCondition and direction < 0 and lastDir != -1 and not flatVol
+newShort = shortCondition and direction > 0 and lastDir != 1 and not flatVol
+
+if newLong
+    strategy.entry("Long", strategy.long)
+    lastDir := -1
+
+if newShort
+    strategy.entry("Short", strategy.short)
+    lastDir := 1
+
+plot(supertrend, "Supertrend", color = direction < 0 ? color.green : color.red, style=plot.style_linebr)
+
+// Cluster Label
+clusterLabel = cluster == 0 ? "HIGH VOL" : cluster == 1 ? "MED VOL" : "LOW VOL"
+if barstate.islast
+    label.new(bar_index, high, clusterLabel, style=label.style_label_down, color=color.gray, textcolor=color.white, size=size.tiny)
+
+// Stats table
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    colorAvg = avgProfit > 0 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)

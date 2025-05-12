@@ -1,0 +1,203 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//  ──────────────────────────────────────────────────────────────────
+//  ML Adaptive SuperTrend – NIFTY-50 Option intraday strategy
+//  (original ST logic © AlgoAlpha – execution layer by ChatGPT)
+//  ──────────────────────────────────────────────────────────────────
+//@version=6
+strategy("ML Adaptive SuperTrend - NIFTY OPT (intraday)", overlay = true, max_labels_count = 500, default_qty_type = strategy.fixed, default_qty_value = 10, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 0)
+
+// ─────────  USER I/O  ─────────
+strategyType = input.string("intraday", "Strategy Type", options = ["intraday"])
+orderType    = input.string("market",   "Order Type",    options = ["market","limit"])
+slATRmult    = input.float (1.0,  "SL ATR mult", step=0.1, group="Risk")
+tpRmult      = input.float (2.0,  "TP reward (R) mult", step=0.5, group="Risk")
+riskPct      = input.float (1.0,  "Account Risk %", step=0.25, group="Risk")
+
+// // ─────────  SESSION FILTER : 09:20-15:25 IST  ─────────
+sessionOK = not na(time(timeframe.period, "0920-1525:1234567", "Asia/Kolkata"))
+
+// ──────────────────────────────────────────────────────────────────
+//  ❶  >>>>>  — DO NOT TOUCH: Adaptive-SuperTrend core —
+
+atr_len = input.int(10, "ATR Length", group = "SuperTrend Settings")
+fact = input.float(2, "SuperTrend Factor", group = "SuperTrend Settings")
+training_data_period = input.int(100, "Training Data Length", group = "K-Means Settings")
+highvol = input.float(0.75, "Initial High volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'high volatility' area is, a value of 0.75 will take the 75th percentile of the range of ATR values over the training data period")
+midvol = input.float(0.5, "Initial Medium volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'medium volatility' area is, a value of 0.5 will take the 50th percentile of the range of ATR values over the training data period")
+lowvol = input.float(0.25, "Initial Low volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'low volatility' area is, a value of 0.25 will take the 25th percentile of the range of ATR values over the training data period")
+t1 = input.int(70, "Transparency 1", maxval = 100, minval = 0, group = "Appearance")
+t2 = input.int(95, "Transparency 2", maxval = 100, minval = 0, group = "Appearance")
+green = input.color(color.blue, "Bullish Color", group = "Appearance")
+red = input.color(#ff1100, "Bearish Color", group = "Appearance")
+
+//  (-  entire pine_supertrend() + K-Means part copied verbatim  -)
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+//  ………………………………………………………………………………………………………………………………
+volatility = ta.atr(atr_len)
+
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility, training_data_period)
+
+high_volatility = lower + (upper-lower) * highvol
+medium_volatility = lower + (upper-lower) * midvol
+low_volatility = lower + (upper-lower) * lowvol
+
+iterations = 0
+
+size_a = 0
+size_b = 0
+size_c = 0
+
+hv = array.new_float()
+mv = array.new_float()
+lv = array.new_float()
+amean = array.new_float(1,high_volatility)
+bmean = array.new_float(1,medium_volatility)
+cmean = array.new_float(1,low_volatility)
+
+if nz(volatility) > 0 and bar_index >= training_data_period-1
+    while ((amean.size() == 1 ? true : (amean.first() != amean.get(1))) or (bmean.size() == 1 ? true : (bmean.first() != bmean.get(1))) or (cmean.size() == 1 ? true : (cmean.first() != cmean.get(1))))
+        hv.clear()
+        mv.clear()
+        lv.clear()
+        for i = training_data_period-1 to 0
+            _1 = math.abs(volatility[i] - amean.first())
+            _2 = math.abs(volatility[i] - bmean.first())
+            _3 = math.abs(volatility[i] - cmean.first())
+            if _1 < _2 and _1 < _3
+                hv.unshift(volatility[i])
+
+            if _2 < _1 and _2 < _3
+                mv.unshift(volatility[i])
+
+            if _3 < _1 and _3 < _2
+                lv.unshift(volatility[i])
+
+        amean.unshift(hv.avg())
+        bmean.unshift(mv.avg())
+        cmean.unshift(lv.avg())
+        size_a := hv.size()
+        size_b := mv.size()
+        size_c := lv.size()
+        iterations := iterations + 1
+
+hv_new = amean.first()
+mv_new = bmean.first()
+lv_new = cmean.first()
+vdist_a = math.abs(volatility - hv_new)
+vdist_b = math.abs(volatility - mv_new)
+vdist_c = math.abs(volatility - lv_new)
+
+distances = array.new_float()
+centroids = array.new_float()
+
+distances.push(vdist_a)
+distances.push(vdist_b)
+distances.push(vdist_c)
+
+centroids.push(hv_new)
+centroids.push(mv_new)
+centroids.push(lv_new)
+
+cluster = distances.indexof(distances.min()) // 0 for high, 1 for medium, 2 for low
+assigned_centroid = cluster == -1 ? na : centroids.get(cluster)
+//  ………………………………………………………………………………………………………………………………
+[ST, dir]   = pine_supertrend(fact, assigned_centroid)
+// ──────────────────────────────────────────────────────────────────
+
+
+//  ❷  >>>>>  Execution layer for NIFTY options
+//  ─────────  ENTRY signals (same as before)  ─────────
+bullShift = ta.crossunder(dir, 0)      // red  →  blue  (go LONG)
+bearShift = ta.crossover (dir, 0)      // blue →  red   (go SHORT)
+
+// ─────  ORDERS  ─────
+if bullShift
+    strategy.entry("Long",  strategy.long)
+
+if bearShift
+    strategy.entry("Short", strategy.short)
+
+
+// ──────────────────────────────────────────────────────────────────
+//  ❸  JSON-formatted alerts (Rails strong-params compatible)
+// ──────────────────────────────────────────────────────────────────
+jsonAlert(_signal, _action, _currPos, _prevPos)=>
+    '{ "alert": {' + '"ticker":"' + syminfo.ticker + '",' + '"instrument_type":"' + syminfo.type + '",' + '"exchange":"' + syminfo.prefix + '",' + '"time":"' + str.format_time(time, "yyyy-MM-dd\'T\'HH:mm:ssZ", syminfo.timezone) + '",' + '"strategy_type":"' + strategyType + '",' + '"order_type":"' + orderType + '",' + '"action":"' + _action + '",' + '"current_position":"' + _currPos + '",' + '"previous_position":"' + _prevPos + '",' + '"current_price":' + str.tostring(close, "#.##") + ',' + '"chart_interval":"' + timeframe.period + '",' + '"strategy_name":"ML Adaptive SuperTrend",' + '"strategy_id":"' + syminfo.ticker + "_" + strategyType + '",' + '"signal_type":"' + _signal + '" } }'
+
+// helper → "long|short|flat"
+posLabel(qty)=> qty>0? "long": qty<0? "short":"flat"
+prevP = posLabel(strategy.position_size[1])
+currP = posLabel(strategy.position_size)
+
+// ENTRY alerts
+if bullShift and barstate.isconfirmed
+    alert(jsonAlert("long_entry",  "buy",  "long",  prevP), alert.freq_once_per_bar_close)
+
+if bearShift and barstate.isconfirmed
+    alert(jsonAlert("short_entry", "sell", "short", prevP), alert.freq_once_per_bar_close)
+
+// EXIT alerts
+if strategy.position_size == 0 and strategy.position_size[1] > 0 and barstate.isconfirmed
+    alert(jsonAlert("long_exit",  "sell", "flat", "long"),  alert.freq_once_per_bar_close)
+
+if strategy.position_size == 0 and strategy.position_size[1] < 0 and barstate.isconfirmed
+    alert(jsonAlert("short_exit", "buy",  "flat", "short"), alert.freq_once_per_bar_close)
+
+
+// ──────────────────────────────────────────────────────────────────
+//  ❹  (optional) quick stats table – unchanged from your version
+// ──────────────────────────────────────────────────────────────────
+// Stats table
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    colorAvg = avgProfit > 0 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)

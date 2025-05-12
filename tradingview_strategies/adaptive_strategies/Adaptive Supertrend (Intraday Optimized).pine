@@ -1,0 +1,199 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("🔁 Adaptive Supertrend (Intraday Optimized)", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.percent, commission_value=0.03, calc_on_every_tick = true)
+
+// --- Detect chart type ---
+isHAChart = syminfo.type == "heikinashi"
+
+contractQty = input.int(1, title="Contracts per Trade")
+// === PARAMETERS ===
+baseATRlen = input.int(10, title="Base ATR Length", group="Adaptive Parameters")
+baseFactor = input.float(1.5, title="Base ATR Multiplier", group="Adaptive Parameters")
+minATRlen = input.int(8, title="Min ATR Length", group="Adaptive Parameters")
+maxATRlen = input.int(12, title="Max ATR Length", group="Adaptive Parameters")
+minFactor = input.float(1, title="Min ATR Multiplier", group="Adaptive Parameters")
+maxFactor = input.float(2, title="Max ATR Multiplier", group="Adaptive Parameters")
+volLookback = input.int(30, title="Volatility Lookback", group="Adaptive Parameters")
+
+// Exit Settings
+enableATRExit = input.bool(true, title="Enable ATR-based Exits", group="Exit Settings")
+exitBaseSL = input.float(1, title="Exit Base SL Multiplier", group="Adaptive Exit Settings")
+exitMinSL = input.float(0.8, title="Exit Min SL Multiplier", group="Adaptive Exit Settings")
+exitMaxSL = input.float(1.8, title="Exit Max SL Multiplier", group="Adaptive Exit Settings")
+exitBaseTP = input.float(2.0, title="Exit Base TP Multiplier", group="Adaptive Exit Settings")
+exitMinTP = input.float(1.5, title="Exit Min TP Multiplier", group="Adaptive Exit Settings")
+exitMaxTP = input.float(3.8, title="Exit Max TP Multiplier", group="Adaptive Exit Settings")
+enableTrail = input.bool(true, title="Enable Trailing SL", group="Exit Settings")
+trailOffsetMultiplier = input.float(0.5, title="Trailing Offset Multiplier (x ATR)", group="Exit Settings")
+
+
+// Filters
+minVol = input(1000, title="Min Volume Filter", group="Filters")
+enableVWAP = input.bool(true, title="Enable VWAP Filter", group="Filters")
+
+// Time Filter
+startHour = input.int(0, title="Start Hour", group="Time Filter")
+startMin = input.int(0, title="Start Min", group="Time Filter")
+endHour = input.int(23, title="End Hour", group="Time Filter")
+endMin = input.int(59, title="End Min", group="Time Filter")
+startTime = timestamp("Asia/Kolkata", year, month, dayofmonth, startHour, startMin)
+endTime = timestamp("Asia/Kolkata", year, month, dayofmonth, endHour, endMin)
+inSession = (time >= startTime and time <= endTime)
+
+// VWAP & RSI
+vwapLine = ta.vwap(close)
+rsi = ta.rsi(close, 14)
+
+// Heikin Ashi
+ha_handle = ticker.heikinashi(syminfo.tickerid)
+ha_close = request.security(ha_handle, timeframe.period, close)
+ha_high = request.security(ha_handle, timeframe.period, high)
+ha_low = request.security(ha_handle, timeframe.period, low)
+price = (ha_high + ha_low) / 2
+
+// Adaptive ATR
+atrVals = array.new_float(volLookback, 0.0)
+baseATRValOne = ta.atr(baseATRlen)
+for i = 0 to volLookback - 1
+    array.set(atrVals, i, baseATRValOne[i])
+array.sort(atrVals)
+lowATR = array.get(atrVals, math.floor(volLookback * 0.25))
+midATR = array.get(atrVals, math.floor(volLookback * 0.50))
+highATR = array.get(atrVals, math.floor(volLookback * 0.75))
+atrNow = ta.atr(baseATRlen)
+distLow = math.abs(atrNow - lowATR)
+distMid = math.abs(atrNow - midATR)
+distHigh = math.abs(atrNow - highATR)
+regime = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0
+
+// Adaptive smoothing
+var float currFactor = baseFactor
+smoothingAlpha = regime == 0 ? 0.2 : regime == 1 ? 0.1 : 0.3
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+currFactor := currFactor + smoothingAlpha * (targetFactor - currFactor)
+atrUsed = regime == 1 ? ta.atr(maxATRlen) : regime == -1 ? ta.atr(minATRlen) : ta.atr(baseATRlen)
+
+// Exit Mults
+exitSLmult = regime == 1 ? exitMaxSL : regime == -1 ? exitMinSL : exitBaseSL
+exitTPmult = regime == 1 ? exitMaxTP : regime == -1 ? exitMinTP : exitBaseTP
+
+// Supertrend
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+var float st = na
+var int trend = 1
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+if prevTrend == 1
+    if ha_close < lowerBand[1]
+        trend := -1
+        st := upperBand
+    else
+        trend := 1
+        st := math.max(lowerBand, prevSt)
+else
+    if ha_close > upperBand[1]
+        trend := 1
+        st := lowerBand
+    else
+        trend := -1
+        st := math.min(upperBand, prevSt)
+
+flip = ta.change(trend)
+longEntry = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+
+// Filters
+volOK = volume > minVol
+onlyLongAboveVWAP = close > vwapLine
+onlyShortBelowVWAP = close < vwapLine
+momentumOKLong = rsi > 50
+momentumOKShort = rsi < 50
+
+canLong = longEntry and volOK and inSession and (not enableVWAP or onlyLongAboveVWAP) and momentumOKLong
+canShort = shortEntry and volOK and inSession and (not enableVWAP or onlyShortBelowVWAP) and momentumOKShort
+
+if canLong
+    strategy.entry("Long", strategy.long, qty = contractQty)
+if canShort
+    strategy.entry("Short", strategy.short, qty = contractQty)
+
+// === Exits (Safe Handling) ===
+if enableATRExit
+    longSL = strategy.position_avg_price - exitSLmult * atrUsed
+    longTP = strategy.position_avg_price + exitTPmult * atrUsed
+    shortSL = strategy.position_avg_price + exitSLmult * atrUsed
+    shortTP = strategy.position_avg_price - exitTPmult * atrUsed
+
+    if strategy.position_size > 0
+        strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP)
+    if strategy.position_size < 0
+        strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+if enableTrail and atrUsed > 0
+    trailOffset = atrUsed * trailOffsetMultiplier
+    if strategy.position_size > 0
+        strategy.exit("Long Trail", from_entry="Long", trail_points=atrUsed, trail_offset=trailOffset)
+    if strategy.position_size < 0
+        strategy.exit("Short Trail", from_entry="Short", trail_points=atrUsed, trail_offset=trailOffset)
+
+
+// Fallback close (trend-based)
+if (strategy.position_size > 0 and trend == -1)
+    strategy.close("Long")
+if (strategy.position_size < 0 and trend == 1)
+    strategy.close("Short")
+
+// Plots
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=1, style = plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=1, style = plot.style_linebr)
+plotshape(flip != 0 ? st : na, title="Trend Flip", style=shape.triangleup, location=location.absolute, color=color.yellow)
+plot(enableVWAP ? vwapLine : na, title="VWAP", color=color.blue)
+
+// Alerts
+alertcondition(longEntry, title="HA Adaptive Long", message="Adaptive Supertrend Heikin Ashi Long Entry")
+alertcondition(shortEntry, title="HA Adaptive Short", message="Adaptive Supertrend Heikin Ashi Short Entry")
+
+// Debug Label
+regimeStr = regime == 1 ? "High Vol" : regime == -1 ? "Low Vol" : "Neutral"
+trendStr = trend == 1 ? "Uptrend" : "Downtrend"
+entrySignal = longEntry ? "Long Entry" : shortEntry ? "Short Entry" : "No Entry"
+vwapDiff = close - vwapLine
+labelText = str.format("Trend: {0}, Regime: {1}, ATR: {2,number,#.##}\nSLx: {3}, TPx: {4}, VWAPΔ: {5,number,#.##}\n Vol: {6}, Signal: {7}, Flip: {8}",trendStr, regimeStr, atrUsed, exitSLmult, exitTPmult, vwapDiff, volume, entrySignal, flip)
+var label debugLabel = na
+label.delete(debugLabel[1])
+debugLabel := label.new(bar_index, high, labelText, yloc=yloc.abovebar, style=label.style_label_left, color=color.gray, size=size.normal)
+
+// Stats table
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    colorAvg = avgProfit > 0 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)

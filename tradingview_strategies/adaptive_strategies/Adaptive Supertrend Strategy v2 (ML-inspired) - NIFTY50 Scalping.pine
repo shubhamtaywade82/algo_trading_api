@@ -1,0 +1,155 @@
+//@version=6
+contractQty = input.int(1, title="Contracts per Trade", tooltip="Lot size for Nifty options intraday scalping (e.g., 25 contracts per lot).")
+
+strategy("Adaptive Supertrend Strategy v2 (ML-inspired) - NIFTY50 Scalping", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 1, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+import TradingView/ta/10
+
+// === CONFIGURATION ===
+// --- Adaptive Parameters Group ---
+baseATRlen    = input.int(8, title="Base ATR Length", group="Adaptive Parameters", tooltip="Recommended: 7–10 for scalping.")
+baseFactor    = input.float(1.3, title="Base ATR Multiplier", group="Adaptive Parameters", tooltip="Tighter bands for scalping: 1.2–1.5")
+minATRlen     = input.int(5, title="Min ATR Length", group="Adaptive Parameters", tooltip="Lower ATR in low vol regime.")
+maxATRlen     = input.int(14, title="Max ATR Length", group="Adaptive Parameters", tooltip="Upper ATR in high vol regime.")
+minFactor     = input.float(1.5, title="Min ATR Multiplier", group="Adaptive Parameters", tooltip="Tight SL in low vol.")
+maxFactor     = input.float(2.5, title="Max ATR Multiplier", group="Adaptive Parameters", tooltip="Loose SL in high vol.")
+
+// --- Volatility Clustering Logic ---
+volLookback   = input.int(30, title="Volatility Lookback Period", group="Volatility Regime Detection", tooltip="Shorter lookback for scalping.")
+atrVals = array.new_float(volLookback, 0.0)
+// ① Calculate the series once, outside any loop or conditional
+baseATR = ta.atr(baseATRlen)
+
+// ② Use that same series everywhere you need it
+for i = 0 to volLookback - 1
+    array.set(atrVals, i, baseATR[i])   // no extra ATR calls, warning disappears
+// for i = 0 to volLookback - 1
+  //  array.set(atrVals, i, ta.atr(baseATRlen)[i])
+array.sort(atrVals)
+lowATR = array.get(atrVals, math.floor(volLookback * 0.25))
+midATR = array.get(atrVals, math.floor(volLookback * 0.50))
+highATR = array.get(atrVals, math.floor(volLookback * 0.75))
+
+atrNow = ta.atr(baseATRlen)
+distLow = math.abs(atrNow - lowATR)
+
+distMid = math.abs(atrNow - midATR)
+distHigh = math.abs(atrNow - highATR)
+
+atrRank = ta.percentrank(ta.atr(baseATRlen), volLookback)
+// regime  = atrRank > .50 ? 1 : -1   // trending vs. mean-revert
+//regime  = atrRank > 0.66 ? 1 : atrRank < 0.33 ? -1 : 0      // 3 regimes
+regime = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0
+
+// --- Exit Logic ---
+slMult = input.float(1.2, title="Stop Loss Multiplier", group="Exit Settings", tooltip="Scalping stop loss: 1.0–1.5")
+tpMult = input.float(2.0, title="Take Profit Multiplier", group="Exit Settings", tooltip="Scalping target: 2.0–2.5")
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+smoothingAlpha = regime == 0 ? 0.2 : regime == 1 ? 0.1 : 0.3
+var float currFactor = baseFactor
+currFactor := currFactor + smoothingAlpha * (targetFactor - currFactor)
+
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+newTrend = prevTrend
+newSt = prevSt
+
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === ENTRY CONDITIONS ===
+flip = ta.change(trend)
+longEntry  = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+
+// === EXIT STRATEGY ===
+exitATR = atrUsed
+longSL  = strategy.position_avg_price - slMult * exitATR
+longTP  = strategy.position_avg_price + tpMult * exitATR
+shortSL = strategy.position_avg_price + slMult * exitATR
+shortTP = strategy.position_avg_price - tpMult * exitATR
+
+entryBarIndex = strategy.opentrades.entry_bar_index(0)
+canExit = na(entryBarIndex) ? false : bar_index > entryBarIndex
+
+if (longEntry)
+    strategy.entry("Long", strategy.long, qty = contractQty)
+if (shortEntry)
+    strategy.entry("Short", strategy.short, qty = contractQty)
+
+longExit = flip == 1 and trend == -1
+shortExit = flip == -1 and trend == 1
+// if longExit
+//     strategy.close("Long")
+// if shortExit
+//     strategy.close("Short")
+
+if strategy.position_size > 0 and canExit
+    strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP)
+if strategy.position_size < 0 and canExit
+    strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style=plot.style_linebr)
+plotshape(flip != 0 ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor), yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
+
+enableStats = input.bool(true, title="Show Stats Dashboard?", group="Stats")
+var table statsTable = table.new(position.top_right, 2, 6, border_width=1)
+
+if enableStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins        = strategy.wintrades
+    losses      = strategy.losstrades
+    winRate     = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    avgProfit   = totalTrades > 0 ? strategy.netprofit / totalTrades : 0.0
+    netProfit   = strategy.netprofit
+    colorNet    = netProfit > 0 ? color.green : color.red
+    colorWin    = winRate > 50 ? color.green : color.orange
+    colorAvg    = avgProfit > 0 ? color.green : color.red
+    bgcolorTable = color.new(color.black, 75)
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.white, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.white, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 4, "Avg Profit", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 4, str.tostring(avgProfit, "#.##"), text_color=colorAvg, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 5, "Net Profit", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 5, str.tostring(netProfit, "#.##"), text_color=colorNet, bgcolor=bgcolorTable)
+    

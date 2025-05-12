@@ -1,0 +1,197 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © EdgeTerminal
+
+//@version=6
+indicator('Adaptive Supertrend with Dynamic Optimization [nemesis]', shorttitle = "A-ST-Dynamic", overlay = true)
+
+// Input parameters
+atrPeriod = input.int(10, 'ATR Period', minval = 1)
+initMultiplier = input.float(3.0, 'Initial Multiplier', minval = 0.5)
+optPeriod = input.int(50, 'Optimization Lookback', minval = 20)
+adaptiveRate = input.float(0.03, 'Adaptive Rate', minval = 0.001, maxval = 0.1)
+profitTarget = input.float(1.5, 'Profit Target Multiple', minval = 1.0)
+maxLoss = input.float(1.0, 'Max Loss Multiple', minval = 0.5)
+smoothPeriod = input.int(3, 'Smoothing Period', minval = 1, maxval = 10)
+signalCooldown = input.int(10, 'Signal Cooldown Period', minval = 1, maxval = 50)
+confirmationBars = input.int(2, 'Confirmation Bars', minval = 1, maxval = 10)
+
+// Advanced Supertrend calculation with dynamic bands
+calcEnhancedSupertrend(float mult, simple bool isOptimized = false) =>
+    // Basic ATR calculation with smoothing
+    atr = ta.sma(ta.atr(atrPeriod), smoothPeriod)
+
+    // Dynamic volatility adjustment
+    volatility = ta.sma(ta.stdev(close, atrPeriod) / close, smoothPeriod)
+    dynMult = isOptimized ? mult * (1 + volatility) : mult
+
+    // Calculate basic bands with momentum consideration
+    highMA = ta.ema(high, atrPeriod)
+    lowMA = ta.ema(low, atrPeriod)
+    medianPrice = ta.sma((highMA + lowMA) / 2, smoothPeriod)
+
+    // Enhanced band calculation with price momentum
+    momentum = ta.sma(ta.rsi(close, atrPeriod), smoothPeriod)
+    momentumFactor = momentum < 30 ? 1.2 : momentum > 70 ? 0.8 : 1.0
+
+    upperBand = medianPrice + dynMult * atr * momentumFactor
+    lowerBand = medianPrice - dynMult * atr * momentumFactor
+
+    // Additional smoothing for bands
+    upperBand := ta.sma(upperBand, smoothPeriod)
+    lowerBand := ta.sma(lowerBand, smoothPeriod)
+
+    var float trend = 0.0
+    var float supertrend = 0.0
+
+    // Trend calculation with additional filters
+    prevClose = close[1]
+    prevSupertrend = supertrend[1]
+    prevTrend = trend[1]
+
+    // Enhanced trend determination with MACD
+    [macdLine, signalLine, histLine] = ta.macd(close, 12, 26, 9)
+    macdCross = ta.cross(macdLine, signalLine)
+
+    // Trend logic with MACD confirmation
+    if prevTrend == 1
+        trend := prevClose < prevSupertrend or macdCross and macdLine < signalLine ? -1 : 1
+        trend
+    else
+        trend := prevClose > prevSupertrend or macdCross and macdLine > signalLine ? 1 : -1
+        trend
+
+    // Supertrend calculation with enhanced smoothing
+    rawSupertrend = trend == 1 ? lowerBand : upperBand
+    supertrend := ta.sma(ta.ema(rawSupertrend, smoothPeriod), smoothPeriod)
+
+    [supertrend, trend]
+
+// Performance evaluation function
+evaluatePerformance(float mult) =>
+    var float totalProfit = 0.0
+    var float maxDrawdown = 0.0
+    var float peakValue = 0.0
+
+    [st, trd] = calcEnhancedSupertrend(mult, true)
+
+    // Calculate returns
+    ret = (close - close[1]) / close[1]
+    signal = trd == 1 ? 1 : -1
+    tradeReturn = signal * ret
+
+    // Update performance metrics
+    totalProfit := totalProfit + tradeReturn
+    peakValue := math.max(peakValue, totalProfit)
+    maxDrawdown := math.max(maxDrawdown, peakValue - totalProfit)
+
+    // Calculate Sharpe-like ratio
+    volatility = ta.stdev(tradeReturn, optPeriod)
+    sharpeRatio = volatility != 0 ? totalProfit / volatility : 0
+
+    // Complex scoring function
+    score = sharpeRatio * (1 - maxDrawdown / 2)
+    score
+
+// Optimization logic
+var float optMultiplier = initMultiplier
+var float bestScore = 0.0
+
+if bar_index > optPeriod
+    // Test multiple multiplier values
+    for i = -5 to 5 by 1
+        testMult = optMultiplier + i * 0.1
+        if testMult >= 0.5
+            score = evaluatePerformance(testMult)
+            if score > bestScore
+                bestScore := score
+                optMultiplier := testMult
+                optMultiplier
+
+    // Apply adaptive rate to changes
+    optMultiplier := math.max(0.5, optMultiplier * (1 + (close - close[1]) / close[1] * adaptiveRate))
+    optMultiplier
+
+// Calculate both versions
+[origSupertrend, origTrend] = calcEnhancedSupertrend(initMultiplier, false)
+[optSupertrend, optTrend] = calcEnhancedSupertrend(optMultiplier, true)
+
+
+// Signal confirmation and filtering
+isInUptrend = ta.ema(close, 20) > ta.ema(close, 50)
+isInDowntrend = ta.ema(close, 20) < ta.ema(close, 50)
+
+// Advanced signal conditions with confirmation
+buyCondition = ta.cross(close, optSupertrend) and close > optSupertrend
+sellCondition = ta.cross(close, optSupertrend) and close < optSupertrend
+
+// Add trend confirmation
+buyConfirmed = buyCondition and isInUptrend
+sellConfirmed = sellCondition and isInDowntrend
+
+// Add momentum confirmation
+rsiValue = ta.rsi(close, 14)
+buyMomentum = rsiValue > 40 and rsiValue < 60 // Avoid overbought
+sellMomentum = rsiValue > 40 and rsiValue < 60 // Avoid oversold
+
+// Cooldown logic
+var int lastSignalBar = 0
+var string lastSignalType = 'none'
+var int consecutiveSignals = 0
+
+validSignal = bar_index >= lastSignalBar + signalCooldown
+
+// Confirmation counters
+var int buyConfirmationCount = 0
+var int sellConfirmationCount = 0
+
+// Reset confirmation counters on opposite signals
+if buyCondition
+    sellConfirmationCount := 0
+    sellConfirmationCount
+if sellCondition
+    buyConfirmationCount := 0
+    buyConfirmationCount
+
+// Update confirmation counters
+if buyCondition and buyMomentum
+    buyConfirmationCount := buyConfirmationCount + 1
+    buyConfirmationCount
+if sellCondition and sellMomentum
+    sellConfirmationCount := sellConfirmationCount + 1
+    sellConfirmationCount
+
+// Final signal conditions
+validBuySignal = buyConfirmed and buyMomentum and validSignal and buyConfirmationCount >= confirmationBars and (lastSignalType != 'buy' or bar_index >= lastSignalBar + signalCooldown)
+
+validSellSignal = sellConfirmed and sellMomentum and validSignal and sellConfirmationCount >= confirmationBars and (lastSignalType != 'sell' or bar_index >= lastSignalBar + signalCooldown)
+
+// Update signal tracking
+if validBuySignal or validSellSignal
+    lastSignalBar := bar_index
+    lastSignalType := validBuySignal ? 'buy' : 'sell'
+    if lastSignalType == 'buy'
+        consecutiveSignals := lastSignalType[1] == 'buy' ? consecutiveSignals + 1 : 1
+        consecutiveSignals
+    else
+        consecutiveSignals := lastSignalType[1] == 'sell' ? consecutiveSignals + 1 : 1
+        consecutiveSignals
+
+
+// Simplified signal generation
+var int lastSignalBar2 = 0
+buySignal = ta.crossover(close, optSupertrend) and bar_index >= lastSignalBar2 + signalCooldown
+sellSignal = ta.crossunder(close, optSupertrend) and bar_index >= lastSignalBar2 + signalCooldown
+
+// Update lastSignalBar when a signal occurs
+if buySignal or sellSignal
+    lastSignalBar2 := bar_index
+    lastSignalBar2
+
+plot(ta.sma(optSupertrend, smoothPeriod), 'Optimized Supertrend', color = optTrend == 1 ? #0284ffcc : color.new(color.red, 20), linewidth = 2, style = plot.style_line)
+
+// Clear signal display
+if buySignal
+    label.new(bar_index, low - ta.atr(10), 'BUY', color = #025bffcc, textcolor = color.white, size = size.normal, style = label.style_label_up)
+
+if sellSignal
+    label.new(bar_index, high + ta.atr(10), 'SELL', color = color.new(color.red, 20), textcolor = color.white, size = size.normal, style = label.style_label_down)

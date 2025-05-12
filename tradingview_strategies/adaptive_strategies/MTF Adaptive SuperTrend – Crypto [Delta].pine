@@ -1,0 +1,95 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+// ───────────────────────────────────────────────────────────────
+//  Multi‑Timeframe Adaptive SuperTrend – Crypto (Delta Exchange)
+//  Sends JSON alerts compatible with Delta Exchange India bot.
+//  Author: shubhamtaywade82 • 2025
+// ───────────────────────────────────────────────────────────────
+
+strategy("MTF Adaptive SuperTrend – Crypto [Delta]", shorttitle = "MTF‑ST‑CRYPTO", overlay = true, default_qty_type  = strategy.fixed,   default_qty_value = 1, commission_type = strategy.commission.percent, commission_value  = 0.05, pyramiding = 0, calc_on_every_tick = true)
+
+//────────────────── Inputs ──────────────────
+factor   = input.float(1.0,  "SuperTrend Factor", group="Strategy")
+atrLen   = input.int  (10 ,  "ATR Length",        group="Strategy")
+
+// Timeframes
+lowerTF  = input.timeframe("5",   "Lower TF",  group="Timeframes")
+upperTF  = input.timeframe("60",  "Upper TF",  group="Timeframes", tooltip="Higher timeframe for trend confirmation")
+
+// Filters
+useADX   = input.bool (true , "ADX Trend Filter",   group="Filters")
+adxLen   = input.int  (14  , "ADX Length",          group="Filters")
+adxMin   = input.float(20  , "Min ADX",             group="Filters")
+
+useVol   = input.bool (false, "Volume Filter",      group="Filters")
+volLen   = input.int  (20  , "Volume SMA length",   group="Filters")
+volMinMult = input.float(1 , "Vol > SMA *",         group="Filters", tooltip="Volume must be greater than volSMA * X")
+
+// ATR Exit
+useAtrExit = input.bool(true , "Enable ATR Exits",  group="Risk")
+slMult     = input.float(1.5,  "SL × ATR",          group="Risk")
+tpMult     = input.float(3.0,  "TP × ATR",          group="Risk")
+
+// Alert meta
+strategyID = "MTF-ST-CRYPTO"
+
+//────────────────── Helper: SuperTrend dir only ──────────────────
+getDir(_factor, atrLen) =>
+    [_, dir] = ta.supertrend(_factor, atrLen)
+    dir  // <0 bullish, >0 bearish
+
+//────────────────── Multi‑TF directions ──────────────────────────
+dirLower   = request.security(syminfo.tickerid, lowerTF, getDir(factor, atrLen))
+dirCurrent = getDir(factor, atrLen)
+dirUpper   = request.security(syminfo.tickerid, upperTF, getDir(factor, atrLen))
+
+bull   = dirLower < 0 and dirCurrent < 0 and dirUpper < 0
+bear   = dirLower > 0 and dirCurrent > 0 and dirUpper > 0
+
+//────────────────── Filters ──────────────────
+[_,_,adx]=ta.dmi(14, 20)
+adxPass = adx > 20
+volPass = not useVol or volume > ta.sma(volume, volLen) * volMinMult
+
+longCond  = bull  and adxPass and volPass
+shortCond = bear  and adxPass and volPass
+
+//────────────────── Entry Orders ──────────────────
+if longCond
+    strategy.entry("Long", strategy.long)
+    alert('{"symbol":"{{ticker}}","side":"buy","qty":"{{strategy.order.contracts}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+if shortCond
+    strategy.entry("Short", strategy.short)
+    alert('{"symbol":"{{ticker}}","side":"sell","qty":"{{strategy.order.contracts}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+//────────────────── ATR‑based Exits ──────────────────
+atrNow = ta.atr(atrLen)
+if useAtrExit
+    if strategy.position_size > 0
+        strategy.exit("XL", from_entry="Long", stop=strategy.position_avg_price - slMult*atrNow, limit=strategy.position_avg_price + tpMult*atrNow)
+    if strategy.position_size < 0
+        strategy.exit("XS", from_entry="Short", stop=strategy.position_avg_price + slMult*atrNow, limit=strategy.position_avg_price - tpMult*atrNow)
+
+// Exit alerts once per bar
+var float prevPos = na
+exitedLong  = prevPos > 0  and strategy.position_size == 0
+exitedShort = prevPos < 0  and strategy.position_size == 0
+if exitedLong
+    alert('{"symbol":"{{ticker}}","side":"sell","qty":"{{strategy.closedtrades.size}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+if exitedShort
+    alert('{"symbol":"{{ticker}}","side":"buy","qty":"{{strategy.closedtrades.size}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+prevPos := strategy.position_size
+
+//────────────────── Visuals ──────────────────
+[stLine,_] = ta.supertrend(factor, atrLen)
+plot(dirCurrent < 0 ? stLine : na, "ST Bull", color=color.new(color.green,0), style=plot.style_linebr)
+plot(dirCurrent > 0 ? stLine : na, "ST Bear", color=color.new(color.red,0),   style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size>0  ? strategy.position_avg_price - slMult*atrNow : na, title="SL L", color=color.new(color.red,60),  style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size>0  ? strategy.position_avg_price + tpMult*atrNow : na, title="TP L", color=color.new(color.green,60),style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size<0  ? strategy.position_avg_price + slMult*atrNow : na, title="SL S", color=color.new(color.red,60),  style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size<0  ? strategy.position_avg_price - tpMult*atrNow : na, title="TP S", color=color.new(color.green,60),style=plot.style_linebr)

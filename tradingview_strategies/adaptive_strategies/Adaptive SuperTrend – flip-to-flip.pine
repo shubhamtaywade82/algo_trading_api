@@ -1,0 +1,86 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//  ──────────────────────────────────────────────────────────────────────────
+//  Adaptive SuperTrend strategy demo
+//  • Uses ta.supertrend2(), so the ATR look-back can be a *series* (dynamic)
+//  • Flips between two ATR lengths depending on a crude volatility regime
+//  • Goes long at bullish flip, short at bearish flip, exits on next flip
+//  ──────────────────────────────────────────────────────────────────────────
+//  © 2024, released under MPL-2.0 – feel free to fork.
+//
+//@version=6
+strategy("Adaptive SuperTrend – flip-to-flip", overlay = true, default_qty_type  = strategy.fixed, default_qty_value = 1, pyramiding = 0,commission_type = strategy.commission.percent,commission_value = 0.03)
+import TradingView/ta/10
+
+// ── USER INPUTS ────────────────────────────────────────────────────────────
+mult        = input.float(1.5 , "ATR multiplier"      , minval = 0.1 , step = 0.1)
+atrLenSlow  = input.int  (20  , "High-vol ATR length" , minval = 1)
+atrLenFast  = input.int  (10  , "Low-vol  ATR length" , minval = 1)
+rankLookbk  = input.int  (50  , "ATR rank look-back"  , minval = 1)
+useWicks    = input.bool (true, "Use candle wicks?")
+
+// ── VOLATILITY REGIME  (very crude) ───────────────────────────────────────
+atrBase  = ta.atr(atrLenFast)                   // pick one; only for ranking
+atrRank  = ta.percentrank(atrBase, rankLookbk)  // 0…1
+lenDyn   = atrRank > 0.5 ? atrLenSlow : atrLenFast
+
+// ── ADAPTIVE SUPERTREND  – note the *series* argument in supertrend2() ────
+[stFix, dirFixRaw]  = ta.supertrend(mult, atrLenFast, useWicks)
+[stDyn, dirDynRaw]  = ta.supertrend2(mult, lenDyn,   useWicks)
+// [st, dir] = ta.supertrend2(mult, lenDyn, useWicks)   // dir: +1 (up) / -1 (down)
+
+dirFix = dirFixRaw * -1
+dirDyn = dirDynRaw * -1
+
+// ── ENTRY / EXIT RULES  (flip-to-flip) ─────────────────────────────────────
+bullFlip   = dirDyn ==  1 and dirDyn[1] == -1
+bearFlip   = dirDyn == -1 and dirDyn[1] ==  1
+
+if bullFlip
+    strategy.entry("Long" , strategy.long )
+if bearFlip
+    strategy.entry("Short", strategy.short)
+
+if dirDyn == -1 and strategy.position_size > 0
+    strategy.close("Long")
+if dirDyn ==  1 and strategy.position_size < 0
+    strategy.close("Short")
+
+// ── PLOTTING ───────────────────────────────────────────────────────────────
+bandColour = dirDyn == 1 ? color.new(color.green,  0) : color.new(color.red  ,  0)
+
+plot(stDyn, "Adaptive ST", bandColour, 2, plot.style_linebr)
+plot(lenDyn, "ATR-length in use", color=color.silver, display=display.none)  // hidden but handy for debugging
+
+// Stats table
+showStats = input.bool(true, title="Show Stats Table?")
+var table statsTable = table.new(position.top_right, 2, 7, border_width=1)
+
+if showStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins = strategy.wintrades
+    losses = strategy.losstrades
+    winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    netProfit = strategy.netprofit
+    avgProfit = totalTrades > 0 ? netProfit / totalTrades : 0.0
+    colorNet = netProfit > 0 ? color.green : color.red
+    colorWin = winRate > 50 ? color.green : color.red
+    colorAvg = avgProfit > 0 ? color.green : color.red
+    perfRating = winRate > 60 and netProfit > 0 ? "★ Excellent" : winRate > 50 ? "✓ Good" : "⚠️ Weak"
+    netProfitPct = (netProfit / strategy.initial_capital) * 100
+
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.green)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.red)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin)
+    table.cell(statsTable, 0, 4, "Net Profit", text_color=color.white)
+    table.cell(statsTable, 1, 4, str.tostring(netProfit, "#.##"), text_color=colorNet)
+    table.cell(statsTable, 0, 5, "Rating", text_color=color.white)
+    table.cell(statsTable, 1, 5, perfRating, text_color=color.yellow)
+    table.cell(statsTable, 0, 6, "Profit %", text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(netProfitPct, "#.##") + "%", text_color=colorNet)

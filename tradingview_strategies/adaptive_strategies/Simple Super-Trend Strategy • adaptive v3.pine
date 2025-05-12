@@ -1,0 +1,104 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("⚡ Simple Super-Trend Strategy • adaptive v3", overlay = true, default_qty_type = strategy.fixed, default_qty_value = 1, pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.03, calc_on_every_tick = true)
+import TradingView/ta/10
+
+//──────────────────── ① INPUTS ────────────────────────────────────────────
+grpST = "Super-Trend rails"
+lenLow   = input.int  ( 7, "ATR length – Low vol" , group=grpST)
+lenBase  = input.int  (10, "ATR length – Neutral" , group=grpST)
+lenHigh  = input.int  (14, "ATR length – High vol", group=grpST)
+
+facTight = input.float(1.0, "Factor – Low vol" , group=grpST, step=.1)
+facBase  = input.float(1.4, "Factor – Neutral" , group=grpST, step=.1)
+facLoose = input.float(2.0, "Factor – High vol", group=grpST, step=.1)
+
+grpVol = "Volatility regime"
+rankLook = input.int  (50 , "ATR percentile look-back", group=grpVol)
+hiPerc   = input.float(0.6, "High-vol threshold"      , group=grpVol)
+loPerc   = input.float(0.4, "Low-vol threshold"       , group=grpVol)
+
+grpExit  = "ATR SL / TP"
+useBracket = input.bool (false, "Use ATR SL / TP?" , group=grpExit)
+slX        = input.float(1.2 , "SL × ATR"          , group=grpExit, step=.1)
+tpX        = input.float(2.0 , "TP × ATR"          , group=grpExit, step=.1)
+
+//──────────────────── ② VOLATILITY REGIME ────────────────────────────────
+atrFast  = ta.atr(lenLow)                    // shorter ATR = faster
+atrRank  = ta.percentrank(atrFast, rankLook) // 0-1 percentile of recent ATR
+
+regime = atrRank > hiPerc ?  1 : atrRank < loPerc ? -1 : 0      //  low vol | else neutral
+
+//──────────────────── ③ PRE-COMPUTED SUPER-TRENDS ────────────────────────
+[stL , dirL] = ta.supertrend(facTight, lenLow)
+[stM , dirM] = ta.supertrend(facBase , lenBase)
+[stH , dirH] = ta.supertrend(facLoose, lenHigh)
+
+// Pick the **active** rail
+stLine = regime== 1 ? stH  : regime==-1 ? stL  : stM
+stDir  = regime== 1 ? dirH : regime==-1 ? dirL : dirM   // TV’s dir: 1=below, -1=above
+stDir  := stDir * -1                                     // flip polarity: +1 bull, -1 bear
+
+//──────────────────── ④ TRADING LOGIC ─────────────────────────────────────
+flip      = ta.change(stDir) != 0
+isBull    = stDir ==  1
+isBear    = stDir == -1
+
+if flip and isBull
+    strategy.entry("Long" , strategy.long)
+
+if flip and isBear
+    strategy.entry("Short", strategy.short)
+
+// optional ATR SL / TP
+atrNow = ta.atr(lenBase)          // any constant len is fine
+
+if useBracket and strategy.position_size > 0
+    strategy.exit("L-exit", "Long", stop  = strategy.position_avg_price - slX*atrNow, limit = strategy.position_avg_price + tpX*atrNow)
+
+if useBracket and strategy.position_size < 0
+    strategy.exit("S-exit", "Short", stop  = strategy.position_avg_price + slX*atrNow, limit = strategy.position_avg_price - tpX*atrNow)
+
+// also exit on opposite flip
+if flip and isBear
+    strategy.close("Long",  comment="flip exit")
+if flip and isBull
+    strategy.close("Short", comment="flip exit")
+
+//──────────────────── ⑤ PLOTS ────────────────────────────────────────────
+plot(regime== 1 ? stH : na, "ST-High vol",  color=color.orange, style=plot.style_linebr)
+plot(regime== 0 ? stM : na, "ST-Neutral" ,  color=color.gray  , style=plot.style_linebr)
+plot(regime==-1 ? stL : na, "ST-Low vol" ,  color=color.teal  , style=plot.style_linebr)
+
+plotshape(flip and isBull,  "Long ⇧",  shape.triangleup , location.belowbar, color.lime   , size=size.small)
+plotshape(flip and isBear,  "Short ⇩", shape.triangledown, location.abovebar, color.fuchsia, size=size.small)
+
+// ---------------------------------- STATS TABLE - BACK TESTING RESULTS -------------------------
+enableStats = input.bool(true, title="Show Stats Dashboard?", group="Stats")
+var table statsTable = table.new(position.top_right, 2, 6, border_width=1)
+
+if enableStats and bar_index % 5 == 0
+    totalTrades = strategy.closedtrades
+    wins        = strategy.wintrades
+    losses      = strategy.losstrades
+    winRate     = totalTrades > 0 ? (wins / totalTrades) * 100 : 0.0
+    avgProfit   = totalTrades > 0 ? strategy.netprofit / totalTrades : 0.0
+    netProfit   = strategy.netprofit
+    colorNet    = netProfit > 0 ? color.green : color.red
+    colorWin    = winRate > 50 ? color.green : color.orange
+    colorAvg    = avgProfit > 0 ? color.green : color.red
+    bgcolorTable = color.new(color.black, 75)
+    table.cell(statsTable, 0, 0, "Total Trades", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 0, str.tostring(totalTrades), text_color=color.white, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 1, "Wins", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 1, str.tostring(wins), text_color=color.white, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 2, "Losses", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 2, str.tostring(losses), text_color=color.white, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 3, "Win Rate", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 3, str.tostring(winRate, "#.##") + "%", text_color=colorWin, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 4, "Avg Profit", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 4, str.tostring(avgProfit, "#.##"), text_color=colorAvg, bgcolor=bgcolorTable)
+    table.cell(statsTable, 0, 5, "Net Profit", text_color=color.white, bgcolor=bgcolorTable, text_halign=text.align_left)
+    table.cell(statsTable, 1, 5, str.tostring(netProfit, "#.##"), text_color=colorNet, bgcolor=bgcolorTable)

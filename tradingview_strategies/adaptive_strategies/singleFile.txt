@@ -1,0 +1,2656 @@
+strategy("Adaptive SuperTrend – flip-to-flip", overlay = true, default_qty_type  = strategy.fixed, default_qty_value = 1, pyramiding = 0,commission_type = strategy.commission.percent,commission_value = 0.03)
+import TradingView/ta/10
+
+// ── USER INPUTS ────────────────────────────────────────────────────────────
+mult        = input.float(1.5 , "ATR multiplier"      , minval = 0.1 , step = 0.1)
+atrLenSlow  = input.int  (20  , "High-vol ATR length" , minval = 1)
+atrLenFast  = input.int  (10  , "Low-vol  ATR length" , minval = 1)
+rankLookbk  = input.int  (50  , "ATR rank look-back"  , minval = 1)
+useWicks    = input.bool (true, "Use candle wicks?")
+
+// ── VOLATILITY REGIME  (very crude) ───────────────────────────────────────
+atrBase  = ta.atr(atrLenFast)                   // pick one; only for ranking
+atrRank  = ta.percentrank(atrBase, rankLookbk)  // 0…1
+lenDyn   = atrRank > 0.5 ? atrLenSlow : atrLenFast
+
+// ── ADAPTIVE SUPERTREND  – note the *series* argument in supertrend2() ────
+[stFix, dirFixRaw]  = ta.supertrend(mult, atrLenFast, useWicks)
+[stDyn, dirDynRaw]  = ta.supertrend2(mult, lenDyn,   useWicks)
+// [st, dir] = ta.supertrend2(mult, lenDyn, useWicks)   // dir: +1 (up) / -1 (down)
+
+dirFix = dirFixRaw * -1
+dirDyn = dirDynRaw * -1
+
+// ── ENTRY / EXIT RULES  (flip-to-flip) ─────────────────────────────────────
+bullFlip   = dirDyn ==  1 and dirDyn[1] == -1
+bearFlip   = dirDyn == -1 and dirDyn[1] ==  1
+
+if bullFlip
+    strategy.entry("Long" , strategy.long )
+if bearFlip
+    strategy.entry("Short", strategy.short)
+
+if dirDyn == -1 and strategy.position_size > 0
+    strategy.close("Long")
+if dirDyn ==  1 and strategy.position_size < 0
+    strategy.close("Short")
+
+// ── PLOTTING ───────────────────────────────────────────────────────────────
+bandColour = dirDyn == 1 ? color.new(color.green,  0) : color.new(color.red  ,  0)
+
+plot(stDyn, "Adaptive ST", bandColour, 2, plot.style_linebr)
+plot(lenDyn, "ATR-length in use", color=color.silver, display=display.none)  // hidden but handy for debugging
+
+
+strategy("🔁 Adaptive Supertrend (Intraday Optimized)", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.percent, commission_value=0.03, calc_on_every_tick = true)
+
+// --- Detect chart type ---
+isHAChart = syminfo.type == "heikinashi"
+
+contractQty = input.int(1, title="Contracts per Trade")
+// === PARAMETERS ===
+baseATRlen = input.int(10, title="Base ATR Length", group="Adaptive Parameters")
+baseFactor = input.float(1.5, title="Base ATR Multiplier", group="Adaptive Parameters")
+minATRlen = input.int(8, title="Min ATR Length", group="Adaptive Parameters")
+maxATRlen = input.int(12, title="Max ATR Length", group="Adaptive Parameters")
+minFactor = input.float(1, title="Min ATR Multiplier", group="Adaptive Parameters")
+maxFactor = input.float(2, title="Max ATR Multiplier", group="Adaptive Parameters")
+volLookback = input.int(30, title="Volatility Lookback", group="Adaptive Parameters")
+
+// Exit Settings
+enableATRExit = input.bool(true, title="Enable ATR-based Exits", group="Exit Settings")
+exitBaseSL = input.float(1, title="Exit Base SL Multiplier", group="Adaptive Exit Settings")
+exitMinSL = input.float(0.8, title="Exit Min SL Multiplier", group="Adaptive Exit Settings")
+exitMaxSL = input.float(1.8, title="Exit Max SL Multiplier", group="Adaptive Exit Settings")
+exitBaseTP = input.float(2.0, title="Exit Base TP Multiplier", group="Adaptive Exit Settings")
+exitMinTP = input.float(1.5, title="Exit Min TP Multiplier", group="Adaptive Exit Settings")
+exitMaxTP = input.float(3.8, title="Exit Max TP Multiplier", group="Adaptive Exit Settings")
+enableTrail = input.bool(true, title="Enable Trailing SL", group="Exit Settings")
+trailOffsetMultiplier = input.float(0.5, title="Trailing Offset Multiplier (x ATR)", group="Exit Settings")
+
+
+// Filters
+minVol = input(1000, title="Min Volume Filter", group="Filters")
+enableVWAP = input.bool(true, title="Enable VWAP Filter", group="Filters")
+
+// Time Filter
+startHour = input.int(0, title="Start Hour", group="Time Filter")
+startMin = input.int(0, title="Start Min", group="Time Filter")
+endHour = input.int(23, title="End Hour", group="Time Filter")
+endMin = input.int(59, title="End Min", group="Time Filter")
+startTime = timestamp("Asia/Kolkata", year, month, dayofmonth, startHour, startMin)
+endTime = timestamp("Asia/Kolkata", year, month, dayofmonth, endHour, endMin)
+inSession = (time >= startTime and time <= endTime)
+
+// VWAP & RSI
+vwapLine = ta.vwap(close)
+rsi = ta.rsi(close, 14)
+
+// Heikin Ashi
+ha_handle = ticker.heikinashi(syminfo.tickerid)
+ha_close = request.security(ha_handle, timeframe.period, close)
+ha_high = request.security(ha_handle, timeframe.period, high)
+ha_low = request.security(ha_handle, timeframe.period, low)
+price = (ha_high + ha_low) / 2
+
+// Adaptive ATR
+atrVals = array.new_float(volLookback, 0.0)
+baseATRValOne = ta.atr(baseATRlen)
+for i = 0 to volLookback - 1
+    array.set(atrVals, i, baseATRValOne[i])
+array.sort(atrVals)
+lowATR = array.get(atrVals, math.floor(volLookback * 0.25))
+midATR = array.get(atrVals, math.floor(volLookback * 0.50))
+highATR = array.get(atrVals, math.floor(volLookback * 0.75))
+atrNow = ta.atr(baseATRlen)
+distLow = math.abs(atrNow - lowATR)
+distMid = math.abs(atrNow - midATR)
+distHigh = math.abs(atrNow - highATR)
+regime = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0
+
+// Adaptive smoothing
+var float currFactor = baseFactor
+smoothingAlpha = regime == 0 ? 0.2 : regime == 1 ? 0.1 : 0.3
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+currFactor := currFactor + smoothingAlpha * (targetFactor - currFactor)
+atrUsed = regime == 1 ? ta.atr(maxATRlen) : regime == -1 ? ta.atr(minATRlen) : ta.atr(baseATRlen)
+
+// Exit Mults
+exitSLmult = regime == 1 ? exitMaxSL : regime == -1 ? exitMinSL : exitBaseSL
+exitTPmult = regime == 1 ? exitMaxTP : regime == -1 ? exitMinTP : exitBaseTP
+
+// Supertrend
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+var float st = na
+var int trend = 1
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+if prevTrend == 1
+    if ha_close < lowerBand[1]
+        trend := -1
+        st := upperBand
+    else
+        trend := 1
+        st := math.max(lowerBand, prevSt)
+else
+    if ha_close > upperBand[1]
+        trend := 1
+        st := lowerBand
+    else
+        trend := -1
+        st := math.min(upperBand, prevSt)
+
+flip = ta.change(trend)
+longEntry = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+
+// Filters
+volOK = volume > minVol
+onlyLongAboveVWAP = close > vwapLine
+onlyShortBelowVWAP = close < vwapLine
+momentumOKLong = rsi > 50
+momentumOKShort = rsi < 50
+
+canLong = longEntry and volOK and inSession and (not enableVWAP or onlyLongAboveVWAP) and momentumOKLong
+canShort = shortEntry and volOK and inSession and (not enableVWAP or onlyShortBelowVWAP) and momentumOKShort
+
+if canLong
+    strategy.entry("Long", strategy.long, qty = contractQty)
+if canShort
+    strategy.entry("Short", strategy.short, qty = contractQty)
+
+// === Exits (Safe Handling) ===
+if enableATRExit
+    longSL = strategy.position_avg_price - exitSLmult * atrUsed
+    longTP = strategy.position_avg_price + exitTPmult * atrUsed
+    shortSL = strategy.position_avg_price + exitSLmult * atrUsed
+    shortTP = strategy.position_avg_price - exitTPmult * atrUsed
+
+    if strategy.position_size > 0
+        strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP)
+    if strategy.position_size < 0
+        strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+if enableTrail and atrUsed > 0
+    trailOffset = atrUsed * trailOffsetMultiplier
+    if strategy.position_size > 0
+        strategy.exit("Long Trail", from_entry="Long", trail_points=atrUsed, trail_offset=trailOffset)
+    if strategy.position_size < 0
+        strategy.exit("Short Trail", from_entry="Short", trail_points=atrUsed, trail_offset=trailOffset)
+
+
+// Fallback close (trend-based)
+if (strategy.position_size > 0 and trend == -1)
+    strategy.close("Long")
+if (strategy.position_size < 0 and trend == 1)
+    strategy.close("Short")
+
+// Plots
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=1, style = plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=1, style = plot.style_linebr)
+plotshape(flip != 0 ? st : na, title="Trend Flip", style=shape.triangleup, location=location.absolute, color=color.yellow)
+plot(enableVWAP ? vwapLine : na, title="VWAP", color=color.blue)
+
+// Alerts
+alertcondition(longEntry, title="HA Adaptive Long", message="Adaptive Supertrend Heikin Ashi Long Entry")
+alertcondition(shortEntry, title="HA Adaptive Short", message="Adaptive Supertrend Heikin Ashi Short Entry")
+
+// Debug Label
+regimeStr = regime == 1 ? "High Vol" : regime == -1 ? "Low Vol" : "Neutral"
+trendStr = trend == 1 ? "Uptrend" : "Downtrend"
+entrySignal = longEntry ? "Long Entry" : shortEntry ? "Short Entry" : "No Entry"
+vwapDiff = close - vwapLine
+labelText = str.format("Trend: {0}, Regime: {1}, ATR: {2,number,#.##}\nSLx: {3}, TPx: {4}, VWAPΔ: {5,number,#.##}\n Vol: {6}, Signal: {7}, Flip: {8}",trendStr, regimeStr, atrUsed, exitSLmult, exitTPmult, vwapDiff, volume, entrySignal, flip)
+var label debugLabel = na
+label.delete(debugLabel[1])
+debugLabel := label.new(bar_index, high, labelText, yloc=yloc.abovebar, style=label.style_label_left, color=color.gray, size=size.normal)
+
+//@version=6
+indicator("Adaptive Supertrend (ML-inspired) - indicator", overlay=true)
+
+// === CONFIGURATION ===
+baseATRlen    = input.int(10, title="Base ATR Length")
+baseFactor    = input.float(3.0, title="Base ATR Multiplier")
+minATRlen     = input.int(5, title="Min ATR Length")
+maxATRlen     = input.int(20, title="Max ATR Length")
+minFactor     = input.float(2.0, title="Min ATR Multiplier")
+maxFactor     = input.float(4.0, title="Max ATR Multiplier")
+volLookback   = input.int(50, title="Volatility Lookback Period")
+highVolThresh = input.float(1.5, title="High Volatility Threshold")
+lowVolThresh  = input.float(0.75, title="Low Volatility Threshold")
+
+// === VOLATILITY ANALYSIS ===
+atrShort = ta.atr(baseATRlen)
+atrLong  = ta.atr(volLookback)
+atrLongSafe = nz(atrLong, atrShort)
+volRatio = atrShort / atrLongSafe
+
+// Regime logic: 1 = High Vol, 0 = Neutral, -1 = Low Vol
+regime = volRatio > highVolThresh ? 1 : volRatio < lowVolThresh ? -1 : 0
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+
+// Smooth factor transition to avoid sudden jumps
+var float currFactor = baseFactor
+currFactor := currFactor + 0.2 * (targetFactor - currFactor)
+
+// ATR selection based on regime (discrete for stability)
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+
+newTrend = prevTrend
+newSt = prevSt
+
+// Logic for trend flip and trailing logic
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === PLOTTING ===
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style = plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style = plot.style_linebr)
+
+// Trend flip marker
+trendFlip = ta.change(trend)
+plotshape(bool(trendFlip) ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+
+// === LABELING PARAMS (for visualization/debug) ===
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor),
+     yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
+
+//@version=6
+contractQty = input.int(1, title="Contracts per Trade", tooltip="Lot size for Nifty options intraday scalping (e.g., 25 contracts per lot).")
+
+strategy("Adaptive Supertrend Strategy (ML-inspired) - NIFTY50 Scalping", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 10, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+import TradingView/ta/10
+
+// === CONFIGURATION ===
+// --- Adaptive Parameters Group ---
+baseATRlen    = input.int(8, title="Base ATR Length", group="Adaptive Parameters", tooltip="Recommended: 7–10 for scalping.")
+baseFactor    = input.float(1.3, title="Base ATR Multiplier", group="Adaptive Parameters", tooltip="Tighter bands for scalping: 1.2–1.5")
+minATRlen     = input.int(5, title="Min ATR Length", group="Adaptive Parameters", tooltip="Lower ATR in low vol regime.")
+maxATRlen     = input.int(14, title="Max ATR Length", group="Adaptive Parameters", tooltip="Upper ATR in high vol regime.")
+minFactor     = input.float(1.5, title="Min ATR Multiplier", group="Adaptive Parameters", tooltip="Tight SL in low vol.")
+maxFactor     = input.float(2.5, title="Max ATR Multiplier", group="Adaptive Parameters", tooltip="Loose SL in high vol.")
+
+// --- Volatility Clustering Logic ---
+volLookback   = input.int(30, title="Volatility Lookback Period", group="Volatility Regime Detection", tooltip="Shorter lookback for scalping.")
+atrVals = array.new_float(volLookback, 0.0)
+baseATRValOne = ta.atr(baseATRlen)
+for i = 0 to volLookback - 1
+    array.set(atrVals, i, baseATRValOne[i])
+
+array.sort(atrVals)
+lowATR = array.get(atrVals, math.floor(volLookback * 0.25))
+midATR = array.get(atrVals, math.floor(volLookback * 0.50))
+highATR = array.get(atrVals, math.floor(volLookback * 0.75))
+
+atrNow = ta.atr(baseATRlen)
+distLow = math.abs(atrNow - lowATR)
+distMid = math.abs(atrNow - midATR)
+distHigh = math.abs(atrNow - highATR)
+
+atrRank = ta.percentrank(ta.atr(baseATRlen), volLookback)
+// regime  = atrRank > .50 ? 1 : -1   // trending vs. mean-revert
+//regime  = atrRank > 0.66 ? 1 : atrRank < 0.33 ? -1 : 0      // 3 regimes
+regime = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0
+
+// --- Exit Logic ---
+slMult = input.float(1.2, title="Stop Loss Multiplier", group="Exit Settings", tooltip="Scalping stop loss: 1.0–1.5")
+tpMult = input.float(2.0, title="Take Profit Multiplier", group="Exit Settings", tooltip="Scalping target: 2.0–2.5")
+
+enableATRExit = input.bool(true, title="Enable ATR-based SL/TP", group="Exit Settings")
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+smoothingAlpha = regime == 0 ? 0.2 : regime == 1 ? 0.1 : 0.3
+var float currFactor = baseFactor
+currFactor := currFactor + smoothingAlpha * (targetFactor - currFactor)
+
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+newTrend = prevTrend
+newSt = prevSt
+
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === ENTRY CONDITIONS ===
+flip = ta.change(trend)
+longEntry  = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+
+// === EXIT STRATEGY ===
+exitATR = atrUsed
+longSL  = strategy.position_avg_price - slMult * exitATR
+longTP  = strategy.position_avg_price + tpMult * exitATR
+shortSL = strategy.position_avg_price + slMult * exitATR
+shortTP = strategy.position_avg_price - tpMult * exitATR
+
+entryBarIndex = strategy.opentrades.entry_bar_index(0)
+canExit = na(entryBarIndex) ? false : bar_index > entryBarIndex
+
+if (longEntry)
+    strategy.entry("Long", strategy.long, qty = contractQty)
+if (shortEntry)
+    strategy.entry("Short", strategy.short, qty = contractQty)
+
+longExit = flip == 1 and trend == -1
+shortExit = flip == -1 and trend == 1
+// if longExit
+//     strategy.close("Long")
+// if shortExit
+//     strategy.close("Short")
+
+if enableATRExit
+    if strategy.position_size > 0 and canExit
+        strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP)
+    if strategy.position_size < 0 and canExit
+        strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style=plot.style_linebr)
+plotshape(flip != 0 ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor), yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
+
+//@version=6
+contractQty = input.int(1, title="Contracts per Trade")
+
+strategy("Adaptive Supertrend Strategy (ML-inspired) v1", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 1, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+
+
+// === CONFIGURATION ===
+baseATRlen    = input.int(10, title="Base ATR Length")
+baseFactor    = input.float(1.2, title="Base ATR Multiplier")
+minATRlen     = input.int(5, title="Min ATR Length")
+maxATRlen     = input.int(20, title="Max ATR Length")
+minFactor     = input.float(2.0, title="Min ATR Multiplier")
+maxFactor     = input.float(4.0, title="Max ATR Multiplier")
+volLookback   = input.int(50, title="Volatility Lookback Period")
+highVolThresh = input.float(1.5, title="High Volatility Threshold")
+lowVolThresh  = input.float(0.75, title="Low Volatility Threshold")
+
+// === VOLATILITY ANALYSIS ===
+atrShort = ta.atr(baseATRlen)
+atrLong  = ta.atr(volLookback)
+atrLongSafe = nz(atrLong, atrShort)
+volRatio = atrShort / atrLongSafe
+
+// Regime logic: 1 = High Vol, 0 = Neutral, -1 = Low Vol
+regime = volRatio > highVolThresh ? 1 : volRatio < lowVolThresh ? -1 : 0
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+
+// Smooth factor transition to avoid sudden jumps
+var float currFactor = baseFactor
+currFactor := currFactor + 0.2 * (targetFactor - currFactor)
+
+// ATR selection based on regime (discrete for stability)
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+
+newTrend = prevTrend
+newSt = prevSt
+
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === STRATEGY EXECUTION ===
+flip = ta.change(trend)
+longEntry  = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+longExit   = flip != 0 and trend == -1
+shortExit  = flip != 0 and trend == 1
+
+
+if (longEntry)
+    strategy.entry("Long", strategy.long, qty=contractQty)
+if (shortEntry)
+    strategy.entry("Short", strategy.short, qty=contractQty)
+if (longExit)
+    strategy.close("Long")
+if (shortExit)
+    strategy.close("Short")
+
+// === PLOTTING ===
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style=plot.style_linebr)
+
+plotshape(ta.change(trend) != 0 ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+// === LABELING PARAMS (for visualization/debug) ===
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor), yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
+
+//@version=6
+contractQty = input.int(1, title="Contracts per Trade", tooltip="Fixed number of contracts per trade. Example: 50 for Nifty options.")
+
+strategy("Adaptive Supertrend Strategy (ML-inspired) v2", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 1, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+
+
+// === CONFIGURATION ===
+// --- Adaptive Parameters Group ---
+baseATRlen    = input.int(10, title="Base ATR Length", group="Adaptive Parameters", tooltip="Default ATR length used to calculate short-term volatility. Recommended: 10")
+baseFactor    = input.float(1.2, title="Base ATR Multiplier", group="Adaptive Parameters", tooltip="Default multiplier applied to ATR to calculate bands. Recommended: 1.2–2.5")
+minATRlen     = input.int(5, title="Min ATR Length", group="Adaptive Parameters", tooltip="Shortest ATR period in low volatility regime. Recommended: 5–10")
+maxATRlen     = input.int(20, title="Max ATR Length", group="Adaptive Parameters", tooltip="Longest ATR period in high volatility regime. Recommended: 14–30")
+minFactor     = input.float(2.0, title="Min ATR Multiplier", group="Adaptive Parameters", tooltip="Multiplier used when volatility is low. Makes stops tighter. Recommended: 1.5–2.5")
+maxFactor     = input.float(4.0, title="Max ATR Multiplier", group="Adaptive Parameters", tooltip="Multiplier used when volatility is high. Makes stops looser. Recommended: 3.0–5.0")
+
+// --- Volatility Regime Detection ---
+volLookback   = input.int(50, title="Volatility Lookback Period", group="Volatility Regime Detection", tooltip="Lookback period to compute long-term ATR for volatility ratio. Recommended: 50–100")
+highVolThresh = input.float(1.5, title="High Volatility Threshold", group="Volatility Regime Detection", tooltip="If ATR ratio > this, regime is high volatility. Recommended: 1.5")
+lowVolThresh  = input.float(0.75, title="Low Volatility Threshold", group="Volatility Regime Detection", tooltip="If ATR ratio < this, regime is low volatility. Recommended: 0.75")
+
+// --- Exit Logic ---
+slMult        = input.float(1.0, title="Stop Loss Multiplier", group="Exit Settings", tooltip="Stop loss is set at SL x ATR below/above entry price. Recommended: 1.0–1.5")
+tpMult        = input.float(3.5, title="Take Profit Multiplier", group="Exit Settings", tooltip="Take profit is set at TP x ATR above/below entry price. Recommended: 2.0–3.0")
+
+
+// === VOLATILITY ANALYSIS ===
+atrShort = ta.atr(baseATRlen)
+atrLong  = ta.atr(volLookback)
+atrLongSafe = nz(atrLong, atrShort)
+volRatio = atrShort / atrLongSafe
+
+// Regime logic: 1 = High Vol, 0 = Neutral, -1 = Low Vol
+regime = volRatio > highVolThresh ? 1 : volRatio < lowVolThresh ? -1 : 0
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+
+// // Smooth factor transition to avoid sudden jumps
+// var float currFactor = baseFactor
+// currFactor := currFactor + 0.2 * (targetFactor - currFactor)
+// Adaptive smoothing alpha
+smoothingAlpha = regime == 0 ? 0.2 : regime == 1 ? 0.1 : 0.3
+var float currFactor = baseFactor
+currFactor := currFactor + smoothingAlpha * (targetFactor - currFactor)
+
+// ATR selection based on regime (discrete for stability)
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+
+newTrend = prevTrend
+newSt = prevSt
+
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === ENTRY CONDITIONS ===
+flip = ta.change(trend)
+longEntry  = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+
+// === EXIT STRATEGY ===
+exitATR = atrUsed
+longSL  = strategy.position_avg_price - slMult * exitATR
+longTP  = strategy.position_avg_price + tpMult * exitATR
+shortSL = strategy.position_avg_price + slMult * exitATR
+shortTP = strategy.position_avg_price - tpMult * exitATR
+
+entryBarIndex = strategy.opentrades.entry_bar_index(0)
+canExit = na(entryBarIndex) ? false : bar_index > entryBarIndex
+
+if (longEntry)
+    strategy.entry("Long", strategy.long, qty=contractQty)
+if (shortEntry)
+    strategy.entry("Short", strategy.short, qty=contractQty)
+
+if strategy.position_size > 0 and canExit
+    strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP)
+if strategy.position_size < 0 and canExit
+    strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+// === PLOTTING ===
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style=plot.style_linebr)
+
+plotshape(ta.change(trend) != 0 ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+// === LABELING PARAMS (for visualization/debug) ===
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor), yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
+
+//@version=6
+contractQty = input.int(1, title="Contracts per Trade", tooltip="Lot size for Nifty options intraday scalping (e.g., 25 contracts per lot).")
+
+strategy("Adaptive Supertrend Strategy v2 (ML-inspired) - NIFTY50 Scalping", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 1, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+import TradingView/ta/10
+
+// === CONFIGURATION ===
+// --- Adaptive Parameters Group ---
+baseATRlen    = input.int(8, title="Base ATR Length", group="Adaptive Parameters", tooltip="Recommended: 7–10 for scalping.")
+baseFactor    = input.float(1.3, title="Base ATR Multiplier", group="Adaptive Parameters", tooltip="Tighter bands for scalping: 1.2–1.5")
+minATRlen     = input.int(5, title="Min ATR Length", group="Adaptive Parameters", tooltip="Lower ATR in low vol regime.")
+maxATRlen     = input.int(14, title="Max ATR Length", group="Adaptive Parameters", tooltip="Upper ATR in high vol regime.")
+minFactor     = input.float(1.5, title="Min ATR Multiplier", group="Adaptive Parameters", tooltip="Tight SL in low vol.")
+maxFactor     = input.float(2.5, title="Max ATR Multiplier", group="Adaptive Parameters", tooltip="Loose SL in high vol.")
+
+// --- Volatility Clustering Logic ---
+volLookback   = input.int(30, title="Volatility Lookback Period", group="Volatility Regime Detection", tooltip="Shorter lookback for scalping.")
+atrVals = array.new_float(volLookback, 0.0)
+// ① Calculate the series once, outside any loop or conditional
+baseATR = ta.atr(baseATRlen)
+
+// ② Use that same series everywhere you need it
+for i = 0 to volLookback - 1
+    array.set(atrVals, i, baseATR[i])   // no extra ATR calls, warning disappears
+// for i = 0 to volLookback - 1
+  //  array.set(atrVals, i, ta.atr(baseATRlen)[i])
+array.sort(atrVals)
+lowATR = array.get(atrVals, math.floor(volLookback * 0.25))
+midATR = array.get(atrVals, math.floor(volLookback * 0.50))
+highATR = array.get(atrVals, math.floor(volLookback * 0.75))
+
+atrNow = ta.atr(baseATRlen)
+distLow = math.abs(atrNow - lowATR)
+
+distMid = math.abs(atrNow - midATR)
+distHigh = math.abs(atrNow - highATR)
+
+atrRank = ta.percentrank(ta.atr(baseATRlen), volLookback)
+// regime  = atrRank > .50 ? 1 : -1   // trending vs. mean-revert
+//regime  = atrRank > 0.66 ? 1 : atrRank < 0.33 ? -1 : 0      // 3 regimes
+regime = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0
+
+// --- Exit Logic ---
+slMult = input.float(1.2, title="Stop Loss Multiplier", group="Exit Settings", tooltip="Scalping stop loss: 1.0–1.5")
+tpMult = input.float(2.0, title="Take Profit Multiplier", group="Exit Settings", tooltip="Scalping target: 2.0–2.5")
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+smoothingAlpha = regime == 0 ? 0.2 : regime == 1 ? 0.1 : 0.3
+var float currFactor = baseFactor
+currFactor := currFactor + smoothingAlpha * (targetFactor - currFactor)
+
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+newTrend = prevTrend
+newSt = prevSt
+
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === ENTRY CONDITIONS ===
+flip = ta.change(trend)
+longEntry  = flip != 0 and trend == 1
+shortEntry = flip != 0 and trend == -1
+
+// === EXIT STRATEGY ===
+exitATR = atrUsed
+longSL  = strategy.position_avg_price - slMult * exitATR
+longTP  = strategy.position_avg_price + tpMult * exitATR
+shortSL = strategy.position_avg_price + slMult * exitATR
+shortTP = strategy.position_avg_price - tpMult * exitATR
+
+entryBarIndex = strategy.opentrades.entry_bar_index(0)
+canExit = na(entryBarIndex) ? false : bar_index > entryBarIndex
+
+if (longEntry)
+    strategy.entry("Long", strategy.long, qty = contractQty)
+if (shortEntry)
+    strategy.entry("Short", strategy.short, qty = contractQty)
+
+longExit = flip == 1 and trend == -1
+shortExit = flip == -1 and trend == 1
+// if longExit
+//     strategy.close("Long")
+// if shortExit
+//     strategy.close("Short")
+
+if strategy.position_size > 0 and canExit
+    strategy.exit("Long Exit", from_entry="Long", stop=longSL, limit=longTP)
+if strategy.position_size < 0 and canExit
+    strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style=plot.style_linebr)
+plotshape(flip != 0 ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor), yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
+
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © EdgeTerminal
+
+//@version=6
+indicator('Adaptive Supertrend with Dynamic Optimization [nemesis]', shorttitle = "A-ST-Dynamic", overlay = true)
+
+// Input parameters
+atrPeriod = input.int(10, 'ATR Period', minval = 1)
+initMultiplier = input.float(3.0, 'Initial Multiplier', minval = 0.5)
+optPeriod = input.int(50, 'Optimization Lookback', minval = 20)
+adaptiveRate = input.float(0.03, 'Adaptive Rate', minval = 0.001, maxval = 0.1)
+profitTarget = input.float(1.5, 'Profit Target Multiple', minval = 1.0)
+maxLoss = input.float(1.0, 'Max Loss Multiple', minval = 0.5)
+smoothPeriod = input.int(3, 'Smoothing Period', minval = 1, maxval = 10)
+signalCooldown = input.int(10, 'Signal Cooldown Period', minval = 1, maxval = 50)
+confirmationBars = input.int(2, 'Confirmation Bars', minval = 1, maxval = 10)
+
+// Advanced Supertrend calculation with dynamic bands
+calcEnhancedSupertrend(float mult, simple bool isOptimized = false) =>
+    // Basic ATR calculation with smoothing
+    atr = ta.sma(ta.atr(atrPeriod), smoothPeriod)
+
+    // Dynamic volatility adjustment
+    volatility = ta.sma(ta.stdev(close, atrPeriod) / close, smoothPeriod)
+    dynMult = isOptimized ? mult * (1 + volatility) : mult
+
+    // Calculate basic bands with momentum consideration
+    highMA = ta.ema(high, atrPeriod)
+    lowMA = ta.ema(low, atrPeriod)
+    medianPrice = ta.sma((highMA + lowMA) / 2, smoothPeriod)
+
+    // Enhanced band calculation with price momentum
+    momentum = ta.sma(ta.rsi(close, atrPeriod), smoothPeriod)
+    momentumFactor = momentum < 30 ? 1.2 : momentum > 70 ? 0.8 : 1.0
+
+    upperBand = medianPrice + dynMult * atr * momentumFactor
+    lowerBand = medianPrice - dynMult * atr * momentumFactor
+
+    // Additional smoothing for bands
+    upperBand := ta.sma(upperBand, smoothPeriod)
+    lowerBand := ta.sma(lowerBand, smoothPeriod)
+
+    var float trend = 0.0
+    var float supertrend = 0.0
+
+    // Trend calculation with additional filters
+    prevClose = close[1]
+    prevSupertrend = supertrend[1]
+    prevTrend = trend[1]
+
+    // Enhanced trend determination with MACD
+    [macdLine, signalLine, histLine] = ta.macd(close, 12, 26, 9)
+    macdCross = ta.cross(macdLine, signalLine)
+
+    // Trend logic with MACD confirmation
+    if prevTrend == 1
+        trend := prevClose < prevSupertrend or macdCross and macdLine < signalLine ? -1 : 1
+        trend
+    else
+        trend := prevClose > prevSupertrend or macdCross and macdLine > signalLine ? 1 : -1
+        trend
+
+    // Supertrend calculation with enhanced smoothing
+    rawSupertrend = trend == 1 ? lowerBand : upperBand
+    supertrend := ta.sma(ta.ema(rawSupertrend, smoothPeriod), smoothPeriod)
+
+    [supertrend, trend]
+
+// Performance evaluation function
+evaluatePerformance(float mult) =>
+    var float totalProfit = 0.0
+    var float maxDrawdown = 0.0
+    var float peakValue = 0.0
+
+    [st, trd] = calcEnhancedSupertrend(mult, true)
+
+    // Calculate returns
+    ret = (close - close[1]) / close[1]
+    signal = trd == 1 ? 1 : -1
+    tradeReturn = signal * ret
+
+    // Update performance metrics
+    totalProfit := totalProfit + tradeReturn
+    peakValue := math.max(peakValue, totalProfit)
+    maxDrawdown := math.max(maxDrawdown, peakValue - totalProfit)
+
+    // Calculate Sharpe-like ratio
+    volatility = ta.stdev(tradeReturn, optPeriod)
+    sharpeRatio = volatility != 0 ? totalProfit / volatility : 0
+
+    // Complex scoring function
+    score = sharpeRatio * (1 - maxDrawdown / 2)
+    score
+
+// Optimization logic
+var float optMultiplier = initMultiplier
+var float bestScore = 0.0
+
+if bar_index > optPeriod
+    // Test multiple multiplier values
+    for i = -5 to 5 by 1
+        testMult = optMultiplier + i * 0.1
+        if testMult >= 0.5
+            score = evaluatePerformance(testMult)
+            if score > bestScore
+                bestScore := score
+                optMultiplier := testMult
+                optMultiplier
+
+    // Apply adaptive rate to changes
+    optMultiplier := math.max(0.5, optMultiplier * (1 + (close - close[1]) / close[1] * adaptiveRate))
+    optMultiplier
+
+// Calculate both versions
+[origSupertrend, origTrend] = calcEnhancedSupertrend(initMultiplier, false)
+[optSupertrend, optTrend] = calcEnhancedSupertrend(optMultiplier, true)
+
+
+// Signal confirmation and filtering
+isInUptrend = ta.ema(close, 20) > ta.ema(close, 50)
+isInDowntrend = ta.ema(close, 20) < ta.ema(close, 50)
+
+// Advanced signal conditions with confirmation
+buyCondition = ta.cross(close, optSupertrend) and close > optSupertrend
+sellCondition = ta.cross(close, optSupertrend) and close < optSupertrend
+
+// Add trend confirmation
+buyConfirmed = buyCondition and isInUptrend
+sellConfirmed = sellCondition and isInDowntrend
+
+// Add momentum confirmation
+rsiValue = ta.rsi(close, 14)
+buyMomentum = rsiValue > 40 and rsiValue < 60 // Avoid overbought
+sellMomentum = rsiValue > 40 and rsiValue < 60 // Avoid oversold
+
+// Cooldown logic
+var int lastSignalBar = 0
+var string lastSignalType = 'none'
+var int consecutiveSignals = 0
+
+validSignal = bar_index >= lastSignalBar + signalCooldown
+
+// Confirmation counters
+var int buyConfirmationCount = 0
+var int sellConfirmationCount = 0
+
+// Reset confirmation counters on opposite signals
+if buyCondition
+    sellConfirmationCount := 0
+    sellConfirmationCount
+if sellCondition
+    buyConfirmationCount := 0
+    buyConfirmationCount
+
+// Update confirmation counters
+if buyCondition and buyMomentum
+    buyConfirmationCount := buyConfirmationCount + 1
+    buyConfirmationCount
+if sellCondition and sellMomentum
+    sellConfirmationCount := sellConfirmationCount + 1
+    sellConfirmationCount
+
+// Final signal conditions
+validBuySignal = buyConfirmed and buyMomentum and validSignal and buyConfirmationCount >= confirmationBars and (lastSignalType != 'buy' or bar_index >= lastSignalBar + signalCooldown)
+
+validSellSignal = sellConfirmed and sellMomentum and validSignal and sellConfirmationCount >= confirmationBars and (lastSignalType != 'sell' or bar_index >= lastSignalBar + signalCooldown)
+
+// Update signal tracking
+if validBuySignal or validSellSignal
+    lastSignalBar := bar_index
+    lastSignalType := validBuySignal ? 'buy' : 'sell'
+    if lastSignalType == 'buy'
+        consecutiveSignals := lastSignalType[1] == 'buy' ? consecutiveSignals + 1 : 1
+        consecutiveSignals
+    else
+        consecutiveSignals := lastSignalType[1] == 'sell' ? consecutiveSignals + 1 : 1
+        consecutiveSignals
+
+
+// Simplified signal generation
+var int lastSignalBar2 = 0
+buySignal = ta.crossover(close, optSupertrend) and bar_index >= lastSignalBar2 + signalCooldown
+sellSignal = ta.crossunder(close, optSupertrend) and bar_index >= lastSignalBar2 + signalCooldown
+
+// Update lastSignalBar when a signal occurs
+if buySignal or sellSignal
+    lastSignalBar2 := bar_index
+    lastSignalBar2
+
+plot(ta.sma(optSupertrend, smoothPeriod), 'Optimized Supertrend', color = optTrend == 1 ? #0284ffcc : color.new(color.red, 20), linewidth = 2, style = plot.style_line)
+
+// Clear signal display
+if buySignal
+    label.new(bar_index, low - ta.atr(10), 'BUY', color = #025bffcc, textcolor = color.white, size = size.normal, style = label.style_label_up)
+
+if sellSignal
+    label.new(bar_index, high + ta.atr(10), 'SELL', color = color.new(color.red, 20), textcolor = color.white, size = size.normal, style = label.style_label_down)
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+contractSize = input.int(1, "Contracts per Trade", tooltip="Lot size when trading options")
+strategy(title = "Adaptive-Supertrend-(ML)-+-Multi-Filter Engine | NIFTY50 Scalping", overlay = true , default_qty_type = strategy.fixed , default_qty_value= 1, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 1)
+//──────────────────────── 1 • ADAPTIVE SUPERTREND CORE ─────────────────────
+grpAS   = "①-Adaptive Supertrend"
+
+// length / factor rails for volatility regimes
+baseATRlen = input.int(8 ,  "Base ATR Len" , group=grpAS, minval=1)
+baseFactor = input.float(1.3, "Base ATR Mult" , group=grpAS, step=0.1)
+
+minATRlen  = input.int(5 ,  "Min ATR Len"  , group=grpAS)
+maxATRlen  = input.int(14,  "Max ATR Len"  , group=grpAS)
+minFactor  = input.float(1.5, "Min ATR Mult", group=grpAS, step=0.1)
+maxFactor  = input.float(2.5, "Max ATR Mult", group=grpAS, step=0.1)
+
+volLookback = input.int(30, "Vol Look-back", group=grpAS)
+
+// —- Pre-compute three fixed-length ATRs (called once per bar)
+atrBase = ta.atr(baseATRlen)
+atrMin  = ta.atr(minATRlen)
+atrMax  = ta.atr(maxATRlen)
+
+// —- Quartile regime detection (uses atrBase only)
+atrQuartile() =>
+    float[] buf = array.new_float(volLookback, 0.)
+    for i = 0 to volLookback - 1
+        array.set(buf, i, atrBase[i])
+    array.sort(buf)
+    [ array.get(buf, math.floor(volLookback*0.25)) , array.get(buf, math.floor(volLookback*0.50)) , array.get(buf, math.floor(volLookback*0.75)) ]
+
+[lowATR, midATR, highATR] = atrQuartile()
+distLow  = math.abs(atrBase - lowATR)
+distMid  = math.abs(atrBase - midATR)
+distHigh = math.abs(atrBase - highATR)
+regime   = distHigh < distMid and distHigh < distLow ? 1 : distLow < distMid ? -1 : 0   // 1-=-high-vol, -1-=-low-vol
+
+// adapt factor / length with EMA smoothing
+smoothingAlpha = regime==0 ? 0.2 : regime==1 ? 0.1 : 0.3
+var float currFactor = baseFactor
+targetFactor = regime==1 ? maxFactor : regime==-1 ? minFactor : baseFactor
+currFactor := currFactor + smoothingAlpha*(targetFactor-currFactor)
+
+atrUsed = regime==1 ? atrMax : regime==-1 ? atrMin : atrBase
+
+//—-price bands / trend flip
+price      = hl2
+upperBand  = price + currFactor*atrUsed
+lowerBand  = price - currFactor*atrUsed
+var float st   = na
+var int   dir  = 1
+
+prevSt   = nz(st[1], price)
+prevDir  = nz(dir[1], 1)
+stTmp    = prevSt
+dirTmp   = prevDir
+
+if prevDir==1
+    if close < lowerBand[1]
+        dirTmp := -1
+        stTmp := upperBand
+    else
+        stTmp := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        dirTmp := 1
+        stTmp := lowerBand
+    else
+        stTmp := math.min(upperBand, prevSt)
+
+dir := dirTmp
+st  := stTmp
+flip = ta.change(dir)
+
+//──────────────────────── 2 • EXTRA FILTERS ────────────────────────────────
+grpRSI = "②-RSI"
+rsiLen = input.int(14, "RSI Length", group=grpRSI)
+rsi    = ta.rsi(close, rsiLen)
+
+grpMACD= "③-MACD"
+macdFast = input.int(12, "Fast Len",  group=grpMACD)
+macdSlow = input.int(26, "Slow Len",  group=grpMACD)
+macdSig  = input.int(9 , "Signal Len",group=grpMACD)
+[macdL, macdS, _] = ta.macd(close, macdFast, macdSlow, macdSig)
+
+grpEMA = "④-EMA Cross"
+emaFastLen = input.int(9 , "Fast EMA", group=grpEMA)
+emaSlowLen = input.int(21, "Slow EMA", group=grpEMA)
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+
+grpADX = "⑤-ADX Filter"
+adxLen  = input.int(14, "ADX Length", group=grpADX)
+adxTh   = input.float(25, "ADX-Threshold", group=grpADX)
+[_,_,adx] = ta.dmi(adxLen, adxLen)
+
+grpHTF = "⑥-HTF Confirmation"
+htfTf  = input.timeframe("60", "HTF TF", group=grpHTF)
+htfDir = request.security(syminfo.tickerid, htfTf, dir)
+
+// Enable toggles
+grpTog = "⑦-Enable Filters?"
+useRSI  = input.bool(true ,"Use RSI",  group=grpTog)
+useMACD = input.bool(true ,"Use MACD", group=grpTog)
+useEMA  = input.bool(true ,"Use EMA" , group=grpTog)
+useADX  = input.bool(true ,"Use ADX" , group=grpTog)
+useHTF  = input.bool(true ,"Use HTF", group=grpTog)
+
+//──────────────────────── 3 • COMPOSITE ENTRY LOGIC ────────────────────────
+longOK  = dir==1  and
+         (not useRSI  or rsi>50) and
+         (not useMACD or macdL>macdS) and
+         (not useEMA  or emaFast>emaSlow) and
+         (not useADX  or adx>adxTh) and
+         (not useHTF  or htfDir==1)
+
+shortOK = dir==-1 and
+         (not useRSI  or rsi<50) and
+         (not useMACD or macdL<macdS) and
+         (not useEMA  or emaFast<emaSlow) and
+         (not useADX  or adx>adxTh) and
+         (not useHTF  or htfDir==-1)
+
+//──────────────────────── 4 • ATR-BASED EXITS ──────────────────────────────
+grpExit = "⑧-Exit Settings"
+slMult  = input.float(1.2, "SL × ATR", group=grpExit, step=0.1)
+tpMult  = input.float(2.0, "TP × ATR", group=grpExit, step=0.1)
+
+longSL  = strategy.position_avg_price - slMult*atrUsed
+longTP  = strategy.position_avg_price + tpMult*atrUsed
+shortSL = strategy.position_avg_price + slMult*atrUsed
+shortTP = strategy.position_avg_price - tpMult*atrUsed
+
+//──────────────────────── 5 • EXECUTION ────────────────────────────────────
+if (longOK)  and strategy.position_size<=0
+    strategy.entry("Long",  strategy.long)
+if (shortOK) and strategy.position_size>=0
+    strategy.entry("Short", strategy.short)
+
+if strategy.position_size>0
+    strategy.exit("L-Exit", "Long" , stop=longSL , limit=longTP)
+if strategy.position_size<0
+    strategy.exit("S-Exit", "Short", stop=shortSL, limit=shortTP)
+
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("Machine Learning Adaptive SuperTrend Scalping", overlay=true, default_qty_type=strategy.fixed, default_qty_value=10, calc_on_every_tick = true)
+
+// Import TA Library
+import TradingView/ta/7
+
+// Supertrend & ATR Settings
+atr_len = input.int(10, "ATR Length", group="SuperTrend Settings")
+fact = input.float(3, "SuperTrend Factor", group="SuperTrend Settings")
+
+// K-Means Machine Learning Settings
+training_data_period = input.int(100, "Training Data Length", group="K-Means Settings")
+highvol = input.float(0.75, "High Volatility Percentile", maxval=1, group="K-Means Settings")
+midvol = input.float(0.5, "Medium Volatility Percentile", maxval=1, group="K-Means Settings")
+lowvol = input.float(0.25, "Low Volatility Percentile", maxval=1, group="K-Means Settings")
+
+// ATR Calculation
+volatility = ta.atr(atr_len)
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility, training_data_period)
+
+// K-Means Cluster Assignments
+high_volatility = lower + (upper-lower) * highvol
+medium_volatility = lower + (upper-lower) * midvol
+low_volatility = lower + (upper-lower) * lowvol
+
+// Supertrend Calculation
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+// Assign ATR Cluster for SuperTrend Calculation
+[ST, dir] = pine_supertrend(fact, medium_volatility)
+
+// Dynamic Stop Loss & Take Profit Based on ATR
+stopLossATR = input.float(1.5, "Stop Loss ATR Multiplier", minval=0.1, maxval=5.0, step=0.1)
+takeProfitATR = input.float(3.0, "Take Profit ATR Multiplier", minval=0.1, maxval=10.0, step=0.1)
+
+longSL = close - (volatility * stopLossATR)
+longTP = close + (volatility * takeProfitATR)
+shortSL = close + (volatility * stopLossATR)
+shortTP = close - (volatility * takeProfitATR)
+
+// JSON ALERT FUNCTION (For Delta Exchange)
+jsonAlert(action, qty) =>
+    '{"symbol":"' + syminfo.ticker + '",' + '"side":"' + action + '",' +'"qty":"' + str.tostring(qty) + '",' + '"trigger_time":"' + str.format_time(time, "yyyy-MM-dd HH:mm:ss") + '",' + '"strategy_id":"557fd77e6db52c090960ed978d2bcadd"}'
+// ENTRY CONDITIONS
+if ta.change(dir) < 0
+    strategy.entry("Long Entry", strategy.long)
+    alert(jsonAlert("buy", 1), alert.freq_once_per_bar_close)
+
+if ta.change(dir) > 0
+    strategy.entry("Short Entry", strategy.short)
+    alert(jsonAlert("sell", 1), alert.freq_once_per_bar_close)
+
+// EXIT CONDITIONS
+exitLongCondition = ta.change(dir) > 0
+exitShortCondition = ta.change(dir) < 0
+
+if strategy.position_size > 0 and exitLongCondition
+    strategy.exit("Long Exit", "Long Entry", stop=longSL, limit=longTP)
+
+if strategy.position_size < 0 and exitShortCondition
+    strategy.exit("Short Exit", "Short Entry", stop=shortSL, limit=shortTP)
+
+// PLOT THE SUPER TREND
+plot(dir > 0 ? ST : na, title="Supertrend (Bullish)", color=color.green, linewidth=2, style = plot.style_linebr)
+plot(dir < 0 ? ST : na, title="Supertrend (Bearish)", color=color.red, linewidth=2, style = plot.style_linebr)
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+// -------------------------------------------------------------------------------------
+// MACHINE LEARNING ADAPTIVE SUPERTREND + ATR EXITS (STRATEGY)
+// Based on "Machine Learning Adaptive SuperTrend [AlgoAlpha]" (© AlgoAlpha) - adapted.
+// - We place trades when `dir` crosses under/over zero
+// - We use an ATR-based stop loss & take profit for each position.
+// -------------------------------------------------------------------------------------
+strategy(title = "ML Adaptive ST + ATR Strategy", shorttitle = "ML ST Strategy", overlay = true, max_labels_count = 500, default_qty_type = strategy.fixed, default_qty_value= 10)
+
+// -------------------------------------------------------------------------------------
+// INPUTS
+// -------------------------------------------------------------------------------------
+
+// --- Original SuperTrend & Clustering Inputs ---
+atr_len = input.int(10,  "ATR Length", group="SuperTrend Settings")
+fact    = input.float(3, "SuperTrend Factor", group="SuperTrend Settings")
+
+training_data_period = input.int(100, "Training Data Length", group="K-Means Settings")
+highvol  = input.float(0.75, "High Vol. Percentile Guess", maxval=1, group="K-Means Settings")
+midvol   = input.float(0.5,  "Med. Vol. Percentile Guess", maxval=1, group="K-Means Settings")
+lowvol   = input.float(0.25, "Low Vol. Percentile Guess",  maxval=1, group="K-Means Settings")
+
+t1 = input.int(70, "Transparency 1", maxval=100, minval=0, group="Appearance")
+t2 = input.int(95, "Transparency 2", maxval=100, minval=0, group="Appearance")
+green = input.color(#00ffbb, "Bullish Color", group="Appearance")
+red   = input.color(#ff1100, "Bearish Color", group="Appearance")
+
+// --- New ATR-based Exit Inputs ---
+exitAtrLen   = input.int(14, "Exit ATR Period", group="Exit Settings")
+atrSLMult    = input.float(1.5, "ATR SL Multiple", group="Exit Settings", step=0.1)
+atrTPMult    = input.float(3.0, "ATR TP Multiple", group="Exit Settings", step=0.1)
+
+// -------------------------------------------------------------------------------------
+// REUSABLE FUNCTION: pine_supertrend()
+// -------------------------------------------------------------------------------------
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+
+    var int   _direction = na
+    var float superTrend = na
+
+    prevSuperTrend = superTrend[1]
+
+    // Decide direction based on ST location
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+// -------------------------------------------------------------------------------------
+// 1) Compute Volatility & Clustering (K-Means) - Original Logic
+// -------------------------------------------------------------------------------------
+volatility = ta.atr(atr_len)
+
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility,  training_data_period)
+
+high_volatility   = lower + (upper - lower) * highvol
+medium_volatility = lower + (upper - lower) * midvol
+low_volatility    = lower + (upper - lower) * lowvol
+
+var int iterations = 0
+var int size_a = 0
+var int size_b = 0
+var int size_c = 0
+
+hv = array.new_float()
+mv = array.new_float()
+lv = array.new_float()
+
+amean = array.new_float(1, high_volatility)
+bmean = array.new_float(1, medium_volatility)
+cmean = array.new_float(1, low_volatility)
+
+if nz(volatility) > 0 and bar_index >= training_data_period - 1
+    while ((amean.size() == 1 ? true : (amean.first() != amean.get(1))) or (bmean.size() == 1 ? true : (bmean.first() != bmean.get(1))) or (cmean.size() == 1 ? true : (cmean.first() != cmean.get(1))))
+        hv.clear()
+        mv.clear()
+        lv.clear()
+        for i = training_data_period - 1 to 0
+            _1 = math.abs(volatility[i] - amean.first())
+            _2 = math.abs(volatility[i] - bmean.first())
+            _3 = math.abs(volatility[i] - cmean.first())
+            if _1 < _2 and _1 < _3
+                hv.unshift(volatility[i])
+            if _2 < _1 and _2 < _3
+                mv.unshift(volatility[i])
+            if _3 < _1 and _3 < _2
+                lv.unshift(volatility[i])
+
+        amean.unshift(hv.avg())
+        bmean.unshift(mv.avg())
+        cmean.unshift(lv.avg())
+
+        size_a := hv.size()
+        size_b := mv.size()
+        size_c := lv.size()
+        iterations += 1
+
+hv_new = amean.first()
+mv_new = bmean.first()
+lv_new = cmean.first()
+
+vdist_a = math.abs(volatility - hv_new)
+vdist_b = math.abs(volatility - mv_new)
+vdist_c = math.abs(volatility - lv_new)
+
+distances = array.new_float()
+centroids = array.new_float()
+
+array.push(distances, vdist_a)
+array.push(distances, vdist_b)
+array.push(distances, vdist_c)
+
+array.push(centroids, hv_new)
+array.push(centroids, mv_new)
+array.push(centroids, lv_new)
+
+cluster = distances.indexof(distances.min()) // 0=high, 1=medium, 2=low
+assigned_centroid = cluster == -1 ? na : centroids.get(cluster)
+
+// -------------------------------------------------------------------------------------
+// 2) Get Final ST from pine_supertrend()
+//    (Original script: ST, dir) = pine_supertrend(fact, assigned_centroid)
+// -------------------------------------------------------------------------------------
+[ST, dir] = pine_supertrend(fact, assigned_centroid)
+
+// *Important*: This script defines dir < 0 => "Bullish Trend", dir > 0 => "Bearish Trend"
+isBullish() => dir < 0
+isBearish() => dir > 0
+
+// -------------------------------------------------------------------------------------
+// 3) Plot the Supertrend lines (same as original, plus or minus minor changes)
+// -------------------------------------------------------------------------------------
+upTrend   = plot(close > ST ? ST : na, "UpTrend",   color=color.new(green, t1), style=plot.style_linebr)
+downTrend = plot(close < ST ? ST : na, "DownTrend", color=color.new(red,   t1), style=plot.style_linebr)
+
+// Additional fill logic
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle", display=display.none)
+fill(bodyMiddle, upTrend,   (open + close)/2, ST, color.new(green, t2), color.new(green, t1))
+fill(bodyMiddle, downTrend, ST, (open + close)/2, color.new(red, t1), color.new(red, t2))
+
+// Plot bull/bear shapes
+plotshape(ta.crossunder(dir, 0) ? ST : na, "Bullish Trend",
+     style=shape.labelup,   location=location.absolute, color=green,
+     text="▲", textcolor=chart.fg_color, size=size.small)
+plotshape(ta.crossover(dir, 0)  ? ST : na, "Bearish Trend",
+     style=shape.labeldown, location=location.absolute, color=red,
+     text="▼", textcolor=chart.fg_color, size=size.small)
+
+// Label for cluster
+label.new(bar_index,
+     dir > 0 ? ST + ta.atr(7) : ST - ta.atr(7),
+     text       = str.tostring(4 - (cluster + 1)),
+     style      = label.style_none,
+     textcolor  = color.from_gradient(cluster + 1, 1, 3, color.new(dir > 0 ? red : green, 30), color.new(dir > 0 ? red : green, 90)))
+
+// -------------------------------------------------------------------------------------
+// 4) Strategy ENTRY Logic
+//    The original script says:
+//    - "Bullish Trend" if dir crossunder 0 => dir from >0 to <0
+//    - "Bearish Trend" if dir crossover 0  => dir from <0 to >0
+// -------------------------------------------------------------------------------------
+bool bullishSignal  = ta.crossunder(dir, 0)  // dir from above 0 to below 0
+bool bearishSignal  = ta.crossover(dir, 0)   // dir from below 0 to above 0
+
+if bullishSignal
+    // We consider that a "buy" signal
+    strategy.entry("Long", strategy.long)
+
+if bearishSignal
+    // We consider that a "sell" signal
+    strategy.entry("Short", strategy.short)
+
+// -------------------------------------------------------------------------------------
+// 5) ATR-based Exits
+//    We'll exit if the user-specified SL/TP is hit
+// -------------------------------------------------------------------------------------
+exitAtr = ta.atr(exitAtrLen)
+
+// For a LONG position, Stop = average_price - atrSLMult * exitAtr
+//                Target= average_price + atrTPMult * exitAtr
+float longStop = strategy.position_avg_price - (atrSLMult * exitAtr)
+float longTP   = strategy.position_avg_price + (atrTPMult * exitAtr)
+
+// For a SHORT position, Stop = average_price + atrSLMult * exitAtr
+//                 Target= average_price - atrTPMult * exitAtr
+float shortStop = strategy.position_avg_price + (atrSLMult * exitAtr)
+float shortTP   = strategy.position_avg_price - (atrTPMult * exitAtr)
+
+// Actually place the exit orders:
+if strategy.position_size > 0
+    strategy.exit("Long Exit", "Long", stop=longStop, limit=longTP)
+
+if strategy.position_size < 0
+    strategy.exit("Short Exit", "Short", stop=shortStop, limit=shortTP)
+
+// -------------------------------------------------------------------------------------
+// 6) Plot Stop Loss & Take Profit lines (optional visualization)
+// -------------------------------------------------------------------------------------
+plot(strategy.position_size > 0 ? longStop : na,
+     "Long SL", color=color.red, style=plot.style_linebr)
+plot(strategy.position_size > 0 ? longTP   : na,
+     "Long TP", color=color.lime, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? shortStop : na,
+     "Short SL", color=color.red, style=plot.style_linebr)
+plot(strategy.position_size < 0 ? shortTP   : na,
+     "Short TP", color=color.lime, style=plot.style_linebr)
+
+// // -------------------------------------------------------------------------------------
+// // 7) Table-based Dashboard (unchanged from original, except for version=6 syntax fixes)
+// // -------------------------------------------------------------------------------------
+// if barstate.islast
+//     var data_table = table.new(position=position.top_right, columns=4, rows=4,
+//                                bgcolor=chart.bg_color, border_width=1,
+//                                border_color=chart.fg_color, frame_color=chart.fg_color, frame_width=1)
+
+//     table.cell(data_table, 0, 0, "Cluster Number (Volatility Level)",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 1, 0, "Cluster Centroid (ATR)",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 2, 0, "Cluster Size (# of Points)",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 3, 0, "Current Volatility",
+//                text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 0, 1, "3 (High)", text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 0, 2, "2 (Medium)", text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 0, 3, "1 (Low)",    text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 1, 1, str.format("{0,number,#.##}", hv_new),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 1, 2, str.format("{0,number,#.##}", mv_new),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 1, 3, str.format("{0,number,#.##}", lv_new),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 2, 1, str.format("{0,number,#.##}", size_c),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 2, 2, str.format("{0,number,#.##}", size_b),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+//     table.cell(data_table, 2, 3, str.format("{0,number,#.##}", size_a),
+//                text_color=chart.fg_color, text_halign=text.align_center)
+
+//     table.cell(data_table, 3, 1,
+//                "HIGH (ATR: " + str.format("{0,number,#.##}", volatility) + ")",
+//                text_color=chart.bg_color, text_halign=text.align_center)
+//     table.cell(data_table, 3, 2,
+//                "MEDIUM (ATR: " + str.format("{0,number,#.##}", volatility) + ")",
+//                text_color=chart.bg_color, text_halign=text.align_center)
+//     table.cell(data_table, 3, 3,
+//                "LOW (ATR: " + str.format("{0,number,#.##}", volatility) + ")",
+//                text_color=chart.bg_color, text_halign=text.align_center)
+
+//     // Highlight the current cluster
+//     if cluster == 0
+//         data_table.cell_set_bgcolor(3, 1, chart.fg_color)
+//     else
+//         data_table.cell_set_bgcolor(3, 1, chart.bg_color)
+
+//     if cluster == 1
+//         data_table.cell_set_bgcolor(3, 2, chart.fg_color)
+//     else
+//         data_table.cell_set_bgcolor(3, 2, chart.bg_color)
+
+//     if cluster == 2
+//         data_table.cell_set_bgcolor(3, 3, chart.fg_color)
+//     else
+//         data_table.cell_set_bgcolor(3, 3, chart.bg_color)
+
+// -------------------------------------------------------------------------------------
+// 8) Alert Conditions (Optional) - If you want to keep the old style
+// -------------------------------------------------------------------------------------
+alertcondition(ta.crossunder(dir, 0) and barstate.isconfirmed,
+     title="Bullish Trend Shift",
+     message="Adaptive ST turned bullish")
+
+alertcondition(ta.crossover(dir, 0) and barstate.isconfirmed,
+     title="Bearish Trend Shift",
+     message="Adaptive ST turned bearish")
+
+alertcondition(cluster == 0 and cluster[1] != 0 and barstate.isconfirmed,
+     title="High Volatility",
+     message="Volatility just classified as High")
+
+alertcondition(cluster == 1 and cluster[1] != 1 and barstate.isconfirmed,
+     title="Medium Volatility",
+     message="Volatility just classified as Medium")
+
+alertcondition(cluster == 2 and cluster[1] != 2 and barstate.isconfirmed,
+     title="Low Volatility",
+     message="Volatility just classified as Low")
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//  ──────────────────────────────────────────────────────────────────
+//  ML Adaptive SuperTrend – NIFTY-50 Option intraday strategy
+//  (original ST logic © AlgoAlpha – execution layer by ChatGPT)
+//  ──────────────────────────────────────────────────────────────────
+//@version=6
+strategy("ML Adaptive SuperTrend - NIFTY OPT (intraday)", overlay = true, max_labels_count = 500, default_qty_type = strategy.fixed, default_qty_value = 10, commission_type = strategy.commission.percent, commission_value = 0.03, pyramiding = 0)
+
+// ─────────  USER I/O  ─────────
+strategyType = input.string("intraday", "Strategy Type", options = ["intraday"])
+orderType    = input.string("market",   "Order Type",    options = ["market","limit"])
+slATRmult    = input.float (1.0,  "SL ATR mult", step=0.1, group="Risk")
+tpRmult      = input.float (2.0,  "TP reward (R) mult", step=0.5, group="Risk")
+riskPct      = input.float (1.0,  "Account Risk %", step=0.25, group="Risk")
+
+// // ─────────  SESSION FILTER : 09:20-15:25 IST  ─────────
+sessionOK = not na(time(timeframe.period, "0920-1525:1234567", "Asia/Kolkata"))
+
+// ──────────────────────────────────────────────────────────────────
+//  ❶  >>>>>  — DO NOT TOUCH: Adaptive-SuperTrend core —
+
+atr_len = input.int(10, "ATR Length", group = "SuperTrend Settings")
+fact = input.float(2, "SuperTrend Factor", group = "SuperTrend Settings")
+training_data_period = input.int(100, "Training Data Length", group = "K-Means Settings")
+highvol = input.float(0.75, "Initial High volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'high volatility' area is, a value of 0.75 will take the 75th percentile of the range of ATR values over the training data period")
+midvol = input.float(0.5, "Initial Medium volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'medium volatility' area is, a value of 0.5 will take the 50th percentile of the range of ATR values over the training data period")
+lowvol = input.float(0.25, "Initial Low volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'low volatility' area is, a value of 0.25 will take the 25th percentile of the range of ATR values over the training data period")
+t1 = input.int(70, "Transparency 1", maxval = 100, minval = 0, group = "Appearance")
+t2 = input.int(95, "Transparency 2", maxval = 100, minval = 0, group = "Appearance")
+green = input.color(color.blue, "Bullish Color", group = "Appearance")
+red = input.color(#ff1100, "Bearish Color", group = "Appearance")
+
+//  (-  entire pine_supertrend() + K-Means part copied verbatim  -)
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+//  ………………………………………………………………………………………………………………………………
+volatility = ta.atr(atr_len)
+
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility, training_data_period)
+
+high_volatility = lower + (upper-lower) * highvol
+medium_volatility = lower + (upper-lower) * midvol
+low_volatility = lower + (upper-lower) * lowvol
+
+iterations = 0
+
+size_a = 0
+size_b = 0
+size_c = 0
+
+hv = array.new_float()
+mv = array.new_float()
+lv = array.new_float()
+amean = array.new_float(1,high_volatility)
+bmean = array.new_float(1,medium_volatility)
+cmean = array.new_float(1,low_volatility)
+
+if nz(volatility) > 0 and bar_index >= training_data_period-1
+    while ((amean.size() == 1 ? true : (amean.first() != amean.get(1))) or (bmean.size() == 1 ? true : (bmean.first() != bmean.get(1))) or (cmean.size() == 1 ? true : (cmean.first() != cmean.get(1))))
+        hv.clear()
+        mv.clear()
+        lv.clear()
+        for i = training_data_period-1 to 0
+            _1 = math.abs(volatility[i] - amean.first())
+            _2 = math.abs(volatility[i] - bmean.first())
+            _3 = math.abs(volatility[i] - cmean.first())
+            if _1 < _2 and _1 < _3
+                hv.unshift(volatility[i])
+
+            if _2 < _1 and _2 < _3
+                mv.unshift(volatility[i])
+
+            if _3 < _1 and _3 < _2
+                lv.unshift(volatility[i])
+
+        amean.unshift(hv.avg())
+        bmean.unshift(mv.avg())
+        cmean.unshift(lv.avg())
+        size_a := hv.size()
+        size_b := mv.size()
+        size_c := lv.size()
+        iterations := iterations + 1
+
+hv_new = amean.first()
+mv_new = bmean.first()
+lv_new = cmean.first()
+vdist_a = math.abs(volatility - hv_new)
+vdist_b = math.abs(volatility - mv_new)
+vdist_c = math.abs(volatility - lv_new)
+
+distances = array.new_float()
+centroids = array.new_float()
+
+distances.push(vdist_a)
+distances.push(vdist_b)
+distances.push(vdist_c)
+
+centroids.push(hv_new)
+centroids.push(mv_new)
+centroids.push(lv_new)
+
+cluster = distances.indexof(distances.min()) // 0 for high, 1 for medium, 2 for low
+assigned_centroid = cluster == -1 ? na : centroids.get(cluster)
+//  ………………………………………………………………………………………………………………………………
+[ST, dir]   = pine_supertrend(fact, assigned_centroid)
+// ──────────────────────────────────────────────────────────────────
+
+
+//  ❷  >>>>>  Execution layer for NIFTY options
+//  ─────────  ENTRY signals (same as before)  ─────────
+bullShift = ta.crossunder(dir, 0)      // red  →  blue  (go LONG)
+bearShift = ta.crossover (dir, 0)      // blue →  red   (go SHORT)
+
+// ─────  ORDERS  ─────
+if bullShift
+    strategy.entry("Long",  strategy.long)
+
+if bearShift
+    strategy.entry("Short", strategy.short)
+
+
+// ──────────────────────────────────────────────────────────────────
+//  ❸  JSON-formatted alerts (Rails strong-params compatible)
+// ──────────────────────────────────────────────────────────────────
+jsonAlert(_signal, _action, _currPos, _prevPos)=>
+    '{ "alert": {' + '"ticker":"' + syminfo.ticker + '",' + '"instrument_type":"' + syminfo.type + '",' + '"exchange":"' + syminfo.prefix + '",' + '"time":"' + str.format_time(time, "yyyy-MM-dd\'T\'HH:mm:ssZ", syminfo.timezone) + '",' + '"strategy_type":"' + strategyType + '",' + '"order_type":"' + orderType + '",' + '"action":"' + _action + '",' + '"current_position":"' + _currPos + '",' + '"previous_position":"' + _prevPos + '",' + '"current_price":' + str.tostring(close, "#.##") + ',' + '"chart_interval":"' + timeframe.period + '",' + '"strategy_name":"ML Adaptive SuperTrend",' + '"strategy_id":"' + syminfo.ticker + "_" + strategyType + '",' + '"signal_type":"' + _signal + '" } }'
+
+// helper → "long|short|flat"
+posLabel(qty)=> qty>0? "long": qty<0? "short":"flat"
+prevP = posLabel(strategy.position_size[1])
+currP = posLabel(strategy.position_size)
+
+// ENTRY alerts
+if bullShift and barstate.isconfirmed
+    alert(jsonAlert("long_entry",  "buy",  "long",  prevP), alert.freq_once_per_bar_close)
+
+if bearShift and barstate.isconfirmed
+    alert(jsonAlert("short_entry", "sell", "short", prevP), alert.freq_once_per_bar_close)
+
+// EXIT alerts
+if strategy.position_size == 0 and strategy.position_size[1] > 0 and barstate.isconfirmed
+    alert(jsonAlert("long_exit",  "sell", "flat", "long"),  alert.freq_once_per_bar_close)
+
+if strategy.position_size == 0 and strategy.position_size[1] < 0 and barstate.isconfirmed
+    alert(jsonAlert("short_exit", "buy",  "flat", "short"), alert.freq_once_per_bar_close)
+
+//@version=6
+indicator("ML Adaptive SuperTrend [nemesis] - Trend Detection", overlay=true)
+
+// INPUTS
+atr_len = input.int(10, "ATR Length")
+fact = input.float(1, "SuperTrend Factor")
+training_data_period = input.int(100, "Training Data Length")
+highvol = input.float(0.75, "High Volatility Percentile")
+midvol = input.float(0.5, "Medium Volatility Percentile")
+lowvol = input.float(0.25, "Low Volatility Percentile")
+
+// COLOR SETTINGS
+t1 = input.int(70, "Transparency 1")
+t2 = input.int(95, "Transparency 2")
+green = input.color(color.blue, "Bullish Color")
+red = input.color(#ff1100, "Bearish Color")
+
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+volatility = ta.atr(atr_len)
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility, training_data_period)
+
+hvNew = lower + (upper - lower) * highvol
+mvNew = lower + (upper - lower) * midvol
+lvNew = lower + (upper - lower) * lowvol
+
+vdist_a = math.abs(volatility - hvNew)
+vdist_b = math.abs(volatility - mvNew)
+vdist_c = math.abs(volatility - lvNew)
+
+cluster = vdist_a < vdist_b and vdist_a < vdist_c ? 0 : vdist_b < vdist_c ? 1 : 2
+assigned_centroid = cluster == 0 ? hvNew : cluster == 1 ? mvNew : lvNew
+
+[ST, dir] = pine_supertrend(fact, assigned_centroid)
+
+plot(dir < 0 ? ST : na, color=color.new(green, t1), style=plot.style_linebr)
+plot(dir > 0 ? ST : na, color=color.new(red, t1), style=plot.style_linebr)
+
+plotshape(ta.crossunder(dir, 0), title="Bullish Trend", style=shape.labelup, location=location.belowbar, color=green, text="Bullish", textcolor=color.white)
+plotshape(ta.crossover(dir, 0), title="Bearish Trend", style=shape.labeldown, location=location.abovebar, color=red, text="Bearish", textcolor=color.white)
+
+// ALERTS
+bullishShift = ta.crossunder(dir, 0)
+bearishShift = ta.crossover(dir, 0)
+hiVol = cluster == 0 and cluster[1] != 0
+midVol = cluster == 1 and cluster[1] != 1
+lowVol = cluster == 2 and cluster[1] != 2
+
+if bullishShift
+    alert("📈 Bullish trend shift detected", alert.freq_once_per_bar_close)
+if bearishShift
+    alert("📉 Bearish trend shift detected", alert.freq_once_per_bar_close)
+if hiVol
+    alert("⚡ High-volatility regime", alert.freq_once_per_bar_close)
+if midVol
+    alert("🔆 Medium-volatility regime", alert.freq_once_per_bar_close)
+if lowVol
+    alert("🌙 Low-volatility regime", alert.freq_once_per_bar_close)
+
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlgoAlpha
+
+//  ──────────────────────────────────────────────────────────────
+//  ML Adaptive SuperTrend  –  refactored & annotated
+//  Original idea by AlgoAlpha – modified for clarity
+//  ──────────────────────────────────────────────────────────────
+//@version=6
+strategy("ML Adaptive SuperTrend [nemesis] V2", "ML-ST - V2", overlay = true, default_qty_type = strategy.fixed, default_qty_value = 10, commission_type = strategy.commission.percent, commission_value = 0.03, max_labels_count = 100, calc_on_every_tick = true)
+
+strategyType = input.string("intraday",  "Strategy Type", options=["intraday","swing","long_term"])
+orderType    = input.string("market",    "Order Type",    options=["market","limit"])
+strategyTitle = "ML Adaptive Supertrend"
+
+atrLen = input.int(10, "ATR Length", group = "SuperTrend Settings")
+fact = input.float(1, "SuperTrend Factor", group = "SuperTrend Settings")
+training_data_period = input.int(100, "Training Data Length", group = "K-Means Settings")
+highvol = input.float(0.75, "Initial High volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'high volatility' area is, a value of 0.75 will take the 75th percentile of the range of ATR values over the training data period")
+midvol = input.float(0.5, "Initial Medium volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'medium volatility' area is, a value of 0.5 will take the 50th percentile of the range of ATR values over the training data period")
+lowvol = input.float(0.25, "Initial Low volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'low volatility' area is, a value of 0.25 will take the 25th percentile of the range of ATR values over the training data period")
+
+useAtrExit = input.bool(true, "Enable ATR-based Exits?", group="ATR Exits")
+slATRmult = input.float(1.3, "SL ATR multiplier", group="ATR Exits")
+tpATRmult = input.float(2.8, "TP ATR multiplier", group="ATR Exits")
+t1 = input.int(70, "Transparency 1", maxval = 100, minval = 0, group = "Appearance")
+t2 = input.int(95, "Transparency 2", maxval = 100, minval = 0, group = "Appearance")
+green = input.color(color.blue, "Bullish Color", group = "Appearance")
+red = input.color(#ff1100, "Bearish Color", group = "Appearance")
+
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+volatility = ta.atr(atrLen)
+
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility, training_data_period)
+
+high_volatility = lower + (upper-lower) * highvol
+medium_volatility = lower + (upper-lower) * midvol
+low_volatility = lower + (upper-lower) * lowvol
+
+iterations = 0
+
+size_a = 0
+size_b = 0
+size_c = 0
+
+hv = array.new_float()
+mv = array.new_float()
+lv = array.new_float()
+amean = array.new_float(1,high_volatility)
+bmean = array.new_float(1,medium_volatility)
+cmean = array.new_float(1,low_volatility)
+
+if nz(volatility) > 0 and bar_index >= training_data_period-1
+    while ((amean.size() == 1 ? true : (amean.first() != amean.get(1))) or (bmean.size() == 1 ? true : (bmean.first() != bmean.get(1))) or (cmean.size() == 1 ? true : (cmean.first() != cmean.get(1))))
+        hv.clear()
+        mv.clear()
+        lv.clear()
+        for i = training_data_period-1 to 0
+            _1 = math.abs(volatility[i] - amean.first())
+            _2 = math.abs(volatility[i] - bmean.first())
+            _3 = math.abs(volatility[i] - cmean.first())
+            if _1 < _2 and _1 < _3
+                hv.unshift(volatility[i])
+
+            if _2 < _1 and _2 < _3
+                mv.unshift(volatility[i])
+
+            if _3 < _1 and _3 < _2
+                lv.unshift(volatility[i])
+
+        amean.unshift(hv.avg())
+        bmean.unshift(mv.avg())
+        cmean.unshift(lv.avg())
+        size_a := hv.size()
+        size_b := mv.size()
+        size_c := lv.size()
+        iterations := iterations + 1
+
+hv_new = amean.first()
+mv_new = bmean.first()
+lv_new = cmean.first()
+vdist_a = math.abs(volatility - hv_new)
+vdist_b = math.abs(volatility - mv_new)
+vdist_c = math.abs(volatility - lv_new)
+
+distances = array.new_float()
+centroids = array.new_float()
+
+distances.push(vdist_a)
+distances.push(vdist_b)
+distances.push(vdist_c)
+
+centroids.push(hv_new)
+centroids.push(mv_new)
+centroids.push(lv_new)
+
+cluster = distances.indexof(distances.min()) // 0 for high, 1 for medium, 2 for low
+assigned_centroid = cluster == -1 ? na : centroids.get(cluster)
+
+[ST, dir] = pine_supertrend(fact, assigned_centroid)
+
+upTrend = plot(close > ST ? ST : na, color = color.new(green, t1), style = plot.style_linebr) //, force_overlay = true
+downTrend = plot(close < ST ? ST : na, color = color.new(red, t1), style = plot.style_linebr, force_overlay = false) //, force_overlay = true
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle",display = display.none)
+
+fill(bodyMiddle, upTrend, (open + close) / 2, ST, color.new(green, t2), color.new(green, t1))
+fill(bodyMiddle, downTrend, ST, (open + close) / 2, color.new(red, t1), color.new(red, t2))
+
+// ─────────── Strategy ENTRY signals ───────────
+bullShift = ta.crossunder(dir, 0)     //   red → green
+bearShift = ta.crossover (dir, 0)     //   green → red
+
+plotshape(bullShift ? ST : na, "Bullish Trend", shape.labelup, location.absolute, green, text = "Bullish", textcolor = chart.fg_color, size = size.small)
+plotshape(bearShift ? ST : na, "Bearish Trend", shape.labeldown, location.absolute, red, text = "Bearish", textcolor = chart.fg_color, size = size.small)
+
+label.new(bar_index, dir > 0 ? ST + ta.atr(7) : ST - ta.atr(7), text = str.tostring(4 - (cluster + 1)), style = label.style_none, textcolor = color.from_gradient(cluster + 1, 1, 3, color.new(dir > 0 ? red : green, 30), color.new(dir > 0 ? red : green, 90)))
+
+
+var float entryATR = na      // frozen ATR at entry‑1 bar
+var float stopLvl  = na      // current stop level
+var float tpLvl    = na      // current take‑profit level
+
+jsonAlert(_signal, _action, _currPos, _prevPos) =>
+    '{ "alert": {'  + '"ticker":"' + syminfo.ticker + '",' + '"instrument_type":"' + syminfo.type + '",' +'"exchange":"' + syminfo.prefix + '",' +'"time":"' + str.format_time(time, "yyyy-MM-dd\'T\'HH:mm:ssZ", syminfo.timezone) + '",' + '"strategy_type":"' +  strategyType + '",' + '"order_type":"'        + orderType  + '",' + '"action":"' + _action + '",' + '"current_position":"'  + _currPos + '",' + '"previous_position":"' + _prevPos  + '",' + '"current_price":' + str.tostring(close, "#.##") + ','  + '"chart_interval":"' + timeframe.period + '",' + '"strategy_name":"' + strategyTitle + '",' + '"strategy_id":"' + syminfo.ticker + "_" + strategyType + '",' + '"signal_type":"' + _signal + '"'+'} }'
+
+// ───── calculate once per bar ─────
+atrNow = ta.atr(atrLen)
+
+// capture ATR **once** – the bar right after the position is opened
+if strategy.opentrades == 1 and strategy.opentrades.entry_bar_index(0) == bar_index-1
+    entryATR := atrNow
+    float riskPts = slATRmult * entryATR
+    stopLvl  := strategy.position_size > 0 ? strategy.position_avg_price - riskPts : strategy.position_avg_price + riskPts
+    tpLvl    := tpATRmult == 0 ? na : strategy.position_size > 0 ? strategy.position_avg_price + tpATRmult*riskPts : strategy.position_avg_price - tpATRmult*riskPts
+
+// trail the stop *only* in the profitable direction
+if strategy.position_size > 0
+    stopLvl := math.max(stopLvl, low)
+if strategy.position_size < 0
+    stopLvl := math.min(stopLvl, high)
+
+// ─────────── ENTRIES ───────────
+if bullShift
+    strategy.entry("Long" , strategy.long )
+    alert(jsonAlert("long_entry", "buy", "long", "flat"), alert.freq_once_per_bar)
+
+if bearShift
+    strategy.entry("Short", strategy.short)
+    alert(jsonAlert("short_entry", "sell", "short", "flat"), alert.freq_once_per_bar)
+
+// ATR-based exits
+// track prcious positions
+var float prevPos = na
+prevPos := nz(prevPos[0], 0)
+longSL = strategy.position_avg_price - slATRmult * volatility
+longTP = strategy.position_avg_price + tpATRmult * volatility
+shortSL = strategy.position_avg_price + slATRmult * volatility
+shortTP = strategy.position_avg_price - tpATRmult * volatility
+
+// ATR-based exits
+if useAtrExit
+    if strategy.position_size > 0
+        strategy.exit("LongExit", from_entry="Long", stop=longSL, limit=longTP)
+
+    if strategy.position_size < 0
+        strategy.exit("ShortExit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+if useAtrExit
+    // Detect exit (only once when position closes)
+    exitedLong = prevPos > 0 and strategy.position_size == 0
+    exitedShort = prevPos < 0 and strategy.position_size == 0
+    if exitedLong
+        alert(jsonAlert("long_exit", "sell", "flat", "long"), alert.freq_once_per_bar)
+    if exitedShort
+        alert(jsonAlert("short_exit", "buy", "flat", "short"), alert.freq_once_per_bar)
+// else
+//     strategy.close_all(comment="Manual Close on Flip")
+//     //alert(jsonAlert(strategy.position_size[1] > 0 ? "long_exit" : "short_exit", strategy.position_size[1] > 0 ? "sell" : "buy", "flat", strategy.position_size[1] > 0 ? "long" : "short"), alert.freq_once_per_bar)
+//     exited = prevPos != 0 and strategy.position_size == 0
+//     if exited
+//         alert(jsonAlert(prevPos > 0 ? "long_exit" : "short_exit", prevPos > 0 ? "sell" : "buy", "flat", prevPos > 0 ? "long" : "short"), alert.freq_once_per_bar)
+
+// Update previous position size
+prevPos := strategy.position_size
+
+// ATR SL/TP plotting
+plot(useAtrExit and strategy.position_size != 0 ? strategy.position_size > 0 ? longSL : shortSL : na, title="ATR Stop", color=color.new(color.white, 50), style = plot.style_linebr)
+plot(useAtrExit and strategy.position_size != 0 ? strategy.position_size > 0 ? longTP : shortTP : na, title="ATR TP", color=color.new(color.blue, 50), style = plot.style_linebr)
+
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlgoAlpha
+
+//  ──────────────────────────────────────────────────────────────
+//  ML Adaptive SuperTrend  –  refactored & annotated
+//  Original idea by AlgoAlpha – modified for clarity
+//  ──────────────────────────────────────────────────────────────
+//@version=6
+strategy("ML Adaptive SuperTrend [nemesis]", "ML-ST n", overlay = true, default_qty_type = strategy.fixed, default_qty_value = 1, commission_type = strategy.commission.percent, commission_value = 0.03, max_labels_count = 100, calc_on_every_tick = true)
+
+strategyType = input.string("intraday",  "Strategy Type", options=["intraday","swing","long_term"])
+orderType    = input.string("market",    "Order Type",    options=["market","limit"])
+strategyTitle = "ML Adaptive Supertrend"
+
+atrLen = input.int(10, "ATR Length", group = "SuperTrend Settings")
+fact = input.float(1, "SuperTrend Factor", group = "SuperTrend Settings")
+training_data_period = input.int(100, "Training Data Length", group = "K-Means Settings")
+highvol = input.float(0.75, "Initial High volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'high volatility' area is, a value of 0.75 will take the 75th percentile of the range of ATR values over the training data period")
+midvol = input.float(0.5, "Initial Medium volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'medium volatility' area is, a value of 0.5 will take the 50th percentile of the range of ATR values over the training data period")
+lowvol = input.float(0.25, "Initial Low volatility Percentile Guess", maxval = 1, group = "K-Means Settings", tooltip = "The initial guess of where the potential 'low volatility' area is, a value of 0.25 will take the 25th percentile of the range of ATR values over the training data period")
+
+useAtrExit = input.bool(true, "Enable ATR-based Exits?", group="ATR Exits")
+slATRmult = input.float(1.3, "SL ATR multiplier", group="ATR Exits")
+tpATRmult = input.float(2.8, "TP ATR multiplier", group="ATR Exits")
+t1 = input.int(70, "Transparency 1", maxval = 100, minval = 0, group = "Appearance")
+t2 = input.int(95, "Transparency 2", maxval = 100, minval = 0, group = "Appearance")
+green = input.color(color.blue, "Bullish Color", group = "Appearance")
+red = input.color(#ff1100, "Bearish Color", group = "Appearance")
+
+pine_supertrend(factor, atr) =>
+    src = hl2
+    upperBand = src + factor * atr
+    lowerBand = src - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+
+    lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand ? upperBand : prevUpperBand
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := close > upperBand ? -1 : 1
+    else
+        _direction := close < lowerBand ? 1 : -1
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+volatility = ta.atr(atrLen)
+
+upper = ta.highest(volatility, training_data_period)
+lower = ta.lowest(volatility, training_data_period)
+
+high_volatility = lower + (upper-lower) * highvol
+medium_volatility = lower + (upper-lower) * midvol
+low_volatility = lower + (upper-lower) * lowvol
+
+iterations = 0
+
+size_a = 0
+size_b = 0
+size_c = 0
+
+hv = array.new_float()
+mv = array.new_float()
+lv = array.new_float()
+amean = array.new_float(1,high_volatility)
+bmean = array.new_float(1,medium_volatility)
+cmean = array.new_float(1,low_volatility)
+
+if nz(volatility) > 0 and bar_index >= training_data_period-1
+    while ((amean.size() == 1 ? true : (amean.first() != amean.get(1))) or (bmean.size() == 1 ? true : (bmean.first() != bmean.get(1))) or (cmean.size() == 1 ? true : (cmean.first() != cmean.get(1))))
+        hv.clear()
+        mv.clear()
+        lv.clear()
+        for i = training_data_period-1 to 0
+            _1 = math.abs(volatility[i] - amean.first())
+            _2 = math.abs(volatility[i] - bmean.first())
+            _3 = math.abs(volatility[i] - cmean.first())
+            if _1 < _2 and _1 < _3
+                hv.unshift(volatility[i])
+
+            if _2 < _1 and _2 < _3
+                mv.unshift(volatility[i])
+
+            if _3 < _1 and _3 < _2
+                lv.unshift(volatility[i])
+
+        amean.unshift(hv.avg())
+        bmean.unshift(mv.avg())
+        cmean.unshift(lv.avg())
+        size_a := hv.size()
+        size_b := mv.size()
+        size_c := lv.size()
+        iterations := iterations + 1
+
+hv_new = amean.first()
+mv_new = bmean.first()
+lv_new = cmean.first()
+vdist_a = math.abs(volatility - hv_new)
+vdist_b = math.abs(volatility - mv_new)
+vdist_c = math.abs(volatility - lv_new)
+
+distances = array.new_float()
+centroids = array.new_float()
+
+distances.push(vdist_a)
+distances.push(vdist_b)
+distances.push(vdist_c)
+
+centroids.push(hv_new)
+centroids.push(mv_new)
+centroids.push(lv_new)
+
+cluster = distances.indexof(distances.min()) // 0 for high, 1 for medium, 2 for low
+assigned_centroid = cluster == -1 ? na : centroids.get(cluster)
+
+[ST, dir] = pine_supertrend(fact, assigned_centroid)
+
+upTrend = plot(close > ST ? ST : na, color = color.new(green, t1), style = plot.style_linebr) //, force_overlay = true
+downTrend = plot(close < ST ? ST : na, color = color.new(red, t1), style = plot.style_linebr, force_overlay = false) //, force_overlay = true
+bodyMiddle = plot(barstate.isfirst ? na : (open + close) / 2, "Body Middle",display = display.none)
+
+fill(bodyMiddle, upTrend, (open + close) / 2, ST, color.new(green, t2), color.new(green, t1))
+fill(bodyMiddle, downTrend, ST, (open + close) / 2, color.new(red, t1), color.new(red, t2))
+
+// ─────────── Strategy ENTRY signals ───────────
+bullShift = ta.crossunder(dir, 0)     //   red → green
+bearShift = ta.crossover (dir, 0)     //   green → red
+
+plotshape(bullShift ? ST : na, "Bullish Trend", shape.labelup, location.absolute, green, text = "Bullish", textcolor = chart.fg_color, size = size.small)
+plotshape(bearShift ? ST : na, "Bearish Trend", shape.labeldown, location.absolute, red, text = "Bearish", textcolor = chart.fg_color, size = size.small)
+
+label.new(bar_index, dir > 0 ? ST + ta.atr(7) : ST - ta.atr(7), text = str.tostring(4 - (cluster + 1)), style = label.style_none, textcolor = color.from_gradient(cluster + 1, 1, 3, color.new(dir > 0 ? red : green, 30), color.new(dir > 0 ? red : green, 90)))
+
+
+var float entryATR = na      // frozen ATR at entry‑1 bar
+var float stopLvl  = na      // current stop level
+var float tpLvl    = na      // current take‑profit level
+
+jsonAlert(_signal, _action, _currPos, _prevPos) =>
+    '{ "alert": {'  + '"ticker":"' + syminfo.ticker + '",' + '"instrument_type":"' + syminfo.type + '",' +'"exchange":"' + syminfo.prefix + '",' +'"time":"' + str.format_time(time, "yyyy-MM-dd\'T\'HH:mm:ssZ", syminfo.timezone) + '",' + '"strategy_type":"' +  strategyType + '",' + '"order_type":"'        + orderType  + '",' + '"action":"' + _action + '",' + '"current_position":"'  + _currPos + '",' + '"previous_position":"' + _prevPos  + '",' + '"current_price":' + str.tostring(close, "#.##") + ','  + '"chart_interval":"' + timeframe.period + '",' + '"strategy_name":"' + strategyTitle + '",' + '"strategy_id":"' + syminfo.ticker + "_" + strategyType + '",' + '"signal_type":"' + _signal + '"'+'} }'
+
+// ───── calculate once per bar ─────
+atrNow = ta.atr(atrLen)
+
+// capture ATR **once** – the bar right after the position is opened
+if strategy.opentrades == 1 and strategy.opentrades.entry_bar_index(0) == bar_index-1
+    entryATR := atrNow
+    float riskPts = slATRmult * entryATR
+    stopLvl  := strategy.position_size > 0 ? strategy.position_avg_price - riskPts : strategy.position_avg_price + riskPts
+    tpLvl    := tpATRmult == 0 ? na : strategy.position_size > 0 ? strategy.position_avg_price + tpATRmult*riskPts : strategy.position_avg_price - tpATRmult*riskPts
+
+// trail the stop *only* in the profitable direction
+if strategy.position_size > 0
+    stopLvl := math.max(stopLvl, low)
+if strategy.position_size < 0
+    stopLvl := math.min(stopLvl, high)
+
+// ─────────── ENTRIES ───────────
+if bullShift
+    strategy.entry("Long" , strategy.long )
+    alert(jsonAlert("long_entry", "buy", "long", "flat"), alert.freq_once_per_bar)
+
+if bearShift
+    strategy.entry("Short", strategy.short)
+    alert(jsonAlert("short_entry", "sell", "short", "flat"), alert.freq_once_per_bar)
+
+// ATR-based exits
+// track prcious positions
+var float prevPos = na
+prevPos := nz(prevPos[0], 0)
+longSL = strategy.position_avg_price - slATRmult * volatility
+longTP = strategy.position_avg_price + tpATRmult * volatility
+shortSL = strategy.position_avg_price + slATRmult * volatility
+shortTP = strategy.position_avg_price - tpATRmult * volatility
+
+// ATR-based exits
+if useAtrExit
+    if strategy.position_size > 0
+        strategy.exit("LongExit", from_entry="Long", stop=longSL, limit=longTP)
+
+    if strategy.position_size < 0
+        strategy.exit("ShortExit", from_entry="Short", stop=shortSL, limit=shortTP)
+
+if useAtrExit
+    // Detect exit (only once when position closes)
+    exitedLong = prevPos > 0 and strategy.position_size == 0
+    exitedShort = prevPos < 0 and strategy.position_size == 0
+    if exitedLong
+        alert(jsonAlert("long_exit", "sell", "flat", "long"), alert.freq_once_per_bar)
+    if exitedShort
+        alert(jsonAlert("short_exit", "buy", "flat", "short"), alert.freq_once_per_bar)
+// else
+//     strategy.close_all(comment="Manual Close on Flip")
+//     //alert(jsonAlert(strategy.position_size[1] > 0 ? "long_exit" : "short_exit", strategy.position_size[1] > 0 ? "sell" : "buy", "flat", strategy.position_size[1] > 0 ? "long" : "short"), alert.freq_once_per_bar)
+//     exited = prevPos != 0 and strategy.position_size == 0
+//     if exited
+//         alert(jsonAlert(prevPos > 0 ? "long_exit" : "short_exit", prevPos > 0 ? "sell" : "buy", "flat", prevPos > 0 ? "long" : "short"), alert.freq_once_per_bar)
+
+// Update previous position size
+prevPos := strategy.position_size
+
+// ATR SL/TP plotting
+plot(useAtrExit and strategy.position_size != 0 ? strategy.position_size > 0 ? longSL : shortSL : na, title="ATR Stop", color=color.new(color.white, 50), style = plot.style_linebr)
+plot(useAtrExit and strategy.position_size != 0 ? strategy.position_size > 0 ? longTP : shortTP : na, title="ATR TP", color=color.new(color.blue, 50), style = plot.style_linebr)
+
+//@version=6
+// ───────────────────────────────────────────────────────────────
+//  Multi‑Timeframe Adaptive SuperTrend – Crypto (Delta Exchange)
+//  Sends JSON alerts compatible with Delta Exchange India bot.
+//  Author: shubhamtaywade82 • 2025
+// ───────────────────────────────────────────────────────────────
+
+strategy("MTF Adaptive SuperTrend – Crypto [Delta]", shorttitle = "MTF‑ST‑CRYPTO", overlay = true, default_qty_type  = strategy.fixed,   default_qty_value = 1, commission_type = strategy.commission.percent, commission_value  = 0.05, pyramiding = 0, calc_on_every_tick = true)
+
+//────────────────── Inputs ──────────────────
+factor   = input.float(1.0,  "SuperTrend Factor", group="Strategy")
+atrLen   = input.int  (10 ,  "ATR Length",        group="Strategy")
+
+// Timeframes
+lowerTF  = input.timeframe("5",   "Lower TF",  group="Timeframes")
+upperTF  = input.timeframe("60",  "Upper TF",  group="Timeframes", tooltip="Higher timeframe for trend confirmation")
+
+// Filters
+useADX   = input.bool (true , "ADX Trend Filter",   group="Filters")
+adxLen   = input.int  (14  , "ADX Length",          group="Filters")
+adxMin   = input.float(20  , "Min ADX",             group="Filters")
+
+useVol   = input.bool (false, "Volume Filter",      group="Filters")
+volLen   = input.int  (20  , "Volume SMA length",   group="Filters")
+volMinMult = input.float(1 , "Vol > SMA *",         group="Filters", tooltip="Volume must be greater than volSMA * X")
+
+// ATR Exit
+useAtrExit = input.bool(true , "Enable ATR Exits",  group="Risk")
+slMult     = input.float(1.5,  "SL × ATR",          group="Risk")
+tpMult     = input.float(3.0,  "TP × ATR",          group="Risk")
+
+// Alert meta
+strategyID = "MTF-ST-CRYPTO"
+
+//────────────────── Helper: SuperTrend dir only ──────────────────
+getDir(_factor, atrLen) =>
+    [_, dir] = ta.supertrend(_factor, atrLen)
+    dir  // <0 bullish, >0 bearish
+
+//────────────────── Multi‑TF directions ──────────────────────────
+dirLower   = request.security(syminfo.tickerid, lowerTF, getDir(factor, atrLen))
+dirCurrent = getDir(factor, atrLen)
+dirUpper   = request.security(syminfo.tickerid, upperTF, getDir(factor, atrLen))
+
+bull   = dirLower < 0 and dirCurrent < 0 and dirUpper < 0
+bear   = dirLower > 0 and dirCurrent > 0 and dirUpper > 0
+
+//────────────────── Filters ──────────────────
+[_,_,adx]=ta.dmi(14, 20)
+adxPass = adx > 20
+volPass = not useVol or volume > ta.sma(volume, volLen) * volMinMult
+
+longCond  = bull  and adxPass and volPass
+shortCond = bear  and adxPass and volPass
+
+//────────────────── Entry Orders ──────────────────
+if longCond
+    strategy.entry("Long", strategy.long)
+    alert('{"symbol":"{{ticker}}","side":"buy","qty":"{{strategy.order.contracts}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+if shortCond
+    strategy.entry("Short", strategy.short)
+    alert('{"symbol":"{{ticker}}","side":"sell","qty":"{{strategy.order.contracts}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+//────────────────── ATR‑based Exits ──────────────────
+atrNow = ta.atr(atrLen)
+if useAtrExit
+    if strategy.position_size > 0
+        strategy.exit("XL", from_entry="Long", stop=strategy.position_avg_price - slMult*atrNow, limit=strategy.position_avg_price + tpMult*atrNow)
+    if strategy.position_size < 0
+        strategy.exit("XS", from_entry="Short", stop=strategy.position_avg_price + slMult*atrNow, limit=strategy.position_avg_price - tpMult*atrNow)
+
+// Exit alerts once per bar
+var float prevPos = na
+exitedLong  = prevPos > 0  and strategy.position_size == 0
+exitedShort = prevPos < 0  and strategy.position_size == 0
+if exitedLong
+    alert('{"symbol":"{{ticker}}","side":"sell","qty":"{{strategy.closedtrades.size}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+if exitedShort
+    alert('{"symbol":"{{ticker}}","side":"buy","qty":"{{strategy.closedtrades.size}}","trigger_time":"{{timenow}}","strategy_id":"'+strategyID+'"}', alert.freq_once_per_bar_close)
+
+prevPos := strategy.position_size
+
+//────────────────── Visuals ──────────────────
+[stLine,_] = ta.supertrend(factor, atrLen)
+plot(dirCurrent < 0 ? stLine : na, "ST Bull", color=color.new(color.green,0), style=plot.style_linebr)
+plot(dirCurrent > 0 ? stLine : na, "ST Bear", color=color.new(color.red,0),   style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size>0  ? strategy.position_avg_price - slMult*atrNow : na, title="SL L", color=color.new(color.red,60),  style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size>0  ? strategy.position_avg_price + tpMult*atrNow : na, title="TP L", color=color.new(color.green,60),style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size<0  ? strategy.position_avg_price + slMult*atrNow : na, title="SL S", color=color.new(color.red,60),  style=plot.style_linebr)
+plot(useAtrExit and strategy.position_size<0  ? strategy.position_avg_price - tpMult*atrNow : na, title="TP S", color=color.new(color.green,60),style=plot.style_linebr)
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("⚡ Simple Super-Trend Strategy • adaptive v3", overlay = true, default_qty_type = strategy.fixed, default_qty_value = 1, pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.03, calc_on_every_tick = true)
+import TradingView/ta/10
+
+//──────────────────── ① INPUTS ────────────────────────────────────────────
+grpST = "Super-Trend rails"
+lenLow   = input.int  ( 7, "ATR length – Low vol" , group=grpST)
+lenBase  = input.int  (10, "ATR length – Neutral" , group=grpST)
+lenHigh  = input.int  (14, "ATR length – High vol", group=grpST)
+
+facTight = input.float(1.0, "Factor – Low vol" , group=grpST, step=.1)
+facBase  = input.float(1.4, "Factor – Neutral" , group=grpST, step=.1)
+facLoose = input.float(2.0, "Factor – High vol", group=grpST, step=.1)
+
+grpVol = "Volatility regime"
+rankLook = input.int  (50 , "ATR percentile look-back", group=grpVol)
+hiPerc   = input.float(0.6, "High-vol threshold"      , group=grpVol)
+loPerc   = input.float(0.4, "Low-vol threshold"       , group=grpVol)
+
+grpExit  = "ATR SL / TP"
+useBracket = input.bool (false, "Use ATR SL / TP?" , group=grpExit)
+slX        = input.float(1.2 , "SL × ATR"          , group=grpExit, step=.1)
+tpX        = input.float(2.0 , "TP × ATR"          , group=grpExit, step=.1)
+
+//──────────────────── ② VOLATILITY REGIME ────────────────────────────────
+atrFast  = ta.atr(lenLow)                    // shorter ATR = faster
+atrRank  = ta.percentrank(atrFast, rankLook) // 0-1 percentile of recent ATR
+
+regime = atrRank > hiPerc ?  1 : atrRank < loPerc ? -1 : 0      //  low vol | else neutral
+
+//──────────────────── ③ PRE-COMPUTED SUPER-TRENDS ────────────────────────
+[stL , dirL] = ta.supertrend(facTight, lenLow)
+[stM , dirM] = ta.supertrend(facBase , lenBase)
+[stH , dirH] = ta.supertrend(facLoose, lenHigh)
+
+// Pick the **active** rail
+stLine = regime== 1 ? stH  : regime==-1 ? stL  : stM
+stDir  = regime== 1 ? dirH : regime==-1 ? dirL : dirM   // TV’s dir: 1=below, -1=above
+stDir  := stDir * -1                                     // flip polarity: +1 bull, -1 bear
+
+//──────────────────── ④ TRADING LOGIC ─────────────────────────────────────
+flip      = ta.change(stDir) != 0
+isBull    = stDir ==  1
+isBear    = stDir == -1
+
+if flip and isBull
+    strategy.entry("Long" , strategy.long)
+
+if flip and isBear
+    strategy.entry("Short", strategy.short)
+
+// optional ATR SL / TP
+atrNow = ta.atr(lenBase)          // any constant len is fine
+
+if useBracket and strategy.position_size > 0
+    strategy.exit("L-exit", "Long", stop  = strategy.position_avg_price - slX*atrNow, limit = strategy.position_avg_price + tpX*atrNow)
+
+if useBracket and strategy.position_size < 0
+    strategy.exit("S-exit", "Short", stop  = strategy.position_avg_price + slX*atrNow, limit = strategy.position_avg_price - tpX*atrNow)
+
+// also exit on opposite flip
+if flip and isBear
+    strategy.close("Long",  comment="flip exit")
+if flip and isBull
+    strategy.close("Short", comment="flip exit")
+
+//──────────────────── ⑤ PLOTS ────────────────────────────────────────────
+plot(regime== 1 ? stH : na, "ST-High vol",  color=color.orange, style=plot.style_linebr)
+plot(regime== 0 ? stM : na, "ST-Neutral" ,  color=color.gray  , style=plot.style_linebr)
+plot(regime==-1 ? stL : na, "ST-Low vol" ,  color=color.teal  , style=plot.style_linebr)
+
+plotshape(flip and isBull,  "Long ⇧",  shape.triangleup , location.belowbar, color.lime   , size=size.small)
+plotshape(flip and isBear,  "Short ⇩", shape.triangledown, location.abovebar, color.fuchsia, size=size.small)
+
+
+//@version=6
+strategy("* Swing+Positional MultiStrategy NSE (Enhanced v3)",
+ overlay = true,
+ default_qty_type = strategy.fixed,
+ default_qty_value = 10,
+ commission_type = strategy.commission.percent,
+ commission_value = 0.03,
+ pyramiding = 0,
+ calc_on_every_tick = true)
+
+secType = syminfo.type
+
+//──────────────────── 1 • MARKET HOURS ────────────────────
+marketOpen  = timestamp("Asia/Kolkata", year, month, dayofmonth,  9, 15)
+marketClose = timestamp("Asia/Kolkata", year, month, dayofmonth, 15, 30)
+inSession   = time >= marketOpen and time <= marketClose
+
+//──────────────────── 2 • INPUTS ───────────────────────────
+// Strategy toggles
+grpCore = "① Strategy Toggles"
+respectSession = input.bool(true, "Respect NSE session (09:15–15:30)", group = grpCore)
+if secType == "crypto"
+    respectSession := false
+
+useST  = input.bool(true , "Supertrend"       , group = grpCore)
+useEMA = input.bool(false , "EMA Crossover"    , group = grpCore)
+useRM  = input.bool(false, "RSI-MACD Combo"   , group = grpCore)
+
+
+// ADX + HTF Bias Filters
+useAdxFilter  = input.bool(true , "Enable ADX Filter?" , group = grpCore)
+adxDIlen    = input.int(14, "DI Length", group=grpCore)
+adxSmoothing = input.int(14, "ADX Smoothing", group=grpCore)
+minAdx        = input.int (20   , "Min ADX", minval = 5, group = grpCore)
+useTrendBias  = input.bool(true , "Enable HTF Trend Filter?" , group = grpCore)
+htfTF         = input.timeframe("15", "HTF Timeframe", group = grpCore)
+
+// Supertrend
+grpST     = "② Supertrend Settings"
+stAtrLen  = input.int  (10 , "ATR Length", group = grpST)
+stFactor  = input.float(1.5, "Multiplier", group = grpST)
+
+// EMA crossover
+grpEMA    = "③ EMA Settings"
+emaFastLen = input.int(9 , "Fast EMA", group = grpEMA)
+emaSlowLen = input.int(21, "Slow EMA", group = grpEMA)
+
+// Exit Engine
+grpExit     = "④ Exit Engine"
+enableExit  = input.bool(true, "Enable Exits?", group = grpExit)
+exitStyle   = input.string("percent", "Exit Style", options=["percent","atr"], group=grpExit)
+slPct       = input.float(2.0, "SL %", group=grpExit, inline="sl")
+tpPct       = input.float(4.0, "TP %", group=grpExit, inline="tp")
+slATRmult   = input.float(1.5, "SL × ATR", group=grpExit)
+tpATRmult   = input.float(3.0, "TP × ATR", group=grpExit)
+
+// Debug
+showDebug   = input.bool(true, "Show Debug Overlay?", group="⑤ Debug / Stats")
+enableStats = input.bool(true, "Show Stats Table?", group="⑤ Debug / Stats")
+
+//──────────────────── 3 • INDICATORS ───────────────────────
+// Supertrend
+[stLine, _] = ta.supertrend(stFactor, stAtrLen)
+longST  = ta.crossover(close, stLine)
+shortST = ta.crossunder(close, stLine)
+
+// EMA Crossover
+emaFast  = ta.ema(close, emaFastLen)
+emaSlow  = ta.ema(close, emaSlowLen)
+longEMA  = ta.crossover(emaFast, emaSlow)
+shortEMA = ta.crossunder(emaFast, emaSlow)
+
+// RSI + MACD
+rsi           = ta.rsi(close, 14)
+[macdL, macdS, _] = ta.macd(close, 12, 26, 9)
+longRM  = rsi < 35 and macdL > macdS
+shortRM = rsi > 65 and macdL < macdS
+
+// ADX Filter
+[plusDI, minusDI, adx] = ta.dmi(adxDIlen, adxSmoothing)
+adxOkay = not useAdxFilter or adx > minAdx
+
+// HTF Trend Filter
+htfEma = request.security(syminfo.tickerid, htfTF, ta.ema(close, 50))
+biasOkay = not useTrendBias or (close > htfEma)
+
+// ATR
+atrVal = ta.atr(14)
+
+//──────────────────── 4 • ENTRY CONDITIONS ─────────────────
+sessionOk = respectSession ? inSession : true
+
+enterLong  = sessionOk and adxOkay and biasOkay and ((useST  and longST ) or (useEMA and longEMA) or (useRM  and longRM ) )
+
+enterShort = sessionOk and adxOkay and biasOkay and ((useST  and shortST ) or(useEMA and shortEMA) or(useRM  and shortRM ))
+
+//──────────────────── 5 • EXITS ────────────────────────────
+var idLong  = "LONG"
+var idShort = "SHORT"
+
+if enableExit and exitStyle == "percent"
+    strategy.exit("L-exit", from_entry = idLong , stop = close * (1 - slPct/100), limit = close * (1 + tpPct/100))
+    strategy.exit("S-exit", from_entry = idShort, stop = close * (1 + slPct/100), limit = close * (1 - tpPct/100))
+
+if enableExit and exitStyle == "atr"
+    strategy.exit("L-exit", from_entry = idLong , stop = close - slATRmult*atrVal, limit = close + tpATRmult*atrVal)
+    strategy.exit("S-exit", from_entry = idShort, stop = close + slATRmult*atrVal, limit = close - tpATRmult*atrVal)
+
+//──────────────────── 6 • EXECUTION ────────────────────────
+if enterLong
+    strategy.entry(idLong , strategy.long)
+if enterShort
+    strategy.entry(idShort, strategy.short)
+
+//──────────────────── 7 • DEBUG + SL PLOTS ─────────────────
+plot(showDebug ? stLine : na, "Supertrend", color = color.orange, linewidth = 2)
+
+slLong = showDebug and enableExit and strategy.position_size > 0
+         ? strategy.position_avg_price - (exitStyle == "percent" ? close * slPct / 100 : slATRmult * atrVal)
+         : na
+slShort = showDebug and enableExit and strategy.position_size < 0
+         ? strategy.position_avg_price + (exitStyle == "percent" ? close * slPct / 100 : slATRmult * atrVal)
+         : na
+
+plot(slLong , "SL-Long" , color=color.red , style=plot.style_linebr)
+plot(slShort, "SL-Short", color=color.red , style=plot.style_linebr)
+
+plot(showDebug ? adx : na, "ADX", color=color.red)
+plot(showDebug ? plusDI : na, "+DI", color=color.green)
+plot(showDebug ? minusDI : na, "-DI", color=color.orange)
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("*Volatility Adaptive Supertrend Strategy + ADX Filter", shorttitle = "VST-Adap-ADX", overlay=true, default_qty_type=strategy.fixed, default_qty_value=10, calc_on_every_tick = true)
+
+//───────────────────────────── Inputs ─────────────────────────────
+groupSettings = "① Core Settings"
+enableAdaptive = input.bool(true, "Enable Volatility Adaptive?", group=groupSettings)
+useAdx = input.bool(true, "Use ADX Filter?", group=groupSettings)
+useAtrExit = input.bool(true, "Use ATR-based Exits?", group=groupSettings)
+
+groupSupertrend = "② Supertrend + Volatility"
+atrPeriod = input.int(10, "ATR Period", group=groupSupertrend)
+factor = input.float(1, "Base Factor", step=0.1, group=groupSupertrend)
+window = input.int(100, "Volatility Training Window", group=groupSupertrend)
+
+groupADX = "③ ADX Filter"
+adxLen = input.int(14, "ADX Length", group=groupADX)
+adxThreshold = input.float(20, "Min ADX Threshold", group=groupADX)
+
+groupExit = "④ Exit Settings"
+slMultBase = input.float(1.0, "Base SL Multiplier", group=groupExit)
+tpMultBase = input.float(2.0, "Base TP Multiplier", group=groupExit)
+
+//───────────────────────────── ATR history & clustering ─────────────────────────────
+var float[] atrArray = array.new_float()
+atr = ta.atr(atrPeriod)
+
+// Default cluster and adaptive factor
+var int cluster = 1  // 0=high, 1=med, 2=low
+adaptiveFactor = factor
+
+// Percentile function
+getPercentile(arr, p) =>
+    sorted = array.copy(arr)
+    array.sort(sorted, order.ascending)
+    idx = math.floor((p / 100) * array.size(sorted))
+    array.get(sorted, math.min(idx, array.size(sorted) - 1))
+
+if enableAdaptive
+    if not na(atr)
+        array.unshift(atrArray, atr)
+        if array.size(atrArray) > window
+            array.pop(atrArray)
+
+    // Cluster logic
+    var float lowVol = na
+    var float midVol = na
+    var float highVol = na
+
+    if array.size(atrArray) >= window
+        lowVol := getPercentile(atrArray, 25)
+        midVol := getPercentile(atrArray, 50)
+        highVol := getPercentile(atrArray, 75)
+
+        cluster := atr >= highVol ? 0 : atr >= midVol ? 1 : 2
+        adaptiveFactor := cluster == 0 ? factor * 1.5 : cluster == 1 ? factor * 1.1 : factor * 0.9
+
+//───────────────────────────── Supertrend ─────────────────────────────
+[supertrend, direction] = ta.supertrend(adaptiveFactor, atrPeriod)
+longCondition = ta.change(direction) < 0
+shortCondition = ta.change(direction) > 0
+
+//───────────────────────────── ADX Filter ─────────────────────────────
+[_, _, adxVal] = ta.dmi(adxLen, adxLen)
+adxOk = not useAdx or (adxVal >= adxThreshold)
+
+//───────────────────────────── Entry logic ─────────────────────────────
+flatVol = math.abs(atr - atr[5]) < 0.01 * atr  // Less than 1% movement in ATR
+var int lastDir = 0
+
+newLong = longCondition and direction < 0 and lastDir != -1 and not flatVol and adxOk
+newShort = shortCondition and direction > 0 and lastDir != 1 and not flatVol and adxOk
+
+if newLong
+    strategy.entry("Long", strategy.long)
+    lastDir := -1
+
+if newShort
+    strategy.entry("Short", strategy.short)
+    lastDir := 1
+
+//───────────────────────────── Adaptive Exit ─────────────────────────────
+slMult = cluster == 0 ? slMultBase * 1.5 : cluster == 1 ? slMultBase * 1.0 : slMultBase * 0.7
+tpMult = cluster == 0 ? tpMultBase * 1.5 : cluster == 1 ? tpMultBase * 1.0 : tpMultBase * 0.7
+
+if useAtrExit
+    if newLong
+        strategy.exit("Long Exit", "Long",
+             stop = strategy.position_avg_price - slMult * atr,
+             limit = strategy.position_avg_price + tpMult * atr)
+    if newShort
+        strategy.exit("Short Exit", "Short",
+             stop = strategy.position_avg_price + slMult * atr,
+             limit = strategy.position_avg_price - tpMult * atr)
+
+//───────────────────────────── Plot ─────────────────────────────
+plot(supertrend, "Supertrend", color = direction < 0 ? color.blue : color.yellow, style=plot.style_linebr)
+
+//───────────────────────────── Cluster Label + Debug ─────────────────────────────
+clusterLabel = enableAdaptive ? (cluster == 0 ? "HIGH VOL" : cluster == 1 ? "MED VOL" : "LOW VOL") : "Adaptive OFF"
+adxStatus = adxOk ? "ADX OK" : "ADX Weak"
+atrExitStatus = useAtrExit ? "ATR Exit ON" : "ATR Exit OFF"
+
+if barstate.islast
+    label.new(bar_index, high,
+     clusterLabel +
+     "\nSL Mult: " + str.tostring(slMult, "#.##") +
+     "\nTP Mult: " + str.tostring(tpMult, "#.##") +
+     "\nADX: " + str.tostring(adxVal, "#.##") +
+     "\n" + adxStatus +
+     "\n" + atrExitStatus,
+     style=label.style_label_down, color=color.gray, textcolor=color.white, size=size.small)
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=6
+strategy("* Volatility Adaptive Supertrend Strategy", shorttitle = "VST-Adap", overlay=true, default_qty_type=strategy.fixed, default_qty_value=10, calc_on_every_tick = true)
+
+// Inputs
+atrPeriod = input.int(10, "ATR Period")
+factor = input.float(1, "Base Factor", step=0.1)
+window = input.int(100, "Volatility Training Window")
+
+// ATR history collection
+var float[] atrArray = array.new_float()
+atr = ta.atr(atrPeriod)
+
+if not na(atr)
+    array.unshift(atrArray, atr)
+    if array.size(atrArray) > window
+        array.pop(atrArray)
+
+// Percentile function
+getPercentile(arr, p) =>
+    sorted = array.copy(arr)
+    array.sort(sorted, order.ascending)
+    idx = math.floor((p / 100) * array.size(sorted))
+    array.get(sorted, math.min(idx, array.size(sorted) - 1))
+
+// Cluster logic
+var float lowVol = na
+var float midVol = na
+var float highVol = na
+
+if array.size(atrArray) >= window
+    lowVol := getPercentile(atrArray, 25)
+    midVol := getPercentile(atrArray, 50)
+    highVol := getPercentile(atrArray, 75)
+
+cluster = atr >= highVol ? 0 : atr >= midVol ? 1 : 2
+adaptiveFactor = cluster == 0 ? factor * 1.5 : cluster == 1 ? factor * 1.0 : factor * 0.7
+
+// Supertrend
+[supertrend, direction] = ta.supertrend(adaptiveFactor, atrPeriod)
+longCondition = ta.change(direction) < 0
+shortCondition = ta.change(direction) > 0
+
+flatVol = math.abs(atr - atr[5]) < 0.01 * atr  // Less than 1% movement in ATR
+var int lastDir = 0
+newLong = longCondition and direction < 0 and lastDir != -1 and not flatVol
+newShort = shortCondition and direction > 0 and lastDir != 1 and not flatVol
+
+if newLong
+    strategy.entry("Long", strategy.long)
+    lastDir := -1
+
+if newShort
+    strategy.entry("Short", strategy.short)
+    lastDir := 1
+
+plot(supertrend, "Supertrend", color = direction < 0 ? color.green : color.red, style=plot.style_linebr)
+
+// Cluster Label
+clusterLabel = cluster == 0 ? "HIGH VOL" : cluster == 1 ? "MED VOL" : "LOW VOL"
+if barstate.islast
+    label.new(bar_index, high, clusterLabel, style=label.style_label_down, color=color.gray, textcolor=color.white, size=size.tiny)

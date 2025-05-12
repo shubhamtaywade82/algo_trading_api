@@ -1,0 +1,84 @@
+//@version=6
+indicator("Adaptive Supertrend (ML-inspired) - indicator", overlay=true)
+
+// === CONFIGURATION ===
+baseATRlen    = input.int(10, title="Base ATR Length")
+baseFactor    = input.float(3.0, title="Base ATR Multiplier")
+minATRlen     = input.int(5, title="Min ATR Length")
+maxATRlen     = input.int(20, title="Max ATR Length")
+minFactor     = input.float(2.0, title="Min ATR Multiplier")
+maxFactor     = input.float(4.0, title="Max ATR Multiplier")
+volLookback   = input.int(50, title="Volatility Lookback Period")
+highVolThresh = input.float(1.5, title="High Volatility Threshold")
+lowVolThresh  = input.float(0.75, title="Low Volatility Threshold")
+
+// === VOLATILITY ANALYSIS ===
+atrShort = ta.atr(baseATRlen)
+atrLong  = ta.atr(volLookback)
+atrLongSafe = nz(atrLong, atrShort)
+volRatio = atrShort / atrLongSafe
+
+// Regime logic: 1 = High Vol, 0 = Neutral, -1 = Low Vol
+regime = volRatio > highVolThresh ? 1 : volRatio < lowVolThresh ? -1 : 0
+
+// === ADAPTIVE PARAMETERS ===
+targetLen    = regime == 1 ? maxATRlen : regime == -1 ? minATRlen : baseATRlen
+targetFactor = regime == 1 ? maxFactor : regime == -1 ? minFactor : baseFactor
+
+// Smooth factor transition to avoid sudden jumps
+var float currFactor = baseFactor
+currFactor := currFactor + 0.2 * (targetFactor - currFactor)
+
+// ATR selection based on regime (discrete for stability)
+atrMax = ta.atr(maxATRlen)
+atrMin = ta.atr(minATRlen)
+atrBase = ta.atr(baseATRlen)
+atrUsed = regime == 1 ? atrMax : regime == -1 ? atrMin : atrBase
+
+// === SUPERTREND CORE ===
+price = hl2
+upperBand = price + currFactor * atrUsed
+lowerBand = price - currFactor * atrUsed
+
+var float st = na
+var int trend = 1
+
+prevSt = nz(st[1], price)
+prevTrend = nz(trend[1], 1)
+
+newTrend = prevTrend
+newSt = prevSt
+
+// Logic for trend flip and trailing logic
+if prevTrend == 1
+    if close < lowerBand[1]
+        newTrend := -1
+        newSt := upperBand
+    else
+        newTrend := 1
+        newSt := math.max(lowerBand, prevSt)
+else
+    if close > upperBand[1]
+        newTrend := 1
+        newSt := lowerBand
+    else
+        newTrend := -1
+        newSt := math.min(upperBand, prevSt)
+
+trend := newTrend
+st := newSt
+
+// === PLOTTING ===
+plot(trend == 1 ? st : na, title="Uptrend", color=color.green, linewidth=2, style = plot.style_linebr)
+plot(trend == -1 ? st : na, title="Downtrend", color=color.red, linewidth=2, style = plot.style_linebr)
+
+// Trend flip marker
+trendFlip = ta.change(trend)
+plotshape(bool(trendFlip) ? st : na, title="Trend Flip Marker", style=shape.triangleup, location=location.absolute, color=color.yellow)
+
+
+// === LABELING PARAMS (for visualization/debug) ===
+var label paramLabel = na
+label.delete(paramLabel[1])
+paramLabel := label.new(bar_index, high, str.format("ATR={0}  Mult={1,number,#.##}", targetLen, currFactor),
+     yloc=yloc.abovebar, style=label.style_label_left, size=size.small, color=color.gray)
