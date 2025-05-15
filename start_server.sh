@@ -1,11 +1,14 @@
 #!/bin/bash
-set -e  # Exit on failure
+set -e  # Exit on error
 
-echo "⏳ Updating cron jobs for local environment..."
-bundle exec whenever --update-crontab || echo "Skipping whenever."
+echo "🔄 Updating crontab using whenever..."
+bundle exec whenever --update-crontab || echo "⚠️ Failed to update crontab."
 
-echo "📡 Starting background job worker..."
+echo "📆 Verifying cron is running..."
+# service cron start || echo "⚠️ Unable to start cron service (ensure cron is installed and running)."
+
+echo "🧵 Starting delayed job worker (if used)..."
 bundle exec rake jobs:work &
 
-echo "🚀 Starting Rails server..."
+echo "🚀 Launching Rails server..."
 exec bundle exec rails server

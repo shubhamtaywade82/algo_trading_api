@@ -400,6 +400,5 @@ module AlertProcessors
         true
       end
     end
-
   end
 end

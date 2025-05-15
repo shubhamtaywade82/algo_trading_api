@@ -31,11 +31,15 @@ module Positions
       fetch_positions.each do |pos|
         next unless tradable?(pos)
 
+        # pp pos
         analysis = analyse(pos)
+        puts analysis
         update_peak(pos, analysis)
         charges  = est_charges(analysis)
         decision = decide(pos, analysis, charges)
 
+        puts charges
+        puts decision
         place_exit_order(pos, analysis, decision[:reason]) if decision[:exit]
       end
 
@@ -104,7 +108,7 @@ module Positions
         elsif current <= -cfg[:sl]
           "SL #{current}%"
         # 2. Trailing stop only if current profit > charges
-        elsif current > 0 && (analysis[:pnl] - charges) > 0 && trail_hit?(current, peak, cfg[:trail])
+        elsif current.positive? && (analysis[:pnl] - charges).positive? && trail_hit?(current, peak, cfg[:trail])
           "TRAIL #{current}% (peak #{peak}%)"
         end
 
@@ -151,7 +155,9 @@ module Positions
         quantity: a[:qty]
       }
 
-      resp = Dhanhq::API::Orders.place(payload)
+      # resp = Dhanhq::API::Orders.place(payload)
+      resp = payload
+      puts payload
       if resp['status'] == 'success'
         Rails.logger.info "[PositionManager] ✔ exited #{a[:symbol]} – #{reason}"
       else

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Dhan
   class PostbackHandler < ApplicationService
     def initialize(payload)

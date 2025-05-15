@@ -59,6 +59,6 @@ set :output, 'log/cron.log'
 #   runner 'LevelsUpdateJob.perform_later'
 # end
 
-every 1.minutes do
-  runner "Positions::Manager.call"
+every 1.minute do
+  runner 'Positions::Manager.call', output: 'log/cron.log'
 end

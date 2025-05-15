@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Webhooks
   class DhanPostbacksController < ApplicationController
     # skip_before_action :verify_authenticity_token
