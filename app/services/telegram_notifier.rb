@@ -1,8 +1,10 @@
+# frozen_string_literal: true
+
 require 'net/http'
 require 'uri'
 
 class TelegramNotifier
-  TELEGRAM_API = 'https://api.telegram.org'.freeze
+  TELEGRAM_API = 'https://api.telegram.org'
 
   def self.send_message(text)
     token = ENV.fetch('TELEGRAM_BOT_TOKEN')
