@@ -90,3 +90,5 @@ gem 'delayed_job_active_record', '~> 4.1'
 gem 'daemons', '~> 1.4'
 
 gem 'activerecord-import'
+
+gem 'telegram-bot-ruby'

@@ -33,6 +33,7 @@ module Positions
 
         # pp pos
         analysis = analyse(pos)
+        # TelegramNotifier.send_message("📈 #{analysis}")
         puts analysis
         update_peak(pos, analysis)
         charges  = est_charges(analysis)
