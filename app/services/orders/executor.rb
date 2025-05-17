@@ -22,7 +22,7 @@ module Orders
 
       response = Dhanhq::API::Orders.place(payload)
 
-      if response.success?
+      if response['orderId'].present? && %w[PENDING TRANSIT TRADED].include?(response['orderStatus'])
         charges = @analysis ? Charges::Calculator.call(@pos, @analysis) : 0.0
         pnl     = @analysis ? @analysis[:pnl] : nil
         net_pnl = pnl ? (pnl - charges) : nil
