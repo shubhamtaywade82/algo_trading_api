@@ -12,7 +12,7 @@ module Orders
       @a       = analysis
       @key     = cache_key(@pos)
       @cache   = load_cache
-      @max_pct = @cache[@key] || @a[:pnl_pct]
+      @max_pct = @cache || @a[:pnl_pct]
     end
 
     def call
@@ -22,7 +22,7 @@ module Orders
       store_max_pct if @a[:pnl_pct] > @max_pct
 
       # 1) Take profit (net)
-      if net_pnl >= (@a[:entry_price] * TAKE_PROFIT_PCT[@a[:instrument_type]] / 100.0)
+      if net_pnl >= (@a[:entry_price] * @a[:quantity] * TAKE_PROFIT_PCT[@a[:instrument_type]] / 100.0)
         TelegramNotifier.send_message("✅ TP Hit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
         return { exit: true, exit_reason: "TakeProfit_Net_#{net_pnl}" }
       end

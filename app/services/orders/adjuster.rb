@@ -11,10 +11,7 @@ module Orders
       order_id = find_active_order_id
 
       if order_id
-        response = Dhanhq::API::Orders.modify(
-          orderId: order_id,
-          triggerPrice: @new_trigger
-        )
+        response = Dhanhq::API::Orders.modify(order_id, { triggerPrice: @new_trigger })
 
         if response['status'] == 'success'
           TelegramNotifier.send_message("🔁 Adjusted SL to ₹#{@new_trigger} for #{@pos['tradingSymbol']}")
@@ -35,8 +32,13 @@ module Orders
     private
 
     def find_active_order_id
-      open_orders = Dhanhq::API::Orders.open
-      matching = open_orders.find { |o| o['securityId'].to_s == @pos['securityId'].to_s }
+      open_orders = Dhanhq::API::Orders.list
+      # Filter for open/active order status (typically 'PENDING', 'TRANSIT', etc.)
+      active_statuses = %w[PENDING TRANSIT PART_TRADED]
+      matching = open_orders.find do |o|
+        o['securityId'].to_s == @pos['securityId'].to_s &&
+          active_statuses.include?(o['orderStatus'])
+      end
       matching && matching['orderId']
     end
 
