@@ -52,12 +52,14 @@ module Orders
 
     def find_active_order_id
       open_orders = Dhanhq::API::Orders.list
+
       # Filter for open/active order status (typically 'PENDING', 'TRANSIT', 'PART_TRADED')
       active_statuses = %w[PENDING TRANSIT PART_TRADED]
       matching = open_orders.find do |o|
         o['securityId'].to_s == @pos['securityId'].to_s &&
           active_statuses.include?(o['orderStatus'])
       end
+
       matching && matching['orderId']
     end
 
