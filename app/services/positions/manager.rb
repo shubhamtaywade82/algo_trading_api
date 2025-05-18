@@ -12,6 +12,9 @@ module Positions
       positions.each do |position|
         next unless valid_position?(position)
 
+        # --- Inject LTP estimation ---
+        position['ltp'] = estimate_ltp(position)
+
         analysis = Orders::Analyzer.call(position)
         Orders::Manager.call(position, analysis)
       end
@@ -32,6 +35,19 @@ module Positions
     def log_and_skip(reason)
       Rails.logger.info("[Positions::Manager] Skipped — #{reason}")
       true
+    end
+
+    def estimate_ltp(position)
+      net_qty = position['netQty'].to_f
+      return nil if net_qty.zero?
+
+      if net_qty.positive?
+        # Long position
+        position['buyAvg'].to_f + (position['unrealizedProfit'].to_f / net_qty)
+      else
+        # Short position
+        position['sellAvg'].to_f - (position['unrealizedProfit'].to_f / net_qty.abs)
+      end
     end
   end
 end

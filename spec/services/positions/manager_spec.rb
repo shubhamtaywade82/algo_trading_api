@@ -5,10 +5,16 @@ require 'rails_helper'
 RSpec.describe Positions::Manager, type: :service do
   let(:valid_position) do
     {
-      'netQty' => 75, 'buyAvg' => 100, 'ltp' => 120, 'securityId' => 'OPT1',
-      'exchangeSegment' => 'NSEFO', 'productType' => 'INTRADAY', 'tradingSymbol' => 'NIFTY24JUL17500CE'
+      'netQty' => 75,
+      'buyAvg' => 100,
+      'securityId' => 'OPT1',
+      'exchangeSegment' => 'NSE_FNO',
+      'productType' => 'INTRADAY',
+      'tradingSymbol' => 'NIFTY24JUL17500CE',
+      'unrealizedProfit' => 1500 # For LTP estimation!
     }
   end
+
   let(:invalid_position) do
     {
       'netQty' => 0, 'buyAvg' => 0, 'ltp' => 0, 'securityId' => 'OPT2',
@@ -37,6 +43,7 @@ RSpec.describe Positions::Manager, type: :service do
   context 'with mixed valid/invalid positions' do
     before do
       stub_dhan_positions([valid_position, invalid_position])
+      valid_position["ltp"] = 120.0
     end
 
     it 'calls Orders::Manager only for valid positions' do
