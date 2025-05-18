@@ -17,19 +17,6 @@ RSpec.describe Orders::Adjuster, type: :service do
 
   let(:params) { { trigger_price: 105.5 } }
 
-  before do
-    # allow(Dhanhq::API::Orders).to receive(:modify).with('ORDER123',
-    #                                                     { triggerPrice: 105.5 }).and_return({ 'status' => 'success' })
-    allow(Orders::Analyzer).to receive(:call).and_return(
-      entry_price: 100,
-      ltp: 110,
-      quantity: 75,
-      pnl: 750,
-      pnl_pct: 10.0,
-      instrument_type: :option
-    )
-  end
-
   context 'when stop loss adjustment is successful' do
     before do
       stub_request(:get, 'https://api.dhan.co/orders')
@@ -60,8 +47,6 @@ RSpec.describe Orders::Adjuster, type: :service do
 
       stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage})
         .to_return(status: 200, body: '{}')
-
-      allow(Rails.logger).to receive(:info)
     end
 
     it 'sends an adjustment notification and logs success' do
@@ -98,10 +83,6 @@ RSpec.describe Orders::Adjuster, type: :service do
         )
 
       stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
-
-      allow(Rails.logger).to receive(:error)
-      allow(Rails.logger).to receive(:warn)
-      allow(Orders::Executor).to receive(:call)
     end
 
     it 'triggers fallback exit and sends fallback notification' do
@@ -121,10 +102,6 @@ RSpec.describe Orders::Adjuster, type: :service do
           body: [].to_json, # empty array = no active orders
           headers: { 'Content-Type' => 'application/json' }
         )
-
-      allow(TelegramNotifier).to receive(:send_message)
-      allow(Rails.logger).to receive(:warn)
-      allow(Orders::Executor).to receive(:call)
     end
 
     it 'triggers fallback exit and sends fallback notification' do
@@ -139,10 +116,6 @@ RSpec.describe Orders::Adjuster, type: :service do
   context 'when an exception is raised' do
     before do
       stub_request(:get, 'https://api.dhan.co/orders').to_raise(StandardError.new('API Down'))
-      allow(TelegramNotifier).to receive(:send_message)
-      allow(Rails.logger).to receive(:error)
-      allow(Rails.logger).to receive(:warn)
-      allow(Orders::Executor).to receive(:call)
     end
 
     it 'triggers fallback exit and sends fallback notification' do
@@ -182,8 +155,6 @@ RSpec.describe Orders::Adjuster, type: :service do
         )
 
       stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
-
-      allow(Rails.logger).to receive(:info)
     end
 
     it 'sends an adjustment notification and logs success' do
