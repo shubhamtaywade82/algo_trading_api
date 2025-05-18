@@ -33,7 +33,8 @@ RSpec.describe Orders::Adjuster, type: :service do
   context 'when stop loss adjustment is successful' do
     before do
       allow(Dhanhq::API::Orders).to receive(:modify).with('ORDER123',
-                                                          { triggerPrice: 105.5 }).and_return({ 'status' => 'success' })
+                                                          hash_including('orderId' => 'ORDER123',
+                                                                         'triggerPrice' => 105.5)).and_return({ 'orderStatus' => 'PENDING' })
       allow(Dhanhq::API::Orders).to receive(:list).and_return([
                                                                 {
                                                                   'securityId' => 'OPT123',
