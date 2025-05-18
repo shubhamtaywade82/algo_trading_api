@@ -16,6 +16,34 @@ RSpec.describe 'Exit Management Integration', type: :integration do
     allow(ExitLog).to receive(:create!).and_return(true)
     # Prevent real time check
     allow(Time).to receive(:current).and_return(Time.parse('2024-06-19 12:30:00 +0530'))
+    allow(Dhanhq::API::Portfolio).to receive(:positions).and_return(positions)
+
+    allow(Orders::Analyzer).to receive(:call).with(stock_position).and_return(
+      {
+        entry_price: 100.0, ltp: 112.0, quantity: 100,
+        pnl: 1200.0, pnl_pct: 12.0, instrument_type: :equity_intraday
+      }
+    )
+    allow(Orders::Analyzer).to receive(:call).with(option_position).and_return(
+      {
+        entry_price: 50.0, ltp: 85.0, quantity: 75,
+        pnl: 2625.0, pnl_pct: 70.0, instrument_type: :option
+      }
+    )
+    allow(Orders::Analyzer).to receive(:call).with(future_position).and_return(
+      {
+        entry_price: 22_400.0, ltp: 22_550.0, quantity: 15,
+        pnl: 2250.0, pnl_pct: 0.67, instrument_type: :future
+      }
+    )
+
+    allow(Dhanhq::API::Orders).to receive_messages(place: order_response_ok, list: [
+                                                     {
+                                                       'orderId' => '123456789',
+                                                       'securityId' => 'OPTNIFTY24062024CE',
+                                                       'orderStatus' => 'PENDING'
+                                                     }
+                                                   ], modify: order_modify_success)
   end
 
   let(:stock_position) do
@@ -29,6 +57,15 @@ RSpec.describe 'Exit Management Integration', type: :integration do
       'netQty' => 100
     }
   end
+  # 3. Webmocks for Dhanhq API
+  let(:order_response_ok) do
+    {
+      'orderId' => '123456789',
+      'orderStatus' => 'PENDING'
+    }
+  end
+  let(:order_modify_success) { { 'status' => 'success' } }
+  let(:order_modify_fail)    { { 'status' => 'failure', 'omsErrorDescription' => 'Invalid Trigger' } }
 
   let(:option_position) do
     {
@@ -57,57 +94,8 @@ RSpec.describe 'Exit Management Integration', type: :integration do
   let(:positions) { [stock_position, option_position, future_position] }
 
   # 1. Stub Portfolio.positions to return test positions
-  before do
-    allow(Dhanhq::API::Portfolio).to receive(:positions).and_return(positions)
-  end
 
   # 2. Stub Analyzer to return analysis for each type
-  before do
-    allow(Orders::Analyzer).to receive(:call).with(stock_position).and_return(
-      {
-        entry_price: 100.0, ltp: 112.0, quantity: 100,
-        pnl: 1200.0, pnl_pct: 12.0, instrument_type: :equity_intraday
-      }
-    )
-    allow(Orders::Analyzer).to receive(:call).with(option_position).and_return(
-      {
-        entry_price: 50.0, ltp: 85.0, quantity: 75,
-        pnl: 2625.0, pnl_pct: 70.0, instrument_type: :option
-      }
-    )
-    allow(Orders::Analyzer).to receive(:call).with(future_position).and_return(
-      {
-        entry_price: 22_400.0, ltp: 22_550.0, quantity: 15,
-        pnl: 2250.0, pnl_pct: 0.67, instrument_type: :future
-      }
-    )
-  end
-
-  # 3. Webmocks for Dhanhq API
-  let(:order_response_ok) do
-    {
-      'orderId' => '123456789',
-      'orderStatus' => 'PENDING'
-    }
-  end
-
-  let(:order_modify_success) { { 'status' => 'success' } }
-  let(:order_modify_fail)    { { 'status' => 'failure', 'omsErrorDescription' => 'Invalid Trigger' } }
-
-  before do
-    # Place order always returns OK
-    allow(Dhanhq::API::Orders).to receive(:place).and_return(order_response_ok)
-    # List returns one open order per securityId for adjuster
-    allow(Dhanhq::API::Orders).to receive(:list).and_return([
-                                                              {
-                                                                'orderId' => '123456789',
-                                                                'securityId' => 'OPTNIFTY24062024CE',
-                                                                'orderStatus' => 'PENDING'
-                                                              }
-                                                            ])
-    # Modify order
-    allow(Dhanhq::API::Orders).to receive(:modify).and_return(order_modify_success)
-  end
 
   it 'handles exit flow for options, futures, and stocks' do
     # This will invoke all services, including adjuster/executor/manager
