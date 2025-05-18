@@ -9,7 +9,7 @@ RSpec.describe Orders::Executor, type: :service do
       'netQty' => 75,
       'tradingSymbol' => 'NIFTY24JUL17500CE',
       'ltp' => 100,
-      'exchangeSegment' => 'NSEFO',
+      'exchangeSegment' => 'NSE_FNO',
       'productType' => 'INTRADAY'
     }
   end
@@ -26,11 +26,13 @@ RSpec.describe Orders::Executor, type: :service do
   end
 
   before do
-    # Stub external dependencies
-    allow(Dhanhq::API::Orders).to receive(:place).and_return({
-                                                               'orderId' => '112111182198',
-                                                               'orderStatus' => 'PENDING'
-                                                             })
+    # Stub the actual HTTP request for order placement
+    stub_request(:post, 'https://api.dhan.co/orders')
+      .to_return(
+        status: 200,
+        body: { orderId: '112111182198', orderStatus: 'PENDING' }.to_json,
+        headers: { 'Content-Type' => 'application/json' }
+      )
 
     allow(ExitLog).to receive(:create!)
     allow(Order).to receive(:create!)
