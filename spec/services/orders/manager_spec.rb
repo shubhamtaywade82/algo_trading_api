@@ -3,20 +3,30 @@
 require 'rails_helper'
 
 RSpec.describe Orders::Manager, type: :service do
-  let(:position) do
+  let(:base_position) do
     {
       'tradingSymbol' => 'NIFTY24JUL17500CE',
       'securityId' => 'OPT123',
-      'exchangeSegment' => 'NSEFO',
+      'exchangeSegment' => 'NSE_FNO',
       'buyAvg' => 100,
       'netQty' => 75,
-      'ltp' => 110
+      'ltp' => 110,
+      'productType' => 'INTRADAY'
     }
   end
-  let(:analysis) { { entry_price: 100, ltp: 110, pnl: 750, pnl_pct: 10.0, quantity: 75, instrument_type: :option } }
+
+  let(:base_analysis) do
+    {
+      entry_price: 100,
+      ltp: 110,
+      pnl: 750,
+      pnl_pct: 10.0,
+      quantity: 75,
+      instrument_type: :option
+    }
+  end
 
   before do
-    # Common network stubs for Adjuster/Executor scenarios
     stub_request(:get, 'https://api.dhan.co/orders').to_return(
       status: 200,
       body: [
@@ -24,7 +34,6 @@ RSpec.describe Orders::Manager, type: :service do
           'securityId' => 'OPT123',
           'orderId' => 'ORDER123',
           'orderStatus' => 'PENDING',
-          # Add other fields required by Adjuster if called
           'dhanClientId' => 'test-client',
           'orderType' => 'LIMIT',
           'legName' => nil,
@@ -37,6 +46,7 @@ RSpec.describe Orders::Manager, type: :service do
       ].to_json,
       headers: { 'Content-Type' => 'application/json' }
     )
+
     stub_request(:put, 'https://api.dhan.co/orders/ORDER123')
       .to_return(
         status: 200,
@@ -47,39 +57,96 @@ RSpec.describe Orders::Manager, type: :service do
     stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
   end
 
-  context 'when risk manager decides to exit' do
-    before do
-      allow(Orders::RiskManager).to receive(:call).and_return({ exit: true, exit_reason: 'TP', adjust: false })
-      # Here, you can stub Orders::Executor's network calls if it does any (similar to above)
-      allow(Orders::Executor).to receive(:call)
+  context 'when risk manager decides to exit (TP hit)' do
+    let(:position) { base_position.merge('ltp' => 161) }
+    let(:analysis) do
+      base_analysis.merge(
+        ltp: 161,
+        pnl: (161 - 100) * 75,
+        pnl_pct: ((161 - 100) * 75.0 / (100 * 75.0) * 100).round(2),
+        quantity: 75
+      )
     end
 
-    it 'calls Orders::Executor with correct args' do
-      expect(Orders::Executor).to receive(:call).with(position, 'TP', analysis)
+    it 'calls Orders::Executor with TakeProfit_Net reason using net pnl with charges' do
+      expect(Orders::Executor).to receive(:call).with(
+        position,
+        a_string_matching(/^TakeProfit_Net_/),
+        analysis
+      )
       described_class.call(position, analysis)
     end
   end
 
-  context 'when risk manager decides to adjust' do
-    let(:adjust_params) { { trigger_price: 105.0 } }
-
-    before do
-      allow(Orders::RiskManager).to receive(:call).and_return({ exit: false, adjust: true,
-                                                                adjust_params: adjust_params })
-      # DO NOT stub Orders::Adjuster, let it run for real and catch all HTTP with WebMock
-      allow(TelegramNotifier).to receive(:send_message) # We just want to silence Telegram in tests
-      allow(Rails.logger).to receive(:info)
+  context 'when risk manager decides to exit (Rupee SL hit)' do
+    let(:position) { base_position.merge('ltp' => 93) }
+    let(:analysis) do
+      base_analysis.merge(
+        ltp: 93,
+        pnl: (93 - 100) * 75, # -525
+        pnl_pct: ((93 - 100) * 75.0 / (100 * 75.0) * 100).round(2), # -7%
+        quantity: 75
+      )
     end
 
-    it 'calls Orders::Adjuster with correct args' do
-      # Instead of allow/expect, just let Orders::Adjuster.call run and ensure it succeeds (no errors)
-      expect { described_class.call(position, analysis) }.not_to raise_error
+    it 'calls Orders::Executor with RupeeStopLoss reason' do
+      expect(Orders::Executor).to receive(:call).with(position, /^RupeeStopLoss_/, analysis)
+      described_class.call(position, analysis)
+    end
+  end
+
+  context 'when risk manager decides to exit (percentage SL hit)' do
+    # before { allow(Charges::Calculator).to receive(:call).and_return(0) }
+
+    let(:position) { base_position.merge('ltp' => 70) }
+    let(:analysis) do
+      base_analysis.merge(
+        ltp: 70,
+        pnl: (70 - 100) * 75, # -2250
+        pnl_pct: ((70 - 100) * 75.0 / (100 * 75.0) * 100).round(2), # -30%
+        quantity: 75
+      )
+    end
+
+    it 'calls Orders::Executor with RupeeStopLoss reason (rupee SL hits before % SL)' do
+      expect(Orders::Executor).to receive(:call).with(position, /^RupeeStopLoss_/, analysis)
+      described_class.call(position, analysis)
+    end
+  end
+
+  context 'when risk manager decides to adjust (trailing stop adjustment)' do
+    let(:position) { base_position.merge('ltp' => 130) }
+    let(:analysis) do
+      # Set max_pct = 25, current pnl_pct = 10 (drawdown = 15% >= option trail buffer)
+      base_analysis.merge(
+        ltp: 130,
+        pnl: (130 - 100) * 75,
+        pnl_pct: 10.0,
+        quantity: 75
+      )
+    end
+
+    before do
+      # Simulate cache with higher max_pct, so drawdown >= 15%
+      allow(Rails.cache).to receive(:read).and_return(25.0)
+      allow(Rails.cache).to receive(:write) # don't care about write in this test
+    end
+
+    it 'calls Orders::Adjuster with a trigger price' do
+      expect(Orders::Adjuster).to receive(:call).with(position, hash_including(:trigger_price))
+      described_class.call(position, analysis)
     end
   end
 
   context 'when risk manager returns neither exit nor adjust' do
-    before do
-      allow(Orders::RiskManager).to receive(:call).and_return({ exit: false, adjust: false })
+    let(:position) { base_position.merge('ltp' => 102) }
+    let(:analysis) do
+      base_analysis.merge(
+        ltp: 102,
+        pnl: (102 - 100) * 75, # 150
+        pnl_pct: ((102 - 100) * 75.0 / (100 * 75.0) * 100).round(2), # 2%
+        quantity: 75
+      )
     end
 
     it 'does not call Executor or Adjuster' do
@@ -90,6 +157,9 @@ RSpec.describe Orders::Manager, type: :service do
   end
 
   context 'when an error occurs' do
+    let(:position) { base_position }
+    let(:analysis) { base_analysis }
+
     before do
       allow(Orders::RiskManager).to receive(:call).and_raise(StandardError, 'Manager error')
     end

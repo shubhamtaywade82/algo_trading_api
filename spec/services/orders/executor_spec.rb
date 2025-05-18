@@ -33,10 +33,6 @@ RSpec.describe Orders::Executor, type: :service do
         body: { orderId: '112111182198', orderStatus: 'PENDING' }.to_json,
         headers: { 'Content-Type' => 'application/json' }
       )
-
-    allow(ExitLog).to receive(:create!)
-    allow(Order).to receive(:create!)
-    allow(TelegramNotifier).to receive(:send_message)
   end
 
   it 'creates order and exit log, sends Telegram' do

@@ -5,6 +5,10 @@ require 'rails_helper'
 RSpec.describe Orders::RiskManager, type: :service do
   let(:position) { { 'securityId' => 'OPT123', 'exchangeSegment' => 'NSEFO' } }
 
+  before do
+    stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
+  end
+
   context 'when take profit threshold is reached' do
     let(:analysis) do
       { pnl: 5000, pnl_pct: 66.67, entry_price: 100, ltp: 166.67, quantity: 75, instrument_type: :option }
