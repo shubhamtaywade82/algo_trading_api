@@ -116,11 +116,20 @@ module AlertProcessors
     # -- Validation helpers ---------------------------------------------------
     def pre_trade_validation
       case alert[:signal_type]
-      when 'long_entry'  then ensure_no_position!(:ce)
-      when 'short_entry' then ensure_no_position!(:pe)
-      when 'long_exit'   then exit_position!(:ce)
-      when 'short_exit'  then exit_position!(:pe)
-      else true
+      when 'long_entry'
+        close_opposite!(:pe)  # Close any PE before entering CE
+        true                  # Always allow new CE entry
+      when 'short_entry'
+        close_opposite!(:ce)  # Close any CE before entering PE
+        true                  # Always allow new PE entry
+      when 'long_exit'
+        exit_position!(:ce)
+        false
+      when 'short_exit'
+        exit_position!(:pe)
+        false
+      else
+        true
       end
     end
 
@@ -325,6 +334,26 @@ module AlertProcessors
       end
       alert.update!(status: :processed, error_message: "exited #{type.upcase}")
       false
+    end
+
+    # Immediately closes all open opposite-side positions
+    def close_opposite!(type)
+      ids = type == :ce ? ce_security_ids : pe_security_ids
+      positions = dhan_positions.select { |p| p['positionType'] == 'LONG' && ids.include?(p['securityId'].to_s) }
+      return if positions.empty?
+
+      positions.each do |pos|
+        Dhanhq::API::Orders.place(
+          transactionType: 'SELL',
+          orderType: 'MARKET',
+          productType: Dhanhq::Constants::MARGIN,
+          validity: Dhanhq::Constants::DAY,
+          securityId: pos['securityId'],
+          exchangeSegment: pos['exchangeSegment'],
+          quantity: pos['quantity']
+        )
+        log :info, "Flipped & closed #{type.upcase} ⇒ #{pos.slice('securityId', 'quantity')}"
+      end
     end
 
     # -- Utility --------------------------------------------------------------
