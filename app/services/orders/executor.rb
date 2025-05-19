@@ -5,26 +5,31 @@ module Orders
     def initialize(position, reason, analysis = nil)
       @pos      = position.with_indifferent_access
       @reason   = reason
-      @analysis = analysis
+      @analysis = analysis || {}
     end
 
     def call
+      # Accept order_type and exit_price from analysis/decision, or fall back to defaults
+      order_type = (@analysis[:order_type] || 'LIMIT').to_s.upcase
+      exit_price = @analysis[:exit_price] || @pos['ltp']
+
       payload = {
         securityId: @pos['securityId'],
         transactionType: (@pos['netQty']).positive? ? 'SELL' : 'BUY',
-        orderType: 'LIMIT',
-        price: @pos['ltp'],
+        orderType: order_type,
         quantity: @pos['netQty'].abs,
         exchangeSegment: @pos['exchangeSegment'],
         productType: @pos['productType'],
         validity: 'DAY'
       }
+      # Only include price for LIMIT, not MARKET orders
+      payload[:price] = exit_price if order_type == 'LIMIT'
 
       response = Dhanhq::API::Orders.place(payload)
 
       if response['orderId'].present? && %w[PENDING TRANSIT TRADED].include?(response['orderStatus'])
-        charges = @analysis ? Charges::Calculator.call(@pos, @analysis) : 0.0
-        pnl     = @analysis ? @analysis[:pnl] : nil
+        charges = @analysis[:charges] || Charges::Calculator.call(@pos, @analysis)
+        pnl     = @analysis[:pnl]
         net_pnl = pnl ? (pnl - charges) : nil
 
         # Log to orders table
@@ -55,8 +60,9 @@ module Orders
           exit_time: Time.zone.now
         )
 
-        TelegramNotifier.send_message("✅ Exit Placed: #{@pos['tradingSymbol']} | Reason: #{@reason} | Qty: #{@pos['netQty'].abs} | Price: ₹#{@pos['ltp']}")
-        Rails.logger.info("[Orders::Executor] Exit placed and logged for #{@pos['tradingSymbol']} — #{@reason}")
+        extra = @analysis[:order_type] ? " (#{@analysis[:order_type].to_s.upcase})" : ''
+        TelegramNotifier.send_message("✅ Exit Placed#{extra}: #{@pos['tradingSymbol']} | Reason: #{@reason} | Qty: #{@pos['netQty'].abs} | Price: ₹#{@pos['ltp']}")
+        Rails.logger.info("[Orders::Executor] Exit placed and logged for #{@pos['tradingSymbol']} — #{@reason}#{extra}")
       else
         Rails.logger.error("[Orders::Executor] Failed for #{@pos['tradingSymbol']}: #{response['message']}")
       end
