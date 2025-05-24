@@ -2,8 +2,8 @@
 
 module Orders
   class RiskManager < ApplicationService
-    STOP_LOSS_PCT    = { stock: 10.0,  option: 30.0  }.freeze  # %
-    TAKE_PROFIT_PCT  = { stock: 25.0,  option: 60.0  }.freeze  # %
+    STOP_LOSS_PCT    = { stock: 10.0,  option: 20.0  }.freeze  # %
+    TAKE_PROFIT_PCT  = { stock: 25.0,  option: 40.0  }.freeze  # %
     TRAIL_BUFFER_PCT = { stock: 5.0,   option: 15.0  }.freeze  # %
     MAX_RUPEE_LOSS   = 500.0 # traditional rupee stop
     DANGER_ZONE_LOSS = -1000.0 # how deep to allow
