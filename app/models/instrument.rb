@@ -105,6 +105,7 @@ class Instrument < ApplicationRecord
   def quote_ltp
     quote = quotes.order(tick_time: :desc).first
     return nil unless quote
+
     quote.ltp.to_s.to_f
   rescue StandardError => e
     Rails.logger.error("Failed to fetch latest quote LTP for Instrument #{security_id}: #{e.message}")

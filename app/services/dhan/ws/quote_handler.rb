@@ -22,17 +22,17 @@ module Dhan
         ltp      = bytes[8, 4].pack('C*').unpack1('e')
         ltq      = bytes[12, 2].pack('C*').unpack1('S<')
         ltt      = bytes[14, 4].pack('C*').unpack1('L<')
-        atp      = bytes[18, 4].pack('C*').unpack1('e')
-        vol      = bytes[22, 4].pack('C*').unpack1('L<')
-        sell_q   = bytes[26, 4].pack('C*').unpack1('L<')
-        buy_q    = bytes[30, 4].pack('C*').unpack1('L<')
-        open_v   = bytes[34, 4].pack('C*').unpack1('e')
-        close_v  = bytes[38, 4].pack('C*').unpack1('e')
-        high_v   = bytes[42, 4].pack('C*').unpack1('e')
-        low_v    = bytes[46, 4].pack('C*').unpack1('e')
+        bytes[18, 4].pack('C*').unpack1('e')
+        vol = bytes[22, 4].pack('C*').unpack1('L<')
+        bytes[26, 4].pack('C*').unpack1('L<')
+        bytes[30, 4].pack('C*').unpack1('L<')
+        bytes[34, 4].pack('C*').unpack1('e')
+        bytes[38, 4].pack('C*').unpack1('e')
+        bytes[42, 4].pack('C*').unpack1('e')
+        bytes[46, 4].pack('C*').unpack1('e')
 
         inst = Instrument.find_by(security_id: sid) or return
-        tick_time = Time.at(ltt)
+        tick_time = Time.zone.at(ltt)
 
         Quote.create!(
           instrument: inst,

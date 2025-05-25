@@ -17,16 +17,16 @@ module Dhan
 
       def self.run
         EM.run do
-          puts "[Depth] Connecting to #{DEPTH_URL}"
+          Rails.logger.debug { "[Depth] Connecting to #{DEPTH_URL}" }
           ws = Faye::WebSocket::Client.new(DEPTH_URL)
 
           ws.on(:open) do
-            puts '[Depth] ▶ Connected'
+            Rails.logger.debug '[Depth] ▶ Connected'
             subscribe(ws)
           end
           ws.on(:message) { |e| handle_frame(e.data) }
           ws.on(:close)   do |e|
-            puts "[Depth] ✖ Closed (#{e.code})"
+            Rails.logger.debug { "[Depth] ✖ Closed (#{e.code})" }
             EM.stop
             run
           end
@@ -54,13 +54,13 @@ module Dhan
               InstrumentCount: batch.size,
               InstrumentList: batch.map { |sid| { ExchangeSegment: exchange_segment, SecurityId: sid } }
             }.to_json)
-            puts "[WS] Subscribed #{batch.size} on #{exchange_segment}"
+            Rails.logger.debug { "[WS] Subscribed #{batch.size} on #{exchange_segment}" }
           end
         end
       end
 
       def self.handle_frame(data)
-        pp data
+        Rails.logger.debug data
         bytes  = data.is_a?(String) ? data.bytes : Array(data)
         header = bytes[2] # feed code lives in the 3rd byte of depth header
         return unless [41, 51].include?(header)
@@ -70,9 +70,9 @@ module Dhan
         # you might persist into a `DepthQuote` model:
         # DepthQuote.create!(exchange_segment:…, security_id:…, levels: levels)
 
-        puts "[Depth] Parsed #{levels.size == 2 ? 'Bid+Ask' : ''} levels"
+        Rails.logger.debug { "[Depth] Parsed #{levels.size == 2 ? 'Bid+Ask' : ''} levels" }
       rescue StandardError => e
-        puts "[Depth] Parse error: #{e.class}: #{e.message}"
+        Rails.logger.debug { "[Depth] Parse error: #{e.class}: #{e.message}" }
       end
     end
   end

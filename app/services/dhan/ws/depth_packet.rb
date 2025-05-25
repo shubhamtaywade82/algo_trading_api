@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # File: depth_packet.rb
 # Defines parsing logic for DhanHQ 20-level depth packets.
 module Dhan
@@ -8,9 +10,9 @@ module Dhan
 
       def self.parse_level(bytes, start_off)
         slice = bytes[start_off, ENTRY_SIZE]
-        price = slice[0,8].pack('C*').unpack1('G')  # big-endian float64
-        qty   = slice[8,4].pack('C*').unpack1('L<')
-        orders= slice[12,4].pack('C*').unpack1('L<')
+        price = slice[0, 8].pack('C*').unpack1('G') # big-endian float64
+        qty   = slice[8, 4].pack('C*').unpack1('L<')
+        orders = slice[12, 4].pack('C*').unpack1('L<')
         { price: price, quantity: qty, orders: orders }
       end
 
@@ -21,7 +23,7 @@ module Dhan
         # alternating Bid (code 41) and Ask (code 51)
         2.times do |side_idx|
           level_list = []
-          20.times do |i|
+          20.times do |_i|
             level_list << parse_level(bytes, offset)
             offset += ENTRY_SIZE
           end

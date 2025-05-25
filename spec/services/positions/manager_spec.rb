@@ -43,7 +43,7 @@ RSpec.describe Positions::Manager, type: :service do
   context 'with mixed valid/invalid positions' do
     before do
       stub_dhan_positions([valid_position, invalid_position])
-      valid_position["ltp"] = 120.0
+      valid_position['ltp'] = 120.0
     end
 
     it 'calls Orders::Manager only for valid positions' do

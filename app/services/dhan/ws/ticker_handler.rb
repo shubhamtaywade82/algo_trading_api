@@ -13,9 +13,9 @@ module Dhan
         ltp = bytes[8, 4].pack('C*').unpack1('e')
         ltt = bytes[12, 4].pack('C*').unpack1('L<')
 
-        pp "TickerHandler: sid=#{sid}, ltp=#{ltp}, ltt=#{ltt}"
+        Rails.logger.debug { "TickerHandler: sid=#{sid}, ltp=#{ltp}, ltt=#{ltt}" }
         inst = Instrument.find_by(security_id: sid) or return
-        tick_time = Time.at(ltt)
+        tick_time = Time.zone.at(ltt)
 
         # Persist a minimal quote
         Quote.create!(

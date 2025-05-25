@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # # File: app/services/dhan/ws/feed_listener.rb
 # # frozen_string_literal: true
 
@@ -202,12 +204,12 @@ module Dhan
         EM.run do
           ws = Faye::WebSocket::Client.new(FEED_URL)
           ws.on(:open) do
-            puts '[WS] Connected'
+            Rails.logger.debug '[WS] Connected'
             subscribe(ws)
           end
           ws.on(:message) { |e| handle(e) }
           ws.on(:close)   do
-            puts '[WS] Closed'
+            Rails.logger.debug '[WS] Closed'
             EM.stop
             run
           end
@@ -235,7 +237,7 @@ module Dhan
               InstrumentCount: batch.size,
               InstrumentList: batch.map { |sid| { ExchangeSegment: exchange_segment, SecurityId: sid } }
             }.to_json)
-            puts "[WS] Subscribed #{batch.size} on #{exchange_segment}"
+            Rails.logger.debug { "[WS] Subscribed #{batch.size} on #{exchange_segment}" }
           end
         end
       end
@@ -255,10 +257,10 @@ module Dhan
         when 5  then OIHandler.call(bytes)
         when 6  then PrevCloseHandler.call(bytes)
         when 8  then FullHandler.call(bytes)
-        else puts "[WS] Unknown code #{code}"
+        else Rails.logger.debug { "[WS] Unknown code #{code}" }
         end
       rescue StandardError => e
-        puts "[WS] Parse error: #{e.message}"
+        Rails.logger.debug { "[WS] Parse error: #{e.message}" }
       end
     end
   end
