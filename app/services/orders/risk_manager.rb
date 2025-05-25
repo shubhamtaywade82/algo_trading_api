@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# Central risk logic for all exits, trails, danger zone, etc.
 module Orders
   class RiskManager < ApplicationService
     STOP_LOSS_PCT    = { stock: 10.0,  option: 20.0  }.freeze  # %
@@ -10,6 +11,8 @@ module Orders
     DANGER_ZONE_MIN  = -500.0
     DANGER_ZONE_BARS = 3       # max bars to allow in this zone
 
+    # @param [Hash] position
+    # @param [Hash] analysis
     def initialize(position, analysis)
       @pos      = position
       @a        = analysis

@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
+# Modifies the SL leg of an existing bracket or SL order, fallback to exit if needed
 module Orders
   class Adjuster < ApplicationService
+    # @param [Hash] position
+    # @param [Hash] params (expects :trigger_price)
     def initialize(position, params)
       @pos         = position.with_indifferent_access
       @new_trigger = params[:trigger_price]
