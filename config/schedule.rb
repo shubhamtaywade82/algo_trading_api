@@ -60,5 +60,9 @@ set :output, 'log/cron.log'
 # end
 
 every 1.minute do
+  runner 'Positions::ActiveCache.refresh!'
+end
+
+every 1.minute do
   runner 'Positions::Manager.call', output: 'log/cron.log'
 end
