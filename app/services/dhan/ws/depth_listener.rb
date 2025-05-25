@@ -1,0 +1,79 @@
+# frozen_string_literal: true
+
+require 'faye/websocket'
+require 'eventmachine'
+require 'json'
+require_relative 'depth_packet'
+
+module Dhan
+  module Ws
+    class DepthListener
+      DEPTH_URL = [
+        'wss://depth-api-feed.dhan.co/twentydepth?',
+        "token=#{ENV.fetch('DHAN_ACCESS_TOKEN')}",
+        "clientId=#{ENV.fetch('DHAN_CLIENT_ID')}",
+        'authType=2'
+      ].join('&').freeze
+
+      def self.run
+        EM.run do
+          puts "[Depth] Connecting to #{DEPTH_URL}"
+          ws = Faye::WebSocket::Client.new(DEPTH_URL)
+
+          ws.on(:open) do
+            puts '[Depth] ▶ Connected'
+            subscribe(ws)
+          end
+          ws.on(:message) { |e| handle_frame(e.data) }
+          ws.on(:close)   do |e|
+            puts "[Depth] ✖ Closed (#{e.code})"
+            EM.stop
+            run
+          end
+          ws.on(:error) { |e| puts "[Depth] ⚠ Error: #{e.message}" }
+        end
+      end
+
+      def self.subscribe(ws)
+        # collect all instrument and derivative security_ids by segment
+        to_subscribe = Hash.new { |h, k| h[k] = [] }
+
+        Instrument.nse.segment_index.limit(50).find_each do |inst|
+          to_subscribe[inst.exchange_segment] << inst.security_id
+        end
+
+        Derivative.nse.limit(50).find_each do |deriv|
+          to_subscribe[deriv.exchange_segment] << deriv.security_id
+        end
+
+        # now send each group in slices of 100
+        to_subscribe.each do |exchange_segment, ids|
+          ids.uniq.each_slice(100) do |batch|
+            ws.send({
+              RequestCode: 23,
+              InstrumentCount: batch.size,
+              InstrumentList: batch.map { |sid| { ExchangeSegment: exchange_segment, SecurityId: sid } }
+            }.to_json)
+            puts "[WS] Subscribed #{batch.size} on #{exchange_segment}"
+          end
+        end
+      end
+
+      def self.handle_frame(data)
+        pp data
+        bytes  = data.is_a?(String) ? data.bytes : Array(data)
+        header = bytes[2] # feed code lives in the 3rd byte of depth header
+        return unless [41, 51].include?(header)
+
+        # strip the 12-byte header, parse the 20 levels
+        levels = DepthPacket.parse(bytes)
+        # you might persist into a `DepthQuote` model:
+        # DepthQuote.create!(exchange_segment:…, security_id:…, levels: levels)
+
+        puts "[Depth] Parsed #{levels.size == 2 ? 'Bid+Ask' : ''} levels"
+      rescue StandardError => e
+        puts "[Depth] Parse error: #{e.class}: #{e.message}"
+      end
+    end
+  end
+end

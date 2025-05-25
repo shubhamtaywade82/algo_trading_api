@@ -92,3 +92,5 @@ gem 'daemons', '~> 1.4'
 gem 'activerecord-import'
 
 gem 'telegram-bot-ruby'
+
+gem 'faye-websocket'

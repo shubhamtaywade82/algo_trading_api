@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_05_12_174316) do
+ActiveRecord::Schema[8.0].define(version: 2025_05_24_074237) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -249,6 +249,17 @@ ActiveRecord::Schema[8.0].define(version: 2025_05_12_174316) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "quotes", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.decimal "ltp"
+    t.bigint "volume"
+    t.datetime "tick_time"
+    t.jsonb "metadata"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_quotes_on_instrument_id"
+  end
+
   create_table "strategies", force: :cascade do |t|
     t.string "name", null: false
     t.text "objective"
@@ -267,4 +278,5 @@ ActiveRecord::Schema[8.0].define(version: 2025_05_12_174316) do
   add_foreign_key "mis_details", "instruments"
   add_foreign_key "orders", "alerts"
   add_foreign_key "positions", "instruments"
+  add_foreign_key "quotes", "instruments"
 end
