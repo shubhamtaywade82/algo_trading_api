@@ -11,14 +11,20 @@ module Orders
         next unless pos
         next if bracket_order_exists?(pos)
 
+        entry_price = pos['buyAvg'].to_f
+        instrument_type = detect_instrument_type(pos)
+
+        sl_pct = instrument_type == :option ? 25.0 : 10.0
+        tp_pct = instrument_type == :option ? 50.0 : 20.0
+
         # Calculate SL/TP for new bracket order (customize rules as needed)
-        sl_val = (pos['buyAvg'].to_f * 0.8).round(2)   # 20% SL
-        tp_val = (pos['buyAvg'].to_f * 1.5).round(2)   # 50% TP
+        sl_val = (entry_price * sl_pct / 100.0).round(2)   # 20% SL
+        tp_val = (entry_price * tp_pct / 100.0).round(2)   # 50% TP
 
         payload = {
           securityId: pos['securityId'],
           transactionType: pos['netQty'].to_f.positive? ? 'SELL' : 'BUY',
-          orderType: 'BRACKET',
+          orderType: 'MARKET',
           quantity: pos['netQty'].abs,
           exchangeSegment: pos['exchangeSegment'],
           productType: pos['productType'],
@@ -27,7 +33,9 @@ module Orders
           boStopLossValue: sl_val,
           boProfitValue: tp_val
         }
+
         response = Dhanhq::API::Orders.place(payload)
+
         if response['orderId']
           TelegramNotifier.send_message("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
           Rails.logger.info("[BracketPlacer] Bracket placed for #{pos['tradingSymbol']} #{response['orderId']}")
@@ -45,6 +53,14 @@ module Orders
         o['securityId'].to_s == pos['securityId'].to_s &&
           o['orderType'].to_s.upcase == 'BRACKET' &&
           %w[PENDING TRANSIT PART_TRADED].include?(o['orderStatus'])
+      end
+    end
+
+    def self.detect_instrument_type(pos)
+      if pos['exchangeSegment'].include?('FNO') || pos['productType'] == 'INTRADAY'
+        :option
+      else
+        :stock
       end
     end
   end
