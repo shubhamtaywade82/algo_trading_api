@@ -3,7 +3,7 @@
 
 module Dhan
   module Ws
-    class OIHandler
+    class OiHandler
       # OI packet: code 5
       # bytes[4,4]  = security_id
       # bytes[8,4]  = open_interest
