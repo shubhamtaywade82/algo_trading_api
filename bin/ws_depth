@@ -1,0 +1,12 @@
+#!/usr/bin/env ruby
+#
+# Launch the DhanHQ 20-level depth WebSocket listener.
+#
+
+require_relative '../config/application'
+Rails.application.require_environment!
+
+# ensure our listener file is loaded:
+require_relative '../app/services/dhan/ws/depth_listener'
+
+Dhan::Ws::DepthListener.run

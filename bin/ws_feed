@@ -1,0 +1,6 @@
+#!/usr/bin/env ruby
+require 'dotenv/load'
+require_relative "../config/environment"
+puts "⚡ Starting DhanHQ Full Packet Feed…"
+Dhan::Ws::FeedListener.run
+puts "⚡ DhanHQ Full Packet Feed stopped."

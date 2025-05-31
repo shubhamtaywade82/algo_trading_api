@@ -8,6 +8,7 @@ class Instrument < ApplicationRecord
   has_many :order_features, as: :featureable, dependent: :destroy
   has_many :alerts, dependent: :destroy
   has_many :levels, dependent: :destroy
+  has_many :quotes, dependent: :destroy
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivatives, allow_destroy: true
@@ -98,6 +99,16 @@ class Instrument < ApplicationRecord
     fetch_ltp_from_api
   rescue StandardError => e
     Rails.logger.error("Failed to fetch LTP for Instrument #{security_id}: #{e.message}")
+    nil
+  end
+
+  def quote_ltp
+    quote = quotes.order(tick_time: :desc).first
+    return nil unless quote
+
+    quote.ltp.to_s.to_f
+  rescue StandardError => e
+    Rails.logger.error("Failed to fetch latest quote LTP for Instrument #{security_id}: #{e.message}")
     nil
   end
 
