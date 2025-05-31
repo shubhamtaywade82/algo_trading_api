@@ -5,9 +5,9 @@ module Dhan
     class WebsocketPacketParser
       RESPONSE_CODES = {
         ticker: 2,
-        prev_close: 6,
         quote: 4,
         oi: 5,
+        prev_close: 6,
         full: 8,
         disconnect: 50,
         depth_bid: 41,
@@ -23,65 +23,66 @@ module Dhan
       def parse
         header = parse_header
 
-        case header[:feed_response_code]
-        when RESPONSE_CODES[:ticker]
-          header.merge(parse_ticker)
-        when RESPONSE_CODES[:prev_close]
-          header.merge(parse_prev_close)
-        when RESPONSE_CODES[:quote]
-          header.merge(parse_quote)
-        when RESPONSE_CODES[:oi]
-          header.merge(parse_oi)
-        when RESPONSE_CODES[:full]
-          header.merge(parse_full)
-        when RESPONSE_CODES[:disconnect]
-          header.merge(parse_disconnect)
-        when RESPONSE_CODES[:depth_bid], RESPONSE_CODES[:depth_ask]
-          header.merge(parse_depth(header[:feed_response_code]))
-        else
-          raise "Unknown response code: #{header[:feed_response_code]}"
-        end
+        data = case header[:feed_response_code]
+               when RESPONSE_CODES[:ticker]       then parse_ticker
+               when RESPONSE_CODES[:quote]        then parse_quote
+               when RESPONSE_CODES[:oi]           then parse_oi
+               when RESPONSE_CODES[:prev_close]   then parse_prev_close
+               when RESPONSE_CODES[:full]         then parse_full
+               when RESPONSE_CODES[:disconnect]   then parse_disconnect
+               when RESPONSE_CODES[:depth_bid],
+                    RESPONSE_CODES[:depth_ask]    then parse_depth(header[:feed_response_code])
+               else
+                 raise "Unknown response code: #{header[:feed_response_code]}"
+               end
+
+        full_data = header.merge(data)
+        pp full_data
+        debug_log(full_data)
+        full_data
+      rescue StandardError => e
+        Rails.logger.error "[WS::Parser] ❌ #{e.class}: #{e.message}"
+        {}
       end
 
       private
 
       def parse_header
         {
-          message_length: binary_data.read(2).unpack1('s>'),
           feed_response_code: binary_data.read(1).unpack1('C'),
+          message_length: binary_data.read(2).unpack1('s>'),
           exchange_segment: binary_data.read(1).unpack1('C'),
-          security_id: binary_data.read(4).unpack1('l>').to_s,
-          message_sequence: binary_data.read(4).unpack1('L>')
+          security_id: binary_data.read(4).unpack1('L>').to_s
         }
       end
 
       def parse_ticker
         {
-          ltp: binary_data.read(4).unpack1('g'),
+          ltp: binary_data.read(4).unpack1('e'),
           ltt: binary_data.read(4).unpack1('l>')
         }
       end
 
       def parse_prev_close
         {
-          previous_close: binary_data.read(4).unpack1('g'),
+          previous_close: binary_data.read(4).unpack1('e'),
           previous_open_interest: binary_data.read(4).unpack1('l>')
         }
       end
 
       def parse_quote
         {
-          ltp: binary_data.read(4).unpack1('g'),
+          ltp: binary_data.read(4).unpack1('e'),
           last_trade_qty: binary_data.read(2).unpack1('s>'),
           ltt: binary_data.read(4).unpack1('l>'),
-          atp: binary_data.read(4).unpack1('g'),
+          atp: binary_data.read(4).unpack1('e'),
           volume: binary_data.read(4).unpack1('l>'),
           total_sell_qty: binary_data.read(4).unpack1('l>'),
           total_buy_qty: binary_data.read(4).unpack1('l>'),
-          day_open: binary_data.read(4).unpack1('g'),
-          day_close: binary_data.read(4).unpack1('g'),
-          day_high: binary_data.read(4).unpack1('g'),
-          day_low: binary_data.read(4).unpack1('g')
+          day_open: binary_data.read(4).unpack1('e'),
+          day_close: binary_data.read(4).unpack1('e'),
+          day_high: binary_data.read(4).unpack1('e'),
+          day_low: binary_data.read(4).unpack1('e')
         }
       end
 
@@ -92,20 +93,28 @@ module Dhan
       end
 
       def parse_full
-        parsed_data = parse_quote
+        quote_data = {
+          ltp: binary_data.read(4).unpack1('e'),
+          last_trade_qty: binary_data.read(2).unpack1('s>'),
+          ltt: binary_data.read(4).unpack1('l>'),
+          atp: binary_data.read(4).unpack1('e'),
+          volume: binary_data.read(4).unpack1('l>'),
+          total_sell_qty: binary_data.read(4).unpack1('l>'),
+          total_buy_qty: binary_data.read(4).unpack1('l>')
+        }
 
-        parsed_data.merge!({
-                             open_interest: binary_data.read(4).unpack1('l>'),
-                             highest_open_interest: binary_data.read(4).unpack1('l>'),
-                             lowest_open_interest: binary_data.read(4).unpack1('l>'),
-                             day_open: binary_data.read(4).unpack1('g'),
-                             day_close: binary_data.read(4).unpack1('g'),
-                             day_high: binary_data.read(4).unpack1('g'),
-                             day_low: binary_data.read(4).unpack1('g'),
-                             market_depth: parse_market_depth
-                           })
+        additional_data = {
+          open_interest: binary_data.read(4).unpack1('l>'),
+          highest_open_interest: binary_data.read(4).unpack1('l>'),
+          lowest_open_interest: binary_data.read(4).unpack1('l>'),
+          day_open: binary_data.read(4).unpack1('e'),
+          day_close: binary_data.read(4).unpack1('e'),
+          day_high: binary_data.read(4).unpack1('e'),
+          day_low: binary_data.read(4).unpack1('e'),
+          market_depth: parse_market_depth
+        }
 
-        parsed_data
+        quote_data.merge(additional_data)
       end
 
       def parse_market_depth
@@ -115,8 +124,8 @@ module Dhan
             ask_quantity: binary_data.read(4).unpack1('l>'),
             no_of_bid_orders: binary_data.read(2).unpack1('s>'),
             no_of_ask_orders: binary_data.read(2).unpack1('s>'),
-            bid_price: binary_data.read(4).unpack1('g'),
-            ask_price: binary_data.read(4).unpack1('g')
+            bid_price: binary_data.read(4).unpack1('e'),
+            ask_price: binary_data.read(4).unpack1('e')
           }
         end
       end
@@ -132,12 +141,16 @@ module Dhan
           depth_type: response_code == RESPONSE_CODES[:depth_bid] ? 'bid' : 'ask',
           depth_levels: Array.new(20) do
             {
-              price: binary_data.read(8).unpack1('G'),
+              price: binary_data.read(8).unpack1('E'),     # float64 little-endian
               quantity: binary_data.read(4).unpack1('L>'),
               no_of_orders: binary_data.read(4).unpack1('L>')
             }
           end
         }
+      end
+
+      def debug_log(data)
+        pp { "[WS::Parser] Parsed: #{data.inspect}" } if ENV['DEBUG_WS'] == 'true'
       end
     end
   end
