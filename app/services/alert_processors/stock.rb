@@ -59,9 +59,7 @@ module AlertProcessors
     #  Guards / validation
     # ------------------------------------------------------------------------
     def signal_guard!
-      if LONG_ONLY.include?(alert[:strategy_type]) && SHORT_SIGNALS.include?(alert[:signal_type])
-        return skip!(:short_not_allowed)
-      end
+      return skip!(:short_not_allowed) if LONG_ONLY.include?(alert[:strategy_type]) && SHORT_SIGNALS.include?(alert[:signal_type])
 
       case alert[:signal_type]
       when 'long_entry'  then return skip!(:already_long)   if current_qty.positive?
@@ -209,8 +207,8 @@ module AlertProcessors
     # ------------------------------------------------------------------------
     #  Logging helpers
     # ------------------------------------------------------------------------
-    def with_tag(&block)
-      logger.tagged("Stock ##{alert.id}", &block)
+    def with_tag(&)
+      logger.tagged("Stock ##{alert.id}", &)
     end
 
     def skip!(reason = nil)

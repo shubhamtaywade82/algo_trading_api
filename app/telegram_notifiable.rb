@@ -5,7 +5,7 @@ module TelegramNotifiable
 
   def notify_telegram(text)
     return unless ActiveModel::Type::Boolean.new.cast(
-                   ENV.fetch("TELEGRAM_NOTIF_ENABLED", "false")
+                   ENV.fetch('TELEGRAM_NOTIF_ENABLED', 'false')
                  )
 
     TelegramNotifier.send_message(text)
