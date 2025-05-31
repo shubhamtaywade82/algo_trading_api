@@ -44,8 +44,7 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        # security_ids = Positions::ActiveCache.ids.uniq
-        security_ids = [13]
+        security_ids = Positions::ActiveCache.ids.uniq
         return if security_ids.blank?
 
         instruments = Instrument.where(security_id: security_ids)
