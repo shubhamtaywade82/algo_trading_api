@@ -31,7 +31,7 @@ module Dhan
                when RESPONSE_CODES[:full]         then parse_full
                when RESPONSE_CODES[:disconnect]   then parse_disconnect
                when RESPONSE_CODES[:depth_bid],
-                    RESPONSE_CODES[:depth_ask]    then parse_depth(header[:feed_response_code])
+                    RESPONSE_CODES[:depth_ask] then parse_depth(header[:feed_response_code])
                else
                  raise "Unknown response code: #{header[:feed_response_code]}"
                end
@@ -48,11 +48,16 @@ module Dhan
       private
 
       def parse_header
+
+        pp binary_data.read(1).unpack1('C') # Ensure we start reading from the beginning
+        pp binary_data.read(2).unpack1('s>')
+        pp binary_data.read(1).unpack1('C')
+        pp binary_data.read(4).unpack1('L>')
         {
-          feed_response_code: binary_data.read(1).unpack1('C'),
-          message_length: binary_data.read(2).unpack1('s>'),
-          exchange_segment: binary_data.read(1).unpack1('C'),
-          security_id: binary_data.read(4).unpack1('L>').to_s
+          feed_response_code: binary_data.read(1).unpack1('C'), # byte 0
+          message_length: binary_data.read(2).unpack1('s>'), # bytes 1-2
+          exchange_segment: binary_data.read(1).unpack1('C'), # byte 3
+          security_id: binary_data.read(4).unpack1('L>') # bytes 4-7
         }
       end
 
@@ -141,7 +146,7 @@ module Dhan
           depth_type: response_code == RESPONSE_CODES[:depth_bid] ? 'bid' : 'ask',
           depth_levels: Array.new(20) do
             {
-              price: binary_data.read(8).unpack1('E'),     # float64 little-endian
+              price: binary_data.read(8).unpack1('E'), # float64 little-endian
               quantity: binary_data.read(4).unpack1('L>'),
               no_of_orders: binary_data.read(4).unpack1('L>')
             }
