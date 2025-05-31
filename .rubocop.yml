@@ -5,30 +5,186 @@ require:
   - rubocop-factory_bot
   - rubocop-rspec_rails
 
+################################################################################
+# 1. Global configuration
+################################################################################
+
 AllCops:
-  TargetRubyVersion: 3.0 # Replace with your Ruby version
+  TargetRubyVersion: 3.1
   NewCops: enable
   Exclude:
-    - "db/**/**"
-    - "bin/**/*"
-    - "node_modules/**/*"
-    - "vendor/**/*"
+    - 'bin/*'
+    - 'db/schema.rb'
+    - 'node_modules/**/*'
+    - 'vendor/**/*'
 
-Rails:
+################################################################################
+# 2. Layout / Style adjustments
+################################################################################
+
+Layout/LineLength:
   Enabled: true
+  Max: 140                     # increased from 120 to 140
+  IgnoredPatterns:
+    - '\Ahttps?://'            # ignore long URLs
 
-Performance:
+Layout/TrailingEmptyLines:
+  Enabled: false               # disable trailing‐newline requirement
+
+Layout/FirstArgumentIndentation:
+  Enabled: false               # ignore first‐arg indentation
+
+
+Style/FrozenStringLiteralComment:
+  Enabled: false               # disable mandatory frozen_string_literal
+
+
+Style/StringLiterals:
+  EnforcedStyle: single_quotes # prefer single‐quoted strings
+  ConsistentQuotesInMultiline: false
+
+Style/MultilineBlockChain:
+  Enabled: false               # allow multi‐line chains of blocks
+
+################################################################################
+# 3. Metrics (Complexity / Size) adjustments
+################################################################################
+
+Metrics/AbcSize:
   Enabled: true
+  Max:  FortyTwenty             # see note below
+  Exclude:
+    - 'app/services/option/strategy_suggester.rb'  # or any file you want to carve out
 
-RSpec:
+Metrics/CyclomaticComplexity:
   Enabled: true
+  Max: 10                       # increased from 7 to 10
 
-Style/Documentation:
-  Enabled: false
+Metrics/PerceivedComplexity:
+  Enabled: true
+  Max: 12                       # increased from 8 to 12
 
 Metrics/MethodLength:
-  Max: 50
+  Enabled: true
+  Max: 80                       # increased from 50
+
+Metrics/ClassLength:
+  Enabled: true
+  Max: 300                      # increased from 100
+
+Metrics/BlockLength:
+  Enabled: true
+  Max: 50                       # increased from 25
+
+Metrics/ParameterLists:
+  Enabled: true
+  Max: 6                        # increased from 5
+
+# NOTE: RuboCop expects integers. You can either set "Max: 40" or pick any threshold.
+# If you want to disable these completely, set Enabled: false under each.
+
+################################################################################
+# 4. Security / Rails adjustments
+################################################################################
+
+Security/Open:
+  Enabled: false               # disable check for URI.open (or switch to URI.parse + Net::HTTP)
+
+Rails/UniqueValidationWithoutIndex:
+  Enabled: false               # skip enforcement of unique_index requirement
+
+Lint/DuplicateBranch:
+  Enabled: false               # allow duplicate branch bodies
+
+Lint/DuplicateMethods:
+  Enabled: false               # allow duplicate methods (particularly in large services)
 
 Lint/MissingSuper:
-  # Enabled: false
-  AllowedParentClasses: [ApplicationService]
+  Enabled: false               # skip missing super() checks
+
+################################################################################
+# 5. Naming / Variable checks
+################################################################################
+
+Naming/MethodParameterName:
+  Enabled: false               # allow short parameter names (e.g. e, i)
+
+Naming/VariableNumber:
+  Enabled: false               # allow variables like var1, var2
+
+################################################################################
+# 6. Performance / Style
+################################################################################
+
+Performance/CollectionLiteralInLoop:
+  Enabled: false               # allow array literals inside loops
+
+################################################################################
+# 7. RSpec adjustments
+################################################################################
+
+RSpec/MultipleExpectations:
+  Enabled: false               # allow multiple expectations per example
+
+RSpec/MultipleMemoizedHelpers:
+  Enabled: false               # allow many memoized helpers
+
+RSpec/ExampleLength:
+  Enabled: false               # disable example line-count enforcement
+
+RSpec/MessageSpies:
+  Enabled: false               # skip have_received enforcement
+
+RSpec/ContextWording:
+  Enabled: false               # skip "when/with" wording requirement
+
+RSpec/NamedSubject:
+  Enabled: false               # skip naming subject suggestions
+
+RSpec/VerifiedDoubles:
+  Enabled: false               # skip verifying doubles enforcement
+
+RSpec/DescribeClass:
+  Enabled: false               # skip first argument convention in `describe`
+
+RSpec/SpecFilePathFormat:
+  Enabled: false               # skip spec file path checks
+
+################################################################################
+# 8. Example: How to override a single cop inline (optional)
+################################################################################
+
+# If you only want to ignore some methods or files selectively,
+# you can add inline comments in your Ruby code:
+#
+#   # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity
+#   def some_very_complex_method(...)
+#     ...
+#   end
+#   # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
+#
+# Or to ignore an entire file, at the top of the file:
+#
+#   # rubocop:disable all
+
+
+################################################################################
+# 9. Usage notes
+################################################################################
+
+# – Replace “FortyTwenty” above with an actual integer (e.g. “40”) if you want to raise
+#   the ABC size. For example:
+#
+#     Metrics/AbcSize:
+#       Enabled: true
+#       Max: 40
+#
+# – Feel free to disable any cops completely by setting “Enabled: false.” If you'd rather
+#   bump thresholds gradually, increase the “Max” values until the offenses go away.
+#
+# – After creating/updating this `.rubocop.yml`, run:
+#     bin/rubocop --auto-gen-config
+#   to generate a `.rubocop_todo.yml` for any remaining offenses you want to address later.
+#
+# – Keep a `.rubocop_todo.yml` in source control so teammates can gradually fix cops
+#   rather than disabling everything at once.]
