@@ -31,7 +31,7 @@ module Orders
 
       # === 1. Take profit (net)
       if net_pnl >= (@a[:entry_price] * @a[:quantity] * TAKE_PROFIT_PCT[@a[:instrument_type]] / 100.0)
-        TelegramNotifier.send_message("✅ TP Hit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+        notify("✅ TP Hit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
         return { exit: true, exit_reason: "TakeProfit_Net_#{net_pnl}" }
       end
 
@@ -47,26 +47,26 @@ module Orders
       # Hard exit if we've been in danger zone for too many bars
       if @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_LOSS
         reset_danger_count
-        TelegramNotifier.send_message("⚠️ Danger Zone Exit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+        notify("⚠️ Danger Zone Exit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
         return { exit: true, exit_reason: "DangerZone_#{net_pnl}", order_type: :limit }
       end
 
       # === 3. Hard SL if loss is way below DANGER_ZONE_LOSS (emergency)
       if net_pnl <= -3000
         reset_danger_count
-        TelegramNotifier.send_message("🛑 Emergency SL: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+        notify("🛑 Emergency SL: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
         return { exit: true, exit_reason: "EmergencyStopLoss_#{net_pnl}" }
       end
 
       # === 4. Percentage stop loss
       if @a[:pnl_pct] <= -STOP_LOSS_PCT[@a[:instrument_type]]
-        TelegramNotifier.send_message("🛑 % SL Hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
+        notify("🛑 % SL Hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
         return { exit: true, exit_reason: "StopLoss_#{@a[:pnl_pct]}%" }
       end
 
       # === 5. Break-even trail
       if @a[:pnl_pct] >= 40 && @a[:ltp] <= @a[:entry_price]
-        TelegramNotifier.send_message("📉 BE Trail Exit: #{@pos['tradingSymbol']} | Price fallback to entry.")
+        notify("📉 BE Trail Exit: #{@pos['tradingSymbol']} | Price fallback to entry.")
         return { exit: true, exit_reason: "BreakEven_Trail_#{@a[:pnl_pct]}%" }
       end
 

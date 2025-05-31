@@ -37,7 +37,7 @@ module Orders
         response = Dhanhq::API::Orders.place(payload)
 
         if response['orderId']
-          TelegramNotifier.send_message("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
+          notify("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
           Rails.logger.info("[BracketPlacer] Bracket placed for #{pos['tradingSymbol']} #{response['orderId']}")
         else
           Rails.logger.error("[BracketPlacer] Failed for #{pos['tradingSymbol']}: #{response['message']}")

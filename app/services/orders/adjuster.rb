@@ -36,7 +36,7 @@ module Orders
         response = Dhanhq::API::Orders.modify(order_id, modification_params)
 
         if response['orderStatus'].to_s.upcase.in?(%w[PENDING TRANSIT])
-          TelegramNotifier.send_message("🔁 Adjusted SL to ₹#{@new_trigger} for #{@pos['tradingSymbol']}")
+          notify("🔁 Adjusted SL to ₹#{@new_trigger} for #{@pos['tradingSymbol']}")
           Rails.logger.info("[Orders::Adjuster] SL updated to #{@new_trigger} for #{@pos['tradingSymbol']}")
         else
           Rails.logger.error("[Orders::Adjuster] Modify failed: #{response['omsErrorDescription'] || response['message']}")
@@ -73,7 +73,7 @@ module Orders
     end
 
     def fallback_exit
-      TelegramNotifier.send_message("⚠️ SL Adjust failed. Fallback exit initiated for #{@pos['tradingSymbol']}")
+      notify("⚠️ SL Adjust failed. Fallback exit initiated for #{@pos['tradingSymbol']}")
       Rails.logger.warn("[Orders::Adjuster] Executing fallback exit for #{@pos['tradingSymbol']}")
       analysis = Orders::Analyzer.call(@pos)
       Orders::Executor.call(@pos, 'FallbackExit', analysis)

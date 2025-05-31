@@ -50,7 +50,7 @@ RSpec.describe Orders::Adjuster, type: :service do
     end
 
     it 'sends an adjustment notification and logs success' do
-      expect(TelegramNotifier).to receive(:send_message).with('🔁 Adjusted SL to ₹105.5 for NIFTY24JUL17500CE')
+      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] 🔁 Adjusted SL to ₹105.5 for NIFTY24JUL17500CE')
       described_class.call(position, params)
     end
   end
@@ -86,7 +86,7 @@ RSpec.describe Orders::Adjuster, type: :service do
     end
 
     it 'triggers fallback exit and sends fallback notification' do
-      expect(TelegramNotifier).to receive(:send_message).with('⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
+      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
       expect(Orders::Executor).to receive(:call)
         .with(kind_of(Hash), 'FallbackExit', kind_of(Hash))
 
@@ -105,7 +105,7 @@ RSpec.describe Orders::Adjuster, type: :service do
     end
 
     it 'triggers fallback exit and sends fallback notification' do
-      expect(TelegramNotifier).to receive(:send_message).with('⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
+      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
       expect(Orders::Executor).to receive(:call)
         .with(kind_of(Hash), 'FallbackExit', kind_of(Hash))
 
@@ -119,7 +119,7 @@ RSpec.describe Orders::Adjuster, type: :service do
     end
 
     it 'triggers fallback exit and sends fallback notification' do
-      expect(TelegramNotifier).to receive(:send_message).with('⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
+      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
       expect(Orders::Executor).to receive(:call)
         .with(kind_of(Hash), 'FallbackExit', kind_of(Hash))
 
@@ -158,7 +158,7 @@ RSpec.describe Orders::Adjuster, type: :service do
     end
 
     it 'sends an adjustment notification and logs success' do
-      expect(TelegramNotifier).to receive(:send_message).with('🔁 Adjusted SL to ₹105.5 for NIFTY24JUL17500CE')
+      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] 🔁 Adjusted SL to ₹105.5 for NIFTY24JUL17500CE')
       described_class.call(position, params)
     end
   end
