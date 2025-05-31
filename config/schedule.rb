@@ -59,10 +59,17 @@ set :output, 'log/cron.log'
 #   runner 'LevelsUpdateJob.perform_later'
 # end
 
+# Refresh position cache
 every 1.minute do
-  runner 'Positions::ActiveCache.refresh!'
+  runner 'Positions::ActiveCache.refresh!', output: 'log/cron.log'
 end
 
+# Evaluate exits & manage active positions
 every 1.minute do
   runner 'Positions::Manager.call', output: 'log/cron.log'
+end
+
+# Place bracket orders for newly opened positions
+every 1.minute do
+  runner 'Orders::BracketPlacer.call', output: 'log/cron.log'
 end
