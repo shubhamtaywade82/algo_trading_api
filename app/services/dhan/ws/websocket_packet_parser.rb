@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Dhanhq
+module Dhan
   module Ws
     class WebsocketPacketParser
       RESPONSE_CODES = {
