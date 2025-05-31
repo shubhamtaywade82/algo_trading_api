@@ -48,11 +48,10 @@ module Dhan
       private
 
       def parse_header
-
-        pp binary_data.read(1).unpack1('C') # Ensure we start reading from the beginning
-        pp binary_data.read(2).unpack1('s>')
-        pp binary_data.read(1).unpack1('C')
-        pp binary_data.read(4).unpack1('L>')
+        Rails.logger.debug binary_data.read(1).unpack1('C') # Ensure we start reading from the beginning
+        Rails.logger.debug binary_data.read(2).unpack1('s>')
+        Rails.logger.debug binary_data.read(1).unpack1('C')
+        Rails.logger.debug binary_data.read(4).unpack1('L>')
         {
           feed_response_code: binary_data.read(1).unpack1('C'), # byte 0
           message_length: binary_data.read(2).unpack1('s>'), # bytes 1-2
@@ -155,7 +154,7 @@ module Dhan
       end
 
       def debug_log(data)
-        pp "[WS::Parser] Parsed: #{data.inspect}" if ENV['DEBUG_WS'] == 'true'
+        Rails.logger.debug { "[WS::Parser] Parsed: #{data.inspect}" } if ENV['DEBUG_WS'] == 'true'
       end
     end
   end

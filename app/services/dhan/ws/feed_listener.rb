@@ -19,11 +19,11 @@ module Dhan
 
       def self.run
         EM.run do
-          puts "[WS] Connecting to #{FEED_URL}"
+          Rails.logger.debug { "[WS] Connecting to #{FEED_URL}" }
           ws = Faye::WebSocket::Client.new(FEED_URL)
 
           ws.on(:open) do
-            puts '[WS] ▶ Connected'
+            Rails.logger.debug '[WS] ▶ Connected'
             subscribe(ws)
           end
 
@@ -32,7 +32,7 @@ module Dhan
           end
 
           ws.on(:close) do |event|
-            puts "[WS] ✖ Disconnected (#{event.code}): #{event.reason}"
+            Rails.logger.debug { "[WS] ✖ Disconnected (#{event.code}): #{event.reason}" }
             EM.stop
             sleep 1
             run
@@ -44,7 +44,7 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        security_ids = Positions::ActiveCache.ids.uniq
+        Positions::ActiveCache.ids.uniq
         security_ids = [13]
         return if security_ids.blank?
 
@@ -71,7 +71,7 @@ module Dhan
 
         parsed = Dhan::Ws::WebsocketPacketParser.new(data).parse
 
-        pp parsed[:feed_response_code]
+        Rails.logger.debug parsed[:feed_response_code]
         handler = case parsed[:feed_response_code]
                   when 2  then TickerHandler
                   when 4  then QuoteHandler

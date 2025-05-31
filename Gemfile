@@ -93,4 +93,5 @@ gem 'activerecord-import'
 
 gem 'telegram-bot-ruby'
 
+gem 'bindata'
 gem 'faye-websocket'
