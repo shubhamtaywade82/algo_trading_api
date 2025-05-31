@@ -45,6 +45,7 @@ module Dhan
 
       def self.subscribe(ws)
         security_ids = Positions::ActiveCache.ids.uniq
+        security_ids = [13]
         return if security_ids.blank?
 
         instruments = Instrument.where(security_id: security_ids)
@@ -62,7 +63,6 @@ module Dhan
           InstrumentList: instrument_list
         }
 
-        pp payload
         ws.send(payload.to_json)
       end
 
@@ -71,10 +71,11 @@ module Dhan
 
         parsed = Dhan::Ws::WebsocketPacketParser.new(data).parse
 
+        pp parsed[:feed_response_code]
         handler = case parsed[:feed_response_code]
                   when 2  then TickerHandler
                   when 4  then QuoteHandler
-                  when 5  then OIHandler
+                  when 5  then OiHandler
                   when 6  then PrevCloseHandler
                   when 8  then FullHandler
                   when 50 then lambda { |p|

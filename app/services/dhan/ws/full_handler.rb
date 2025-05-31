@@ -1,13 +1,8 @@
-# File: app/services/dhan/ws/full_handler.rb
-# frozen_string_literal: true
-
 module Dhan
   module Ws
     class FullHandler
-      def self.call(bytes)
-        packet = Dhanhq::WebsocketPacketParser.new(bytes.pack('C*')).parse
+      def self.call(packet)
         sid = packet[:security_id]
-
         inst = Instrument.find_by(security_id: sid) or return
         tick_time = Time.zone.at(packet[:ltt])
 

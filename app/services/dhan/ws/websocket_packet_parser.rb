@@ -37,7 +37,7 @@ module Dhan
                end
 
         full_data = header.merge(data)
-        pp full_data
+
         debug_log(full_data)
         full_data
       rescue StandardError => e
@@ -150,7 +150,7 @@ module Dhan
       end
 
       def debug_log(data)
-        pp { "[WS::Parser] Parsed: #{data.inspect}" } if ENV['DEBUG_WS'] == 'true'
+        pp "[WS::Parser] Parsed: #{data.inspect}" if ENV['DEBUG_WS'] == 'true'
       end
     end
   end
