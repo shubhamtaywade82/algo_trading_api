@@ -4,18 +4,19 @@
 module Dhan
   module Ws
     class PrevCloseHandler
-      # PrevClose packet: code 6
-      # bytes[4,4]   = security_id
-      # bytes[8,4]   = prev_close_price
-      # bytes[12,4]  = prev_open_interest
       def self.call(bytes)
-        sid        = bytes[4, 4].pack('C*').unpack1('L<')
-        prev_close = bytes[8, 4].pack('C*').unpack1('e')
-        prev_oi    = bytes[12, 4].pack('C*').unpack1('l<')
-        inst = Instrument.find_by(security_id: sid) or return
+        packet = Dhanhq::WebsocketPacketParser.new(bytes.pack('C*')).parse
+        sid = packet[:security_id]
 
-        # again, adjust to your persistence model if needed
-        Rails.logger.debug { "[PREV CLOSE] #{inst.symbol_name} ⏩ PrevClose=#{prev_close.round(2)}, PrevOI=#{prev_oi}" }
+        inst = Instrument.find_by(security_id: sid) or return
+        Rails.logger.debug do
+          "[PREV CLOSE] #{inst.symbol_name} ⏩ PrevClose=#{packet[:previous_close]}, PrevOI=#{packet[:previous_open_interest]}"
+        end
+
+        pos = Positions::ActiveCache.fetch(sid) or return
+        pos['prev_close'] = packet[:previous_close]
+        analysis = Orders::Analyzer.call(pos)
+        Orders::Manager.call(pos, analysis)
       end
     end
   end

@@ -1,9 +1,9 @@
 GIT
   remote: https://github.com/shubhamtaywade82/dhanhq.git
-  revision: bcedf70fce5c5bcbbdb076484f7f28272bff05c5
+  revision: 52388c2c4464c24a6b1071265fef01c06bb88f1f
   branch: main
   specs:
-    dhanhq (0.1.1)
+    dhanhq (0.2.0)
       activesupport
       base64
       bindata
@@ -102,7 +102,7 @@ GEM
     benchmark (0.4.0)
     benchmark-ips (2.14.0)
     bigdecimal (3.1.9)
-    bindata (2.5.0)
+    bindata (2.5.1)
     bootsnap (1.18.4)
       msgpack (~> 1.2)
     brakeman (6.2.2)
@@ -116,7 +116,7 @@ GEM
     coercible (1.0.0)
       descendants_tracker (~> 0.0.1)
     concurrent-ruby (1.3.5)
-    connection_pool (2.5.0)
+    connection_pool (2.5.3)
     crack (1.0.0)
       bigdecimal
       rexml
@@ -144,7 +144,7 @@ GEM
     dotenv-rails (3.1.6)
       dotenv (= 3.1.6)
       railties (>= 6.1)
-    drb (2.2.1)
+    drb (2.2.3)
     dry-configurable (1.3.0)
       dry-core (~> 1.1)
       zeitwerk (~> 2.6)
@@ -271,7 +271,7 @@ GEM
     launchy (3.0.1)
       addressable (~> 2.8)
       childprocess (~> 5.0)
-    logger (1.6.5)
+    logger (1.7.0)
     loofah (2.23.1)
       crass (~> 1.0.2)
       nokogiri (>= 1.12.0)
@@ -283,7 +283,7 @@ GEM
     marcel (1.0.4)
     memory_profiler (1.1.0)
     mini_mime (1.1.5)
-    minitest (5.25.4)
+    minitest (5.25.5)
     msgpack (1.7.5)
     multipart-post (2.4.1)
     net-imap (0.5.1)
@@ -506,7 +506,7 @@ GEM
     unicode-display_width (3.1.2)
       unicode-emoji (~> 4.0, >= 4.0.4)
     unicode-emoji (4.0.4)
-    uri (1.0.2)
+    uri (1.0.3)
     useragent (0.16.11)
     vcr (6.3.1)
       base64
@@ -518,13 +518,13 @@ GEM
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
-    websocket-driver (0.7.7)
+    websocket-driver (0.8.0)
       base64
       websocket-extensions (>= 0.1.0)
     websocket-extensions (0.1.5)
     whenever (1.0.0)
       chronic (>= 0.6.3)
-    zeitwerk (2.7.1)
+    zeitwerk (2.7.3)
 
 PLATFORMS
   aarch64-linux
