@@ -6,11 +6,11 @@
 
 ### Tasks
 
-* [ ] Implement a `Ws::TickerListener` using `faye-websocket` or `async-websocket`.
-* [ ] On startup, subscribe only to `securityIds` with open positions from `ActiveCache`.
-* [ ] Implement a dynamic re-subscriber when new positions are opened (`ActiveCache.refresh!` detects it).
-* [ ] Pipe live LTP to in-memory cache like `Rails.cache["ltp_#{securityId}"] = value`.
-* [ ] Modify `Orders::Analyzer` to prefer cached LTP over stale API fallback.
+* [x] Implement a `Ws::TickerListener` using `faye-websocket` or `async-websocket`.
+* [x] On startup, subscribe only to `securityIds` with open positions from `ActiveCache`.
+* [x] Implement a dynamic re-subscriber when new positions are opened (`ActiveCache.refresh!` detects it).
+* [x] Pipe live LTP to in-memory cache like `Rails.cache["ltp_#{securityId}"] = value`.
+* [x] Modify `Orders::Analyzer` to prefer cached LTP over stale API fallback.
 
 ---
 
