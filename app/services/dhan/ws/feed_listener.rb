@@ -71,7 +71,6 @@ module Dhan
 
         parsed = Dhan::Ws::WebsocketPacketParser.new(data).parse
 
-        pp parsed[:feed_response_code]
         handler = case parsed[:feed_response_code]
                   when 2  then TickerHandler
                   when 4  then QuoteHandler

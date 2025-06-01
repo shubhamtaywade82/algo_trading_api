@@ -4,17 +4,17 @@ module Dhan
       class QuotePacket < BinData::Record
         endian :little
 
-        float32 :ltp
+        float_le :ltp
         int16   :last_trade_qty
         int32   :ltt
-        float32 :atp
+        float_le :atp
         int32   :volume
         int32   :total_sell_qty
         int32   :total_buy_qty
-        float32 :day_open
-        float32 :day_close
-        float32 :day_high
-        float32 :day_low
+        float_le :day_open
+        float_le :day_close
+        float_le :day_high
+        float_le :day_low
       end
     end
   end

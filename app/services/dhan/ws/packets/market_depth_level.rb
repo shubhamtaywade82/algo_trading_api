@@ -8,8 +8,8 @@ module Dhan
         int32   :ask_quantity
         int16   :no_of_bid_orders
         int16   :no_of_ask_orders
-        float32 :bid_price
-        float32 :ask_price
+        float :bid_price
+        float :ask_price
       end
     end
   end

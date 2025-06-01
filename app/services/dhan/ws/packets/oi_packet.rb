@@ -4,7 +4,7 @@ module Dhan
       class OIPacket < BinData::Record
         endian :little
 
-        int32 :open_interest   # Bytes 9–12
+        int32 :open_interest # Bytes 9–12
       end
     end
   end

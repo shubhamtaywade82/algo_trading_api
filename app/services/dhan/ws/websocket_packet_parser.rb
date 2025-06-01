@@ -44,7 +44,6 @@ module Dhan
           security_id: header.security_id
         }.merge(body)
 
-        pp full_data
         debug_log(full_data)
         full_data
       rescue StandardError => e
@@ -83,7 +82,7 @@ module Dhan
           last_trade_qty: binary_stream.read(2).unpack1('s>'),
           ltt: binary_stream.read(4).unpack1('l>'),
           atp: binary_stream.read(4).unpack1('e'),
-          volume: binary_stream.read(4).unpack1('l>'),
+          volume: binary_stream.read(4).unpack1('L>'),
           total_sell_qty: binary_stream.read(4).unpack1('l>'),
           total_buy_qty: binary_stream.read(4).unpack1('l>'),
           day_open: binary_stream.read(4).unpack1('e'),
@@ -102,10 +101,10 @@ module Dhan
       def parse_full
         quote_data = {
           ltp: binary_stream.read(4).unpack1('e'),
-          last_trade_qty: binary_stream.read(2).unpack1('s>'),
-          ltt: binary_stream.read(4).unpack1('l>'),
+          last_trade_qty: binary_stream.read(2).unpack1('S>'),
+          ltt: binary_stream.read(4).unpack1('L>'),
           atp: binary_stream.read(4).unpack1('e'),
-          volume: binary_stream.read(4).unpack1('l>'),
+          volume: binary_stream.read(4).unpack1('L>'),
           total_sell_qty: binary_stream.read(4).unpack1('l>'),
           total_buy_qty: binary_stream.read(4).unpack1('l>')
         }
@@ -127,8 +126,8 @@ module Dhan
       def parse_market_depth
         Array.new(5) do
           {
-            bid_quantity: binary_stream.read(4).unpack1('l>'),
-            ask_quantity: binary_stream.read(4).unpack1('l>'),
+            bid_quantity: binary_stream.read(4).unpack1('L>'),
+            ask_quantity: binary_stream.read(4).unpack1('L>'),
             no_of_bid_orders: binary_stream.read(2).unpack1('s>'),
             no_of_ask_orders: binary_stream.read(2).unpack1('s>'),
             bid_price: binary_stream.read(4).unpack1('e'),
