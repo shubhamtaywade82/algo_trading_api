@@ -4,11 +4,11 @@ module Option
   class ChainAnalyzer
     IV_RANK_MIN     = 0.00
     IV_RANK_MAX     = 0.80
-    MIN_DELTA       = 0.30
+    # MIN_DELTA       = 0.30
     ATM_RANGE_PCT   = 0.01 # 1%
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
 
-    TOP_RANKED_LIMIT = 10
+    TOP_RANKED_LIMIT = 5
 
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank
 
@@ -64,17 +64,29 @@ module Option
         # ⛔ Skip strikes with no valid IV or price
         next if option['implied_volatility'].to_f.zero? || option['last_price'].to_f.zero?
 
+        # TODO: Skip illiquid strikes where you can’t even buy 3 lots at the ask
+        # next if option['top_ask_quantity'].to_i < (3 * lot_size(option_key))
+
         strike_price = strike_str.to_f
         delta = option.dig('greeks', 'delta').to_f.abs
 
         # ⛔ Skip strikes with delta below minimum threshold
-        next if delta < MIN_DELTA
+        next if delta < min_delta_now
 
         # ⛔ Skip if strike is outside ATM range
         next unless within_atm_range?(strike_price)
 
         build_strike_data(strike_price, option, data['volume'])
       end
+    end
+
+    def min_delta_now
+      h = Time.zone.now.hour
+      return 0.45 if h >= 14
+      return 0.35 if h >= 13
+      return 0.30 if h >= 11
+
+      0.25
     end
 
     def within_atm_range?(strike)
@@ -116,30 +128,71 @@ module Option
       oi_chg     = opt[:oi_change]
       vol_chg    = opt[:volume_change]
 
-      lw, mw, gw = strategy == 'intraday' ? [0.35, 0.35, 0.3] : [0.25, 0.25, 0.5]
+      lw, mw, = strategy == 'intraday' ? [0.35, 0.35, 0.3] : [0.25, 0.25, 0.5]
 
       liquidity_score = ((oi * volume) + vol_chg.abs) / spread
       momentum_score = (oi_chg / 1000.0)
       momentum_score += price_chg.positive? ? price_chg : price_chg.abs if delta >= 0 && price_chg.positive?
       greeks_score = (delta * 100) + (gamma * 10) + (vega * 2) - (theta.abs * 3)
 
-      total = (liquidity_score * lw) + (momentum_score * mw) + (greeks_score * gw)
-      total *= 0.9 if opt[:iv] > 40 && strategy != 'intraday'
+      total = (liquidity_score * lw) + (momentum_score * mw) + (greeks_score * theta_weight)
+      # total *= 0.9 if opt[:iv] > 40 && strategy != 'intraday'
+      z = local_iv_zscore(opt[:iv], opt[:strike_price])
+      total *= 0.90 if z > 1.5
       total
     end
 
+    def theta_weight
+      Time.zone.now.hour >= 13 ? 4.0 : 3.0
+    end
+
+    # Down-rank strikes whose IV is far above the local smile (they’re expensive).
+    # Z-score vs linear fit of ±3 strikes; if z > 1.5 shave 10 % off total score.
+    def local_iv_zscore(strike_iv, strike)
+      neighbours = @option_chain[:oc].keys.map(&:to_f)
+                                     .select { |s| (s - strike).abs <= 3 * 100 } # 3 strikes ≈ 300-₹ span
+      ivs = neighbours.map { |s| @option_chain[:oc][format('%.6f', s)]['ce']['implied_volatility'].to_f }
+      mean = ivs.sum / ivs.size
+      std = Math.sqrt(ivs.sum { |v| (v - (ivs.sum / ivs.size))**2 } / ivs.size)
+      std.zero? ? 0 : (strike_iv - mean) / std
+    end
+
+    # def intraday_trend
+    #   atm_strike = determine_atm_strike
+    #   atm_key = format('%.6f', atm_strike)
+    #   ce = @option_chain[:oc].dig(atm_key, 'ce')
+    #   pe = @option_chain[:oc].dig(atm_key, 'pe')
+    #   return :neutral unless ce && pe
+
+    #   ce_change = ce['last_price'].to_f - ce['previous_close_price'].to_f
+    #   pe_change = pe['last_price'].to_f - pe['previous_close_price'].to_f
+
+    #   return :bullish if ce_change.positive? && pe_change.negative?
+    #   return :bearish if ce_change.negative? && pe_change.positive?
+
+    #   :neutral
+    # end
+
     def intraday_trend
-      atm_strike = determine_atm_strike
-      atm_key = format('%.6f', atm_strike)
-      ce = @option_chain[:oc].dig(atm_key, 'ce')
-      pe = @option_chain[:oc].dig(atm_key, 'pe')
-      return :neutral unless ce && pe
+      window = 3
+      sums = { ce: 0.0, pe: 0.0 }
 
-      ce_change = ce['last_price'].to_f - ce['previous_close_price'].to_f
-      pe_change = pe['last_price'].to_f - pe['previous_close_price'].to_f
+      strikes = @option_chain[:oc].keys.map(&:to_f)
+      atm = determine_atm_strike
+      strikes.select { |s| (s - atm).abs <= window * 100 }.each do |s|
+        key = format('%.6f', s)
+        %i[ce pe].each do |side|
+          opt = @option_chain[:oc].dig(key, side.to_s)
+          next unless opt
 
-      return :bullish if ce_change.positive? && pe_change.negative?
-      return :bearish if ce_change.negative? && pe_change.positive?
+          change = opt['last_price'].to_f - opt['previous_close_price'].to_f
+          sums[side] += change
+        end
+      end
+
+      diff = sums[:ce] - sums[:pe]
+      return :bullish if diff.positive?
+      return :bearish if diff.negative?
 
       :neutral
     end

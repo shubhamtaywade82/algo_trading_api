@@ -29,12 +29,8 @@ module Webhooks
       if alert.save
         processor = AlertProcessorFactory.build(alert)
         processor.call
-        notify_telegram("📥 Alert saved (#{alert.instrument_type}) " \
-                        "`#{alert.ticker}` #{alert.signal_type}")
         render json: { message: 'Alert processed successfully', alert: alert }, status: :created
       else
-        notify_telegram("📥 Alert saved (#{alert.instrument_type}) " \
-                        "`#{alert.ticker}` #{alert.signal_type}")
         render json: { error: 'Failed to save alert', details: alert.errors.full_messages },
                status: :unprocessable_entity
       end

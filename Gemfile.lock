@@ -537,6 +537,7 @@ PLATFORMS
 DEPENDENCIES
   activerecord-import
   benchmark-ips
+  bindata
   bootsnap
   brakeman
   csv

@@ -29,6 +29,7 @@ module AlertProcessors
     # Entry-point that the Sidekiq job / controller calls
     # ----------------------------------------------------------------
     def call
+      notify("📥 [#{alert[:signal_type].upcase}] Index Alert ##{alert.id} received")
       log :info, '▼▼▼  START  ▼▼▼'
       return skip!(:validation_failed) unless pre_trade_validation
 
@@ -250,6 +251,14 @@ module AlertProcessors
       resp = Dhanhq::API::Orders.place(params)
       log :info, "order placed  → #{resp}"
       alert.update!(error_message: "orderId #{resp['orderId']}")
+
+      notify(<<~MSG.strip, tag: 'ORDER')
+        ✅ Order Placed – Alert ##{alert.id}
+        • Symbol: #{instrument.symbol}
+        • Type: #{params[:transactionType]}
+        • Qty: #{params[:quantity]}
+        • Order ID: #{resp['orderId']}
+      MSG
     end
 
     def dry_run(params)
@@ -259,6 +268,12 @@ module AlertProcessors
         error_message: 'PLACE_ORDER disabled',
         metadata: { simulated_order: params } # assuming you have a JSONB column
       )
+      notify(<<~MSG.strip, tag: 'DRYRUN')
+        💡 DRY-RUN (PLACE_ORDER=false) – Alert ##{alert.id}
+        • Symbol: #{instrument.symbol}
+        • Type: #{params[:transactionType]}
+        • Qty: #{params[:quantity]}
+      MSG
     end
 
     # -- Sizing ---------------------------------------------------------------
@@ -331,6 +346,7 @@ module AlertProcessors
           quantity: pos['quantity']
         )
         log :info, "closed #{type.upcase} ⇒ #{pos.slice('securityId', 'quantity')}"
+        notify("📤 Exited #{type.upcase} position(s) for Alert ##{alert.id}", tag: 'EXIT')
       end
       alert.update!(status: :processed, error_message: "exited #{type.upcase}")
       false
@@ -353,6 +369,7 @@ module AlertProcessors
           quantity: pos['quantity']
         )
         log :info, "Flipped & closed #{type.upcase} ⇒ #{pos.slice('securityId', 'quantity')}"
+        notify("↔️ Closed opposite #{type.upcase} position(s) before new entry (Alert ##{alert.id})", tag: 'FLIP')
       end
     end
 
@@ -364,6 +381,8 @@ module AlertProcessors
     def skip!(reason)
       alert.update!(status: :skipped, error_message: reason.to_s)
       log :info, "skip – #{reason}"
+
+      notify("⛔️ Skipped Index Alert ##{alert.id} – #{reason.to_s.humanize}", tag: 'SKIP')
       false
     end
 
@@ -376,6 +395,13 @@ module AlertProcessors
       log :info, "Selected: #{format_strike(result[:selected])}"
       ranked_list = result[:ranked].map { |r| format_strike(r) }.join("\n")
       log :info, "Top Ranked Options:\n#{ranked_list}"
+
+      notify(<<~MSG.strip, tag: 'ANALYZER')
+        🧠 Analyzer Result – Alert ##{alert.id}
+        • Trend: #{result[:trend]}
+        • Signal: #{result[:signal_type]}
+        • Selected: #{format_strike(result[:selected])}
+      MSG
     end
 
     def format_strike(strike)

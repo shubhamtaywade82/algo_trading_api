@@ -3,7 +3,6 @@
 require 'faye/websocket'
 require 'eventmachine'
 require 'json'
-require_relative 'feed_packet'
 
 module Dhan
   module Ws
@@ -19,11 +18,11 @@ module Dhan
 
       def self.run
         EM.run do
-          puts "[WS] Connecting to #{FEED_URL}"
+          Rails.logger.debug { "[WS] Connecting to #{FEED_URL}" }
           ws = Faye::WebSocket::Client.new(FEED_URL)
 
           ws.on(:open) do
-            puts '[WS] ▶ Connected'
+            Rails.logger.debug '[WS] ▶ Connected'
             subscribe(ws)
           end
 
@@ -32,7 +31,7 @@ module Dhan
           end
 
           ws.on(:close) do |event|
-            puts "[WS] ✖ Disconnected (#{event.code}): #{event.reason}"
+            Rails.logger.warn { "[WS] ✖ Disconnected (#{event.code}): #{event.reason}" }
             EM.stop
             sleep 1
             run
@@ -44,7 +43,7 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        security_ids = Positions::ActiveCache.ids.uniq
+        # security_ids = Positions::ActiveCache.ids.uniq
         security_ids = [13]
         return if security_ids.blank?
 
@@ -67,28 +66,21 @@ module Dhan
       end
 
       def self.handle_message(data)
-        return unless data.is_a?(String) && !data.start_with?('[') # ignore JSON events
+        return unless data.is_a?(String) && !data.start_with?('[')
 
-        parsed = Dhan::Ws::WebsocketPacketParser.new(data).parse
+        packet = WebsocketPacketParser.new(data).parse
+        return if packet.blank?
 
-        pp parsed[:feed_response_code]
-        handler = case parsed[:feed_response_code]
-                  when 2  then TickerHandler
-                  when 4  then QuoteHandler
-                  when 5  then OiHandler
-                  when 6  then PrevCloseHandler
-                  when 8  then FullHandler
-                  when 50 then lambda { |p|
-                    Rails.logger.warn "[WS] Disconnected: SID=#{p[:security_id]}, Code=#{p[:disconnection_code]}"
-                  }
-                  else
-                    puts { "[WS] Unknown packet code: #{parsed[:feed_response_code]}" }
-                    return
-                  end
-
-        handler.call(parsed) if handler.respond_to?(:call)
+        case packet[:feed_response_code]
+        when 8
+          FullHandler.call(packet)
+        when 50
+          Rails.logger.warn "[WS] ✖ Disconnection notice for SID=#{packet[:security_id]}, Code=#{packet[:disconnection_code]}"
+        else
+          Rails.logger.debug { "[WS] Ignored packet type: #{packet[:feed_response_code]}" }
+        end
       rescue StandardError => e
-        Rails.logger.error "[WS] ❌ Parse error: #{e.class} - #{e.message}"
+        Rails.logger.error "[WS] ❌ Parse/Dispatch Error: #{e.class} - #{e.message}"
       end
     end
   end

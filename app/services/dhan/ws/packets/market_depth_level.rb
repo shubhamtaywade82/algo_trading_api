@@ -1,0 +1,18 @@
+# frozen_string_literal: true
+
+module Dhan
+  module Ws
+    module Packets
+      class MarketDepthLevel < BinData::Record
+        endian :little
+
+        uint32 :bid_quantity           # 4 bytes
+        uint32 :ask_quantity           # 4 bytes
+        uint16 :no_of_bid_orders       # 2 bytes
+        uint16 :no_of_ask_orders       # 2 bytes
+        float  :bid_price              # 4 bytes
+        float  :ask_price              # 4 bytes
+      end
+    end
+  end
+end
