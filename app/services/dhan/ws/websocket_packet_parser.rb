@@ -81,7 +81,7 @@ module Dhan
       end
 
       def debug_log(data)
-        pp "[WS::Parser] Parsed: #{data.inspect}"
+        Rails.logger.debug { "[WS::Parser] Parsed: #{data.inspect}" }
       end
     end
   end

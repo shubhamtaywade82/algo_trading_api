@@ -4,7 +4,6 @@ module Dhan
   module Ws
     class FullHandler
       def self.call(packet)
-
         sid = packet[:security_id]
         inst = Instrument.find_by(security_id: sid.to_i) or return
 
