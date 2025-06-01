@@ -1,12 +1,10 @@
-Here’s a detailed improvement plan to elevate your current `Exit Management System` setup into an even more robust, institutional-grade solution for **options buying**, with expansion support for **stocks**, **commodities**, and **swing/intraday trading**.
-
----
+# Enhancements
 
 ## 🔧 1. Add Real-Time WebSocket Integration
 
 **Goal**: Feed live LTP for all open positions and route them into exit logic in near real-time.
 
-### Tasks:
+### Tasks
 
 * [ ] Implement a `Ws::TickerListener` using `faye-websocket` or `async-websocket`.
 * [ ] On startup, subscribe only to `securityIds` with open positions from `ActiveCache`.
@@ -20,7 +18,7 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 **Goal**: Optimize trailing and SL logic based on IV, trend score, and premium decay.
 
-### Enhancements:
+### Enhancements
 
 * [ ] Add IV-based dynamic stop-loss width: high IV = looser SL, low IV = tighter.
 * [ ] Introduce premium-decay-aware SL tightening as expiry nears.
@@ -32,7 +30,7 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 **Goal**: Use momentum indicators, option OI/IV changes, and Greeks for smarter exits.
 
-### Suggestions:
+### Suggestions
 
 * [ ] Add a `MarketContext::Fetcher` that pulls real-time Greeks, OI change, and PCR.
 * [ ] Add `AnalyzerV2` or enhance current one to annotate:
@@ -47,7 +45,7 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 **Goal**: Eliminate polling from `Manager`, make system purely WebSocket-driven.
 
-### Setup:
+### Setup
 
 * [ ] Introduce a `PositionChangeStream` (in-memory or file-based ring buffer).
 * [ ] When `ltp` changes significantly, or new position is added:
@@ -61,7 +59,7 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 **Goal**: Offline test exit strategies for historical positions with replay of LTP + Analyzer metrics.
 
-### Features:
+### Features
 
 * [ ] `ExitSimulator.run(position_history, strategy: 'RiskManager')`
 * [ ] Inject candle-by-candle price feed.
@@ -73,7 +71,7 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 **Goal**: Prevent capital erosion or strategy misfire.
 
-### Controls:
+### Controls
 
 * [ ] Add circuit breaker: max drawdown per session/day.
 * [ ] Exit all positions if unrealized losses breach ₹X.
@@ -85,7 +83,7 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 **Goal**: Audit-grade trace of every step, exit, and price.
 
-### Suggestions:
+### Suggestions
 
 * [ ] Use `ActiveSupport::Notifications` for all major actions (`:exit_triggered`, `:sl_adjusted`, `:tp_hit`)
 * [ ] Log to a separate `ExitAudit` table for compliance & debugging.
@@ -106,4 +104,4 @@ Here’s a detailed improvement plan to elevate your current `Exit Management Sy
 
 ---
 
-Once these layers are added, your AlgoTrading system will operate with near real-time reactivity, intelligent adaptive exits, and institutional safeguards—while staying lightweight and stateless (no Redis, no Sidekiq needed). Let me know which part you want to start implementing first, and I’ll generate complete, production-ready modules for it.
+AlgoTrading system will operate with near real-time reactivity, intelligent adaptive exits, and institutional safeguards—while staying lightweight and stateless (no Redis, no Sidekiq needed). Let me know which part you want to start implementing first, and I’ll generate complete, production-ready modules for it.
