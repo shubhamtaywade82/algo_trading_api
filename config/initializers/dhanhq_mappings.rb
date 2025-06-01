@@ -54,4 +54,17 @@ module DhanhqMappings
     'M' => 'Monthly Expiry',
     'W' => 'Weekly Expiry'
   }.freeze
+
+  SEGMENT_KEY_TO_ENUM = {
+    'IDX_I' => 0,
+    'NSE_EQ' => 1,
+    'NSE_FNO' => 2,
+    'NSE_CURRENCY' => 3,
+    'BSE_EQ' => 4,
+    'MCX_COMM' => 5,
+    'BSE_CURRENCY' => 7,
+    'BSE_FNO' => 8
+  }.freeze
+
+  SEGMENT_ENUM_TO_KEY = SEGMENT_KEY_TO_ENUM.invert.freeze
 end

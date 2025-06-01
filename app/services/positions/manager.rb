@@ -16,8 +16,8 @@ module Positions
     def call
       return log_and_skip('Market closing — skipping exits.') if force_eod_exit?
 
-      position_ids = Positions::ActiveCache.ids
-      if position_ids.blank?
+      cache = Positions::ActiveCache.all
+      if cache.blank?
         Rails.logger.warn('[Positions::Manager] Cache empty — fetching live positions from DhanHQ API')
         position_list = Dhanhq::API::Portfolio.positions
         return log_and_skip('No active positions found via DhanHQ API') if position_list.blank?
@@ -30,8 +30,7 @@ module Positions
           Orders::Manager.call(position, analysis)
         end
       else
-        position_ids.each do |sid|
-          position = Positions::ActiveCache.fetch(sid)
+        cache.each_value do |position|
           next unless valid_position?(position)
 
           analysis = Orders::Analyzer.call(position)
@@ -39,7 +38,7 @@ module Positions
         end
       end
     rescue StandardError => e
-      Rails.logger.error("[Positions::Manager] Error: #{e.message}")
+      Rails.logger.error("[Positions::Manager] Error: #{e.class} - #{e.message}")
     end
 
     private
