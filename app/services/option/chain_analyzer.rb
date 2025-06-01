@@ -64,6 +64,9 @@ module Option
         # ⛔ Skip strikes with no valid IV or price
         next if option['implied_volatility'].to_f.zero? || option['last_price'].to_f.zero?
 
+        # TODO: Skip illiquid strikes where you can’t even buy 3 lots at the ask
+        # next if option['top_ask_quantity'].to_i < (3 * lot_size(option_key))
+
         strike_price = strike_str.to_f
         delta = option.dig('greeks', 'delta').to_f.abs
 
@@ -133,12 +136,25 @@ module Option
       greeks_score = (delta * 100) + (gamma * 10) + (vega * 2) - (theta.abs * 3)
 
       total = (liquidity_score * lw) + (momentum_score * mw) + (greeks_score * theta_weight)
-      total *= 0.9 if opt[:iv] > 40 && strategy != 'intraday'
+      # total *= 0.9 if opt[:iv] > 40 && strategy != 'intraday'
+      z = local_iv_zscore(opt[:iv], opt[:strike_price])
+      total *= 0.90 if z > 1.5
       total
     end
 
     def theta_weight
       Time.zone.now.hour >= 13 ? 4.0 : 3.0
+    end
+
+    # Down-rank strikes whose IV is far above the local smile (they’re expensive).
+    # Z-score vs linear fit of ±3 strikes; if z > 1.5 shave 10 % off total score.
+    def local_iv_zscore(strike_iv, strike)
+      neighbours = @option_chain[:oc].keys.map(&:to_f)
+                                     .select { |s| (s - strike).abs <= 3 * 100 } # 3 strikes ≈ 300-₹ span
+      ivs = neighbours.map { |s| @option_chain[:oc][format('%.6f', s)]['ce']['implied_volatility'].to_f }
+      mean = ivs.sum / ivs.size
+      std = Math.sqrt(ivs.map { |v| (v - (ivs.sum / ivs.size))**2 }.sum / ivs.size)
+      std.zero? ? 0 : (strike_iv - mean) / std
     end
 
     def intraday_trend
