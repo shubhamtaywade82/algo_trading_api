@@ -10,27 +10,52 @@ module Positions
     # @return [void]
     def self.refresh!
       positions = Dhanhq::API::Portfolio.positions.reject { |p| p['netQty'].to_f.zero? }
-      cache = positions.index_by { |p| p['securityId'].to_s }
+
+      cache = positions.index_by do |p|
+        key_for(p['securityId'], p['exchangeSegment'])
+      end
+
       Rails.cache.write(CACHE_KEY, cache, expires_in: CACHE_TTL)
     end
 
-    # All cached security ids
+    # All cached composite keys (e.g. ["12345_NSE_FNO"])
+    #
     # @return [Array<String>]
-    def self.ids
+    def self.keys
       Rails.cache.read(CACHE_KEY)&.keys || []
     end
 
-    # Full hash for a securityId
+    # Fetch full position for a given composite key
+    #
     # @param [String, Integer] security_id
+    # @param [String, Integer] exchange_segment
     # @return [Hash, nil]
-    def self.fetch(security_id)
-      Rails.cache.read(CACHE_KEY)&.[](security_id.to_s)
+    def self.fetch(security_id, exchange_segment)
+      key = key_for(security_id, exchange_segment)
+      Rails.cache.read(CACHE_KEY)&.[](key)
     end
 
-    # All open positions hash (security_id => pos_hash)
+    # Fetch all open positions as a hash (key => position)
+    #
     # @return [Hash]
     def self.all
       Rails.cache.read(CACHE_KEY) || {}
+    end
+
+    # Fetch all positions as a list of hashes
+    #
+    # @return [Array<Hash>]
+    def self.all_positions
+      all.values
+    end
+
+    # Get composite cache key
+    #
+    # @param [String, Integer] security_id
+    # @param [String, Integer] exchange_segment
+    # @return [String]
+    def self.key_for(security_id, exchange_segment)
+      "#{security_id}_#{exchange_segment}"
     end
   end
 end
