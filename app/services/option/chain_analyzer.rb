@@ -4,11 +4,11 @@ module Option
   class ChainAnalyzer
     IV_RANK_MIN     = 0.00
     IV_RANK_MAX     = 0.80
-    MIN_DELTA       = 0.30
+    # MIN_DELTA       = 0.30
     ATM_RANGE_PCT   = 0.01 # 1%
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
 
-    TOP_RANKED_LIMIT = 10
+    TOP_RANKED_LIMIT = 5
 
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank
 
@@ -68,13 +68,22 @@ module Option
         delta = option.dig('greeks', 'delta').to_f.abs
 
         # ⛔ Skip strikes with delta below minimum threshold
-        next if delta < MIN_DELTA
+        next if delta < min_delta_now
 
         # ⛔ Skip if strike is outside ATM range
         next unless within_atm_range?(strike_price)
 
         build_strike_data(strike_price, option, data['volume'])
       end
+    end
+
+    def min_delta_now
+      h = Time.zone.now.hour
+      return 0.45 if h >= 14
+      return 0.35 if h >= 13
+      return 0.30 if h >= 11
+
+      0.25
     end
 
     def within_atm_range?(strike)
@@ -123,9 +132,13 @@ module Option
       momentum_score += price_chg.positive? ? price_chg : price_chg.abs if delta >= 0 && price_chg.positive?
       greeks_score = (delta * 100) + (gamma * 10) + (vega * 2) - (theta.abs * 3)
 
-      total = (liquidity_score * lw) + (momentum_score * mw) + (greeks_score * gw)
+      total = (liquidity_score * lw) + (momentum_score * mw) + (greeks_score * theta_weight)
       total *= 0.9 if opt[:iv] > 40 && strategy != 'intraday'
       total
+    end
+
+    def theta_weight
+      Time.zone.now.hour >= 13 ? 4.0 : 3.0
     end
 
     def intraday_trend
