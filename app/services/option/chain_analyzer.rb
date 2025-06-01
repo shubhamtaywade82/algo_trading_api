@@ -128,7 +128,7 @@ module Option
       oi_chg     = opt[:oi_change]
       vol_chg    = opt[:volume_change]
 
-      lw, mw, gw = strategy == 'intraday' ? [0.35, 0.35, 0.3] : [0.25, 0.25, 0.5]
+      lw, mw, = strategy == 'intraday' ? [0.35, 0.35, 0.3] : [0.25, 0.25, 0.5]
 
       liquidity_score = ((oi * volume) + vol_chg.abs) / spread
       momentum_score = (oi_chg / 1000.0)
@@ -153,22 +153,46 @@ module Option
                                      .select { |s| (s - strike).abs <= 3 * 100 } # 3 strikes ≈ 300-₹ span
       ivs = neighbours.map { |s| @option_chain[:oc][format('%.6f', s)]['ce']['implied_volatility'].to_f }
       mean = ivs.sum / ivs.size
-      std = Math.sqrt(ivs.map { |v| (v - (ivs.sum / ivs.size))**2 }.sum / ivs.size)
+      std = Math.sqrt(ivs.sum { |v| (v - (ivs.sum / ivs.size))**2 } / ivs.size)
       std.zero? ? 0 : (strike_iv - mean) / std
     end
 
+    # def intraday_trend
+    #   atm_strike = determine_atm_strike
+    #   atm_key = format('%.6f', atm_strike)
+    #   ce = @option_chain[:oc].dig(atm_key, 'ce')
+    #   pe = @option_chain[:oc].dig(atm_key, 'pe')
+    #   return :neutral unless ce && pe
+
+    #   ce_change = ce['last_price'].to_f - ce['previous_close_price'].to_f
+    #   pe_change = pe['last_price'].to_f - pe['previous_close_price'].to_f
+
+    #   return :bullish if ce_change.positive? && pe_change.negative?
+    #   return :bearish if ce_change.negative? && pe_change.positive?
+
+    #   :neutral
+    # end
+
     def intraday_trend
-      atm_strike = determine_atm_strike
-      atm_key = format('%.6f', atm_strike)
-      ce = @option_chain[:oc].dig(atm_key, 'ce')
-      pe = @option_chain[:oc].dig(atm_key, 'pe')
-      return :neutral unless ce && pe
+      window = 3
+      sums = { ce: 0.0, pe: 0.0 }
 
-      ce_change = ce['last_price'].to_f - ce['previous_close_price'].to_f
-      pe_change = pe['last_price'].to_f - pe['previous_close_price'].to_f
+      strikes = @option_chain[:oc].keys.map(&:to_f)
+      atm = determine_atm_strike
+      strikes.select { |s| (s - atm).abs <= window * 100 }.each do |s|
+        key = format('%.6f', s)
+        %i[ce pe].each do |side|
+          opt = @option_chain[:oc].dig(key, side.to_s)
+          next unless opt
 
-      return :bullish if ce_change.positive? && pe_change.negative?
-      return :bearish if ce_change.negative? && pe_change.positive?
+          change = opt['last_price'].to_f - opt['previous_close_price'].to_f
+          sums[side] += change
+        end
+      end
+
+      diff = sums[:ce] - sums[:pe]
+      return :bullish if diff.positive?
+      return :bearish if diff.negative?
 
       :neutral
     end

@@ -6,7 +6,7 @@ module Dhan
       class FullPacket < BinData::Record
         endian :little
 
-        double_le  :ltp
+        double_le :ltp
         int16   :last_trade_qty
         int32   :ltt
         float_le :atp
