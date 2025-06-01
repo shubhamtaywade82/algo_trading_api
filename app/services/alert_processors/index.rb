@@ -29,6 +29,7 @@ module AlertProcessors
     # Entry-point that the Sidekiq job / controller calls
     # ----------------------------------------------------------------
     def call
+      notify("📥 [#{alert[:signal_type].upcase}] Index Alert ##{alert.id} received")
       log :info, '▼▼▼  START  ▼▼▼'
       return skip!(:validation_failed) unless pre_trade_validation
 
@@ -376,6 +377,13 @@ module AlertProcessors
       log :info, "Selected: #{format_strike(result[:selected])}"
       ranked_list = result[:ranked].map { |r| format_strike(r) }.join("\n")
       log :info, "Top Ranked Options:\n#{ranked_list}"
+
+      notify(<<~MSG.strip, tag: 'ANALYZER')
+        🧠 Analyzer Result – Alert ##{alert.id}
+        • Trend: #{result[:trend]}
+        • Signal: #{result[:signal_type]}
+        • Selected: #{format_strike(result[:selected])}
+      MSG
     end
 
     def format_strike(strike)
