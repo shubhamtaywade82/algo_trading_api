@@ -58,12 +58,7 @@ module Dhan
           feed_response_code: binary_stream.read(1).unpack1('C'), # byte 0
           message_length: binary_stream.read(2).unpack1('s>'), # bytes 1-2
           exchange_segment: binary_stream.read(1).unpack1('C'), # byte 3
-          security_id: binary_stream.read(4).unpack1('L>') # bytes 4-7
-        }
-      end
-
-      def parse_ticker
-        {
+          security_id: binary_stream.read(4).unpack1('L>'), # bytes 4-7,
           ltp: binary_stream.read(4).unpack1('e'),
           ltt: binary_stream.read(4).unpack1('l>')
         }
@@ -99,28 +94,36 @@ module Dhan
       end
 
       def parse_full
-        quote_data = {
-          ltp: binary_stream.read(4).unpack1('e'),
-          last_trade_qty: binary_stream.read(2).unpack1('S>'),
-          ltt: binary_stream.read(4).unpack1('L>'),
-          atp: binary_stream.read(4).unpack1('e'),
-          volume: binary_stream.read(4).unpack1('L>'),
-          total_sell_qty: binary_stream.read(4).unpack1('l>'),
-          total_buy_qty: binary_stream.read(4).unpack1('l>')
-        }
+        header = Packets::Header.read(binary_data)
+        return unless header.feed_response_code == 8
 
-        additional_data = {
-          open_interest: binary_stream.read(4).unpack1('l>'),
-          highest_open_interest: binary_stream.read(4).unpack1('l>'),
-          lowest_open_interest: binary_stream.read(4).unpack1('l>'),
-          day_open: binary_stream.read(4).unpack1('e'),
-          day_close: binary_stream.read(4).unpack1('e'),
-          day_high: binary_stream.read(4).unpack1('e'),
-          day_low: binary_stream.read(4).unpack1('e'),
-          market_depth: parse_market_depth
-        }
+        body = Packets::FullPacket.read(binary_data[8..]) # Slice after header
 
-        quote_data.merge(additional_data)
+        pp body
+        {
+          feed_response_code: header.feed_response_code,
+          message_length: header.message_length,
+          exchange_segment: header.exchange_segment,
+          security_id: header.security_id,
+          ltp: body.ltp,
+          last_trade_qty: body.last_trade_qty,
+          ltt: body.ltt,
+          atp: body.atp,
+          volume: body.volume,
+          total_sell_qty: body.total_sell_qty,
+          total_buy_qty: body.total_buy_qty,
+          open_interest: body.open_interest,
+          highest_open_interest: body.highest_oi,
+          lowest_open_interest: body.lowest_oi,
+          day_open: body.day_open,
+          day_close: body.day_close,
+          day_high: body.day_high,
+          day_low: body.day_low,
+          market_depth: body.market_depth.map(&:to_h)
+        }
+      rescue StandardError => e
+        Rails.logger.error "[WS::Parser] ❌ #{e.class}: #{e.message}"
+        {}
       end
 
       def parse_market_depth
