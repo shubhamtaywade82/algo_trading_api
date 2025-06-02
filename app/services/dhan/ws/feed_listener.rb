@@ -28,7 +28,7 @@ module Dhan
       def self.run
         Positions::ActiveCache.refresh!
         EM.run do
-          pp { "[WS] Connecting to #{FEED_URL}" }
+          pp "[WS] Connecting to #{FEED_URL}"
           ws = Faye::WebSocket::Client.new(FEED_URL)
 
           ws.on(:open) do
@@ -41,7 +41,7 @@ module Dhan
           end
 
           ws.on(:close) do |event|
-            Rails.logger.warn { "[WS] ✖ Disconnected (#{event.code}): #{event.reason}" }
+            pp { "[WS] ✖ Disconnected (#{event.code}): #{event.reason}" }
             EM.stop
             sleep 1
             run
@@ -57,9 +57,9 @@ module Dhan
         full_keys = Set.new
 
         # Add static indexes (NIFTY, BANKNIFTY)
-        # INDEXES.each do |ix|
-        #   index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
-        # end
+        INDEXES.each do |ix|
+          index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
+        end
 
         # Add tradable active positions
         Positions::ActiveCache.all.each do |sid, pos|
@@ -118,7 +118,7 @@ module Dhan
         when 4
           QuoteHandler.call(packet)
         when 50
-          Rails.logger.warn "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
+          pp "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
         else
           pp { "[WS] Ignored packet type: #{packet[:feed_response_code]}" }
         end
