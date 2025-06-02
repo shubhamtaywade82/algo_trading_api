@@ -15,6 +15,9 @@ module Dhan
       ].join('&').freeze
 
       @last_subscribed_keys = Set.new
+      @instrument_cache ||= {}
+      @segment_cache ||= {}
+      @ltp_cache ||= {}
 
       # Always subscribe to NIFTY + BANKNIFTY
       INDEXES = [
@@ -54,9 +57,9 @@ module Dhan
         full_keys = Set.new
 
         # Add static indexes (NIFTY, BANKNIFTY)
-        INDEXES.each do |ix|
-          index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
-        end
+        # INDEXES.each do |ix|
+        #   index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
+        # end
 
         # Add tradable active positions
         Positions::ActiveCache.all.each do |sid, pos|
@@ -108,7 +111,7 @@ module Dhan
         packet = WebsocketPacketParser.new(data).parse
         return if packet.blank?
 
-        pp packet[:feed_response_code]
+        log_ltp_change(packet)
         case packet[:feed_response_code]
         when 8
           FullHandler.call(packet)
@@ -128,11 +131,49 @@ module Dhan
       # @param [String, Integer] segment
       # @return [String]
       def self.reverse_convert_segment(segment)
-        if segment.is_a?(Integer)
-          DhanhqMappings::SEGMENT_ENUM_TO_KEY[segment] || segment.to_s
-        else
-          DhanhqMappings::SEGMENT_KEY_TO_ENUM[segment]
-        end
+        @segment_cache[segment] ||= if segment.is_a?(Integer)
+                                      DhanhqMappings::SEGMENT_ENUM_TO_KEY[segment] || segment.to_s
+                                    else
+                                      DhanhqMappings::SEGMENT_KEY_TO_ENUM[segment]
+                                    end
+      end
+
+      def self.find_instrument_cached(security_id, segment_enum)
+        segment_key = reverse_convert_segment(segment_enum.to_i)
+        cache_key = "#{segment_key}_#{security_id}"
+
+        @instrument_cache ||= {}
+        return @instrument_cache[cache_key] if @instrument_cache.key?(cache_key)
+        return if segment_key == 'MCX_COMM'
+
+        instrument = case segment_key
+                     when 'IDX_I'     then Instrument.segment_index.find_by(security_id: security_id.to_i)
+                     when 'NSE_EQ'    then Instrument.segment_equity.find_by(security_id: security_id)
+                     when 'NSE_FNO'   then Instrument.segment_fno.find_by(security_id: security_id)
+                     when 'MCX_COMM'  then Instrument.segment_commodity.find_by(security_id: security_id)
+                     else
+                       Instrument.find_by(security_id: security_id) # fallback if unknown
+                     end
+        @instrument_cache[cache_key] = instrument
+      end
+
+      def self.log_ltp_change(packet)
+        return unless packet[:ltp]
+
+        segment_key = reverse_convert_segment(packet[:exchange_segment])
+        sid = packet[:security_id]
+        key = "#{segment_key}_#{sid}"
+        new_ltp = packet[:ltp].round(2)
+
+        prev_ltp = @ltp_cache[key]
+        return if prev_ltp.to_i == new_ltp.to_i
+
+        @ltp_cache[key] = new_ltp
+
+        instrument = find_instrument_cached(sid, packet[:exchange_segment])
+        name = instrument&.symbol_name || key
+
+        pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
       end
     end
   end

@@ -7,26 +7,19 @@ module Dhan
         sid = packet[:security_id]
         segment_enum = packet[:exchange_segment]
         segment_key = DhanhqMappings::SEGMENT_ENUM_TO_KEY[segment_enum]
-        inst = Instrument.find_by(security_id: sid.to_i) or return
+        inst = FeedListener.find_instrument_cached(sid) or return
 
-        # tick_time = Time.zone.at(packet[:ltt])
+        cache_key = "ltp_#{segment_key}_#{sid}"
+        prev_ltp = Rails.cache.read(cache_key)
+        return if prev_ltp == packet[:ltp] # No change in price, skip heavy ops
 
-        # Quote.create!(
-        #   instrument: inst,
-        #   ltp: packet[:ltp],
-        #   volume: packet[:volume],
-        #   tick_time: tick_time,
-        #   metadata: {
-        #     oi: packet[:open_interest],
-        #     depth: packet[:market_depth]
-        #   }
-        # )
+        Rails.cache.write(cache_key, packet[:ltp])
+        Rails.cache.write("depth_#{segment_key}_#{sid}", packet[:market_depth])
 
         Rails.logger.debug do
-          pp "[FULL] #{inst.symbol_name} ⏩ LTP=#{packet[:ltp]} VOL=#{packet[:volume]} DEPTH=#{packet[:market_depth].inspect}"
+          "[FULL] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} VOL=#{packet[:volume]}"
         end
 
-        pp pos
         pos = Positions::ActiveCache.fetch(sid, segment_key)
         return unless pos
 
