@@ -50,59 +50,70 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        active_keys = Set.new
+        index_keys = Set.new
+        full_keys = Set.new
 
-        # Add index keys
+        # Add static indexes (NIFTY, BANKNIFTY)
         INDEXES.each do |ix|
-          active_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
+          index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
         end
 
-        # Add active positions
+        # Add tradable active positions
         Positions::ActiveCache.all.each do |sid, pos|
           seg_key = pos['exchangeSegment']
-          seg_enum = reverse_convert_segment(seg_key)
-          next unless seg_enum
+          next unless seg_key.present?
 
-          active_keys << sid
+          # Assume tradable if FullPacket supported
+          full_keys << "#{sid}_#{seg_key}"
         end
 
-        pp active_keys
-        return if active_keys == @last_subscribed_keys
+        combined_keys = index_keys + full_keys
+        return if combined_keys == @last_subscribed_keys
 
-        # Convert keys to payload format
-        instruments = active_keys.map do |key|
+        @last_subscribed_keys = combined_keys
+
+        # Build and send Quote Packet (RequestCode 17) for index instruments
+        send_subscriptions(ws, index_keys, 17)
+
+        # Build and send Full Packet (RequestCode 21) for tradable instruments
+        send_subscriptions(ws, full_keys, 21)
+      end
+
+      def self.send_subscriptions(ws, key_set, request_code)
+        return if key_set.empty?
+
+        instruments = key_set.map do |key|
           sid, seg_enum = key.split('_')
-
           {
             ExchangeSegment: reverse_convert_segment(seg_enum.to_i),
             SecurityId: sid.to_s
           }
         end
 
-        payload = {
-          RequestCode: 21,
-          InstrumentCount: instruments.size,
-          InstrumentList: instruments
-        }
+        instruments.each_slice(100) do |batch|
+          payload = {
+            RequestCode: request_code,
+            InstrumentCount: batch.size,
+            InstrumentList: batch
+          }
 
-        pp payload
-        @last_subscribed_keys = active_keys
-
-        pp "[WS] 📡 Subscribed to #{instruments.size} instruments: #{active_keys.to_a.join(', ')}"
-        ws.send(payload.to_json)
+          ws.send(payload.to_json)
+          pp "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.map { |i| i[:SecurityId] }.join(', ')}"
+        end
       end
 
       def self.handle_message(data)
-        pp data
         return unless data.is_a?(String) && !data.start_with?('[')
 
         packet = WebsocketPacketParser.new(data).parse
         return if packet.blank?
 
-        pp packet
+        pp packet[:feed_response_code]
         case packet[:feed_response_code]
         when 8
           FullHandler.call(packet)
+        when 4
+          QuoteHandler.call(packet)
         when 50
           Rails.logger.warn "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
         else

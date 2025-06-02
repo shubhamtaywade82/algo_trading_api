@@ -24,8 +24,9 @@ module Dhan
 
       def parse
         body = case header.feed_response_code
-               when RESPONSE_CODES[:full]         then parse_full
-               when RESPONSE_CODES[:disconnect]   then parse_disconnect
+               when RESPONSE_CODES[:full] then parse_full
+               when RESPONSE_CODES[:quote] then parse_quote
+               when RESPONSE_CODES[:disconnect] then parse_disconnect
                else
                  raise "Unknown response code: #{header.feed_response_code}"
                end
@@ -72,6 +73,24 @@ module Dhan
         }
       rescue StandardError => e
         Rails.logger.error "[WS::Parser] ❌ #{e.class}: #{e.message}"
+      end
+
+      def parse_quote
+        body = Packets::QuotePacket.read(binary_data[8..])
+
+        {
+          ltp: body.ltp,
+          last_trade_qty: body.last_trade_qty,
+          ltt: body.ltt,
+          atp: body.atp,
+          volume: body.volume,
+          total_sell_qty: body.total_sell_qty,
+          total_buy_qty: body.total_buy_qty,
+          day_open: body.day_open,
+          day_close: body.day_close,
+          day_high: body.day_high,
+          day_low: body.day_low
+        }
       end
 
       def parse_disconnect

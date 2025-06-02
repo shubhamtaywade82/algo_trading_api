@@ -14,6 +14,7 @@ module Positions
     #
     # @return [void]
     def call
+      Positions::ActiveCache.refresh!
       return log_and_skip('Market closing — skipping exits.') if force_eod_exit?
 
       cache = Positions::ActiveCache.all
