@@ -149,7 +149,7 @@ module Dhan
         instrument = case segment_key
                      when 'IDX_I'     then Instrument.segment_index.find_by(security_id: security_id.to_i)
                      when 'NSE_EQ'    then Instrument.segment_equity.find_by(security_id: security_id)
-                     when 'NSE_FNO'   then Instrument.segment_fno.find_by(security_id: security_id)
+                     when 'NSE_FNO'   then Derivative.segment_derivatives.find_by(security_id: security_id)
                      when 'MCX_COMM'  then Instrument.segment_commodity.find_by(security_id: security_id)
                      else
                        Instrument.find_by(security_id: security_id) # fallback if unknown
