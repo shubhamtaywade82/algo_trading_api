@@ -25,7 +25,11 @@ module Orders
       # Only include price for LIMIT, not MARKET orders
       payload[:price] = exit_price if order_type == 'LIMIT'
 
-      response = Dhanhq::API::Orders.place(payload)
+      if ENV['PLACE_ORDER'] == 'true'
+        response = Dhanhq::API::Orders.place(payload)
+      else
+        dry_run(payload)
+      end
 
       if response['orderId'].present? && %w[PENDING TRANSIT TRADED].include?(response['orderStatus'])
         charges = @analysis[:charges] || Charges::Calculator.call(@pos, @analysis)
@@ -68,6 +72,17 @@ module Orders
       end
     rescue StandardError => e
       Rails.logger.error("[Orders::Executor] Error for #{@pos['tradingSymbol']}: #{e.message}")
+    end
+
+    def dry_run(params)
+      log :info, "dry-run order → #{params}"
+
+      notify(<<~MSG.strip, tag: 'DRYRUN')
+        💡 DRY-RUN (PLACE_ORDER=false) – Alert ##{alert.id}
+        • Symbol: #{instrument.symbol}
+        • Type: #{params[:transactionType]}
+        • Qty: #{params[:quantity]}
+      MSG
     end
   end
 end
