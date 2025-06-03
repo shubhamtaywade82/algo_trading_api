@@ -7,8 +7,20 @@ class Derivative < ApplicationRecord
   has_many :margin_requirements, as: :requirementable, dependent: :destroy
   has_many :order_features, as: :featureable, dependent: :destroy
 
-  enum :exchange, { nse: 'NSE', bse: 'BSE' }
-  enum :segment, { index: 'I', equity: 'E', currency: 'C', derivatives: 'D' }, prefix: true
+  enum :exchange, {
+    nse: 'NSE',
+    bse: 'BSE',
+    mcx: 'MCX'
+  }
+
+  enum :segment, {
+    index: 'I',
+    equity: 'E',
+    currency: 'C',
+    derivatives: 'D',
+    commodity: 'M'
+  }, prefix: true
+
   enum :instrument, {
     index: 'INDEX',
     futures_index: 'FUTIDX',
@@ -17,7 +29,9 @@ class Derivative < ApplicationRecord
     futures_stock: 'FUTSTK',
     options_stock: 'OPTSTK',
     futures_currency: 'FUTCUR',
-    options_currency: 'OPTCUR'
+    options_currency: 'OPTCUR',
+    futures_commodity: 'FUTCOM',
+    options_commodity: 'OPTFUT'
   }, prefix: true
 
   # Validations
@@ -57,6 +71,7 @@ class Derivative < ApplicationRecord
     when %i[bse derivatives] then 'BSE_FNO'
     when %i[nse currency] then 'NSE_CURRENCY'
     when %i[bse currency] then 'BSE_CURRENCY'
+    when %i[mcx commodity] then 'MCX_COMM'
     else
       raise "Unsupported exchange and segment combination: #{exchange}, #{segment}"
     end
