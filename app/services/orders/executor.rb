@@ -28,7 +28,7 @@ module Orders
       if ENV['PLACE_ORDER'] == 'true'
         response = Dhanhq::API::Orders.place(payload)
       else
-        dry_run(payload)
+        dry_run(payload, @pos['tradingSymbol'])
       end
 
       if response['orderId'].present? && %w[PENDING TRANSIT TRADED].include?(response['orderStatus'])
@@ -54,15 +54,15 @@ module Orders
         #   net_pnl: net_pnl
         # )
 
-        # Log to exit_logs table
-        ExitLog.create!(
-          trading_symbol: @pos['tradingSymbol'],
-          security_id: @pos['securityId'],
-          reason: @reason,
-          order_id: response['orderId'],
-          exit_price: @pos['ltp'],
-          exit_time: Time.zone.now
-        )
+        # # Log to exit_logs table
+        # ExitLog.create!(
+        #   trading_symbol: @pos['tradingSymbol'],
+        #   security_id: @pos['securityId'],
+        #   reason: @reason,
+        #   order_id: response['orderId'],
+        #   exit_price: @pos['ltp'],
+        #   exit_time: Time.zone.now
+        # )
 
         extra = @analysis[:order_type] ? " (#{@analysis[:order_type].to_s.upcase})" : ''
         notify("✅ Exit Placed#{extra}: #{@pos['tradingSymbol']} | Reason: #{@reason} | Qty: #{@pos['netQty'].abs} | Price: ₹#{@pos['ltp']}")
@@ -74,15 +74,19 @@ module Orders
       Rails.logger.error("[Orders::Executor] Error for #{@pos['tradingSymbol']}: #{e.message}")
     end
 
-    def dry_run(params)
+    def dry_run(params, symbol)
       log :info, "dry-run order → #{params}"
 
       notify(<<~MSG.strip, tag: 'DRYRUN')
-        💡 DRY-RUN (PLACE_ORDER=false) – Alert ##{alert.id}
-        • Symbol: #{instrument.symbol}
+        💡 DRY-RUN (PLACE_ORDER=false)
+        • Symbol: #{symbol}
         • Type: #{params[:transactionType]}
         • Qty: #{params[:quantity]}
       MSG
+    end
+
+    def log(level, msg)
+      Rails.logger.send(level, msg.to_s)
     end
   end
 end

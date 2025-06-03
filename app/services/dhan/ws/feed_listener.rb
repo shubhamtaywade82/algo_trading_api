@@ -144,7 +144,6 @@ module Dhan
 
         @instrument_cache ||= {}
         return @instrument_cache[cache_key] if @instrument_cache.key?(cache_key)
-        return if segment_key == 'MCX_COMM'
 
         instrument = case segment_key
                      when 'IDX_I'     then Instrument.segment_index.find_by(security_id: security_id.to_i)
