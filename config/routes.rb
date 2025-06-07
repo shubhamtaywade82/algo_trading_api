@@ -24,6 +24,11 @@ Rails.application.routes.draw do
     end
   end
 
+  namespace :openai do
+    post 'chat', to: 'messages#create'
+  end
+  post 'telegram/webhook', to: 'telegram#webhook'
+
   resources :instruments, only: %i[index show]
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.

@@ -6,17 +6,22 @@ require 'uri'
 class TelegramNotifier
   TELEGRAM_API = 'https://api.telegram.org'
 
-  def self.send_message(text)
-    token = ENV.fetch('TELEGRAM_BOT_TOKEN')
-    chat_id = ENV.fetch('TELEGRAM_CHAT_ID')
+  def self.send_message(text, chat_id:)
+    chat_id ||= ENV.fetch('TELEGRAM_CHAT_ID')
+    post('sendMessage', chat_id:, text:)
+  end
 
-    uri = URI("#{TELEGRAM_API}/bot#{token}/sendMessage")
-    res = Net::HTTP.post_form(uri, chat_id: chat_id, text: text)
+  def self.send_chat_action(chat_id, action)
+    chat_id ||= ENV.fetch('TELEGRAM_CHAT_ID')
+    post('sendChatAction', chat_id:, action:)
+  end
 
-    Rails.logger.error("Telegram message failed: #{res.body}") unless res.is_a?(Net::HTTPSuccess)
-  rescue KeyError => e
-    Rails.logger.error("Environment variable missing: #{e.message}")
+  def self.post(method, **params)
+    uri  = URI("#{TELEGRAM_API}/bot#{ENV.fetch('TELEGRAM_BOT_TOKEN')}/#{method}")
+    res  = Net::HTTP.post_form(uri, params)
+    Rails.logger.error("Telegram #{method} failed: #{res.body}") unless res.is_a?(Net::HTTPSuccess)
+    res
   rescue StandardError => e
-    Rails.logger.error("Error sending Telegram message: #{e.message}")
+    Rails.logger.error("Telegram error: #{e.message}")
   end
 end
