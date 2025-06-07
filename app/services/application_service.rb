@@ -20,18 +20,22 @@ class ApplicationService
     Rails.logger.error("[ApplicationService] Telegram Notify Failed: #{e.class} - #{e.message}")
   end
 
-  # Logs an info-level message with class context
-  def log_info(msg)
-    Rails.logger.info("[#{self.class.name}] #{msg}")
-  end
+  # # Logs an info-level message with class context
+  # def log_info(msg)
+  #   Rails.logger.info("[#{self.class.name}] #{msg}")
+  # end
 
-  # Logs a warning message with class context
-  def log_warn(msg)
-    Rails.logger.warn("[#{self.class.name}] #{msg}")
-  end
+  # # Logs a warning message with class context
+  # def log_warn(msg)
+  #   Rails.logger.warn("[#{self.class.name}] #{msg}")
+  # end
 
-  # Logs an error message with class context
-  def log_error(msg)
-    Rails.logger.error("[#{self.class.name}] #{msg}")
+  # # Logs an error message with class context
+  # def log_error(msg)
+  #   Rails.logger.error("[#{self.class.name}] #{msg}")
+  # end
+  # -------- Logging ---------------------------------------------------------
+  %i[info warn error debug].each do |lvl|
+    define_method(:"log_#{lvl}") { |msg| Rails.logger.send(lvl, "[#{self.class.name}] #{msg}") }
   end
 end
