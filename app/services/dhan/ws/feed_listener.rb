@@ -62,12 +62,8 @@ module Dhan
         end
 
         # Add tradable active positions
-        Positions::ActiveCache.all.each do |sid, pos|
-          seg_key = pos['exchangeSegment']
-          next unless seg_key.present?
-
-          # Assume tradable if FullPacket supported
-          full_keys << "#{sid}_#{seg_key}"
+        Positions::ActiveCache.all.each_key do |sid|
+          full_keys << sid
         end
 
         combined_keys = index_keys + full_keys
@@ -146,7 +142,7 @@ module Dhan
         return @instrument_cache[cache_key] if @instrument_cache.key?(cache_key)
 
         instrument = case segment_key
-                     when 'IDX_I'     then Instrument.segment_index.find_by(security_id: security_id.to_i)
+                     when 'IDX_I'     then Instrument.segment_index.find_by(security_id: security_id)
                      when 'NSE_EQ'    then Instrument.segment_equity.find_by(security_id: security_id)
                      when 'NSE_FNO'   then Derivative.segment_derivatives.find_by(security_id: security_id)
                      when 'MCX_COMM'  then Instrument.segment_commodity.find_by(security_id: security_id)
@@ -160,6 +156,7 @@ module Dhan
         return unless packet[:ltp]
 
         segment_key = reverse_convert_segment(packet[:exchange_segment])
+
         sid = packet[:security_id]
         key = "#{segment_key}_#{sid}"
         new_ltp = packet[:ltp].round(2)
@@ -169,7 +166,8 @@ module Dhan
 
         @ltp_cache[key] = new_ltp
 
-        instrument = find_instrument_cached(sid, packet[:exchange_segment])
+        instrument = find_instrument_cached(sid.to_i, packet[:exchange_segment])
+
         name = instrument&.symbol_name || key
 
         pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"

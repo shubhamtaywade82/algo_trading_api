@@ -22,7 +22,7 @@ module Dhan
                                       })
 
         # Rails.logger.debug do
-        #   # pp "[QUOTE] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} O/H/L=#{packet[:day_open]}/#{packet[:day_high]}/#{packet[:day_low]}"
+        #   pp "[QUOTE] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} O/H/L=#{packet[:day_open]}/#{packet[:day_high]}/#{packet[:day_low]}"
         # end
       rescue StandardError => e
         Rails.logger.error "[QUOTE] ❌ #{e.class} - #{e.message}"
