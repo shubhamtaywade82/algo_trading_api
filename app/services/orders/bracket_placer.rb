@@ -1,25 +1,19 @@
 # frozen_string_literal: true
 
-# Places a bracket (SL+TP) order for every new open position not having one.
 module Orders
   class BracketPlacer < ApplicationService
-    # Scans all active positions and places missing brackets
-    # @return [void]
-    def self.call
-      Positions::ActiveCache.ids.each do |sec_id|
-        pos = Positions::ActiveCache.fetch(sec_id)
-        next unless pos
+    def call
+      Positions::ActiveCache.all_positions.each do |pos|
         next if bracket_order_exists?(pos)
 
-        entry_price = pos['buyAvg'].to_f
+        entry_price = pos['costPrice'].to_f
         instrument_type = detect_instrument_type(pos)
 
         sl_pct = instrument_type == :option ? 25.0 : 10.0
         tp_pct = instrument_type == :option ? 50.0 : 20.0
 
-        # Calculate SL/TP for new bracket order (customize rules as needed)
-        sl_val = (entry_price * sl_pct / 100.0).round(2)   # 20% SL
-        tp_val = (entry_price * tp_pct / 100.0).round(2)   # 50% TP
+        sl_val = (entry_price * sl_pct / 100.0).round(2)
+        tp_val = (entry_price * tp_pct / 100.0).round(2)
 
         payload = {
           securityId: pos['securityId'],
@@ -34,21 +28,26 @@ module Orders
           boProfitValue: tp_val
         }
 
-        response = Dhanhq::API::Orders.place(payload)
+        if ENV['PLACE_ORDER'] == 'true'
+          response = Dhanhq::API::Orders.place(payload)
 
-        if response['orderId']
-          notify("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
-          Rails.logger.info("[BracketPlacer] Bracket placed for #{pos['tradingSymbol']} #{response['orderId']}")
+          if response['orderId']
+            notify("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
+            log_info("Bracket placed for #{pos['tradingSymbol']} #{response['orderId']}")
+          else
+            log_error("Failed for #{pos['tradingSymbol']}: #{response['message']}")
+          end
         else
-          Rails.logger.error("[BracketPlacer] Failed for #{pos['tradingSymbol']}: #{response['message']}")
+          dry_run(payload, pos['tradingSymbol'])
         end
+      rescue StandardError => e
+        log_error("Error for #{pos['tradingSymbol']}: #{e.class} - #{e.message}")
       end
     end
 
-    # Checks if an open bracket order exists for the position
-    # @param [Hash] pos
-    # @return [Boolean]
-    def self.bracket_order_exists?(pos)
+    private
+
+    def bracket_order_exists?(pos)
       Dhanhq::API::Orders.list.any? do |o|
         o['securityId'].to_s == pos['securityId'].to_s &&
           o['orderType'].to_s.upcase == 'BRACKET' &&
@@ -56,12 +55,24 @@ module Orders
       end
     end
 
-    def self.detect_instrument_type(pos)
+    def detect_instrument_type(pos)
       if pos['exchangeSegment'].include?('FNO') || pos['productType'] == 'INTRADAY'
         :option
       else
         :stock
       end
+    end
+
+    def dry_run(payload, symbol)
+      log_info("dry-run → #{payload.inspect}")
+
+      notify(<<~MSG.strip, tag: 'DRYRUN')
+        💡 DRY-RUN (PLACE_ORDER=false)
+        • Symbol: #{symbol}
+        • Qty: #{payload[:quantity]}
+        • SL: ₹#{payload[:boStopLossValue]}
+        • TP: ₹#{payload[:boProfitValue]}
+      MSG
     end
   end
 end

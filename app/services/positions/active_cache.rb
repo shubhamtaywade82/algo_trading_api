@@ -30,6 +30,13 @@ module Positions
       all.keys
     end
 
+    # Return all cached security IDs
+    #
+    # @return [Array<String>]
+    def self.ids
+      all.keys.map { |k| k.split('_').first }
+    end
+
     # Fetch full position for a given composite key
     #
     # @param [String, Integer] security_id

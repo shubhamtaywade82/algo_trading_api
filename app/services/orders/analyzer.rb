@@ -17,15 +17,17 @@ module Orders
     end
 
     def call
-      entry = @pos['buyAvg'].to_f
+      entry = @pos['costPrice'].to_f
       ltp   = @pos['ltp'].to_f
       qty   = @pos['netQty'].abs
       side  = @pos['netQty'].to_i.positive? ? 1 : -1
       pnl   = (ltp - entry) * qty * side
 
+
       {
         entry_price: entry,
         ltp: ltp,
+        exit_price: ltp,
         quantity: qty,
         pnl: pnl.round(2),
         pnl_pct: (pnl / (entry * qty).abs * 100).round(2),

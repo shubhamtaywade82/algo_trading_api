@@ -26,6 +26,7 @@ module Dhan
         body = case header.feed_response_code
                when RESPONSE_CODES[:full] then parse_full
                when RESPONSE_CODES[:quote] then parse_quote
+               when RESPONSE_CODES[:oi] then parse_oi
                when RESPONSE_CODES[:disconnect] then parse_disconnect
                else
                  raise "Unknown response code: #{header.feed_response_code}"
@@ -90,6 +91,12 @@ module Dhan
           day_close: body.day_close,
           day_high: body.day_high,
           day_low: body.day_low
+        }
+      end
+
+      def parse_oi
+        {
+          open_interest: binary_stream.read(4).unpack1('l<') # little-endian int32
         }
       end
 

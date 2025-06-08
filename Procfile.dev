@@ -1,2 +1,5 @@
 
-feed: bundle exec bin/ws_feed
+
+
+web: bundle exec rails server
+worker: bundle exec rake jobs:work
