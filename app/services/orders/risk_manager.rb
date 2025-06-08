@@ -6,10 +6,10 @@ module Orders
     TAKE_PROFIT_PCT  = { stock: 15.0, option: 35.0 }.freeze
     TRAIL_BUFFER_PCT = { stock: 3.0,  option: 10.0 }.freeze
 
-    EMERGENCY_LOSS   = -3000.0
-    DANGER_ZONE_MIN  = -1000.0
-    DANGER_ZONE_MAX  = -500.0
-    DANGER_ZONE_BARS = 3
+    EMERGENCY_LOSS   = -5000.0
+    DANGER_ZONE_MIN  = -1500.0
+    DANGER_ZONE_MAX  = -750.0
+    DANGER_ZONE_BARS = 5
 
     # Spot LTP cache keys for NIFTY and BANKNIFTY indices
     SPOT_INDEX_MAP = {
