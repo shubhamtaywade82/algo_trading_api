@@ -135,10 +135,10 @@ module Orders
 
     def live_spot_ltp
       symbol = @pos['tradingSymbol'].to_s
-      index_key = SPOT_INDEX_MAP.find { |k, _| symbol.include?(k) }&.last
-      return nil unless index_key
+      index_info = SPOT_INDEX_MAP.find { |k, _| symbol.include?(k) }&.last
+      return nil unless index_info
 
-      Rails.cache.read("ltp_#{index_key}")&.to_f
+      MarketCache.read_ltp(index_info[:segment], index_info[:id])
     end
 
     def trend_broken?(spot_ltp)
