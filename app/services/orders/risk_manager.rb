@@ -13,8 +13,8 @@ module Orders
 
     # Spot LTP cache keys for NIFTY and BANKNIFTY indices
     SPOT_INDEX_MAP = {
-      'NIFTY' => '13_NSE_INDEX',
-      'BANKNIFTY' => '25_NSE_INDEX'
+      'NIFTY' => { segment: 0, id: 13 },        # IDX_I = 0
+      'BANKNIFTY' => { segment: 0, id: 25 }
     }.freeze
 
     def initialize(position, analysis)
