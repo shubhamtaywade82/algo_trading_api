@@ -2,9 +2,9 @@
 
 module Orders
   class RiskManager < ApplicationService
-    STOP_LOSS_PCT    = { stock: 10.0, option: 20.0 }.freeze
-    TAKE_PROFIT_PCT  = { stock: 25.0, option: 40.0 }.freeze
-    TRAIL_BUFFER_PCT = { stock: 5.0,  option: 15.0 }.freeze
+    STOP_LOSS_PCT    = { stock: 7.5, option: 25.0 }.freeze
+    TAKE_PROFIT_PCT  = { stock: 15.0, option: 35.0 }.freeze
+    TRAIL_BUFFER_PCT = { stock: 3.0,  option: 10.0 }.freeze
 
     EMERGENCY_LOSS   = -3000.0
     DANGER_ZONE_MIN  = -1000.0
