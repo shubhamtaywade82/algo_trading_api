@@ -51,7 +51,13 @@ module AlgoTradingApp
     config.active_record.default_timezone = :local
 
     config.after_initialize do
-      # Update crontab on server start
+      # Start Feed + Manager loops only if enabled via ENV
+      if ENV['ENABLE_FEED_LISTENER'] == 'true' || ENV['ENABLE_POSITION_MANAGER'] == 'true'
+        require Rails.root.join('lib/feed/runner')
+        Feed::Runner.start
+      end
+
+      # Optional: Rebuild crontab for development
       system('bundle exec whenever --update-crontab') if Rails.env.development?
     end
   end
