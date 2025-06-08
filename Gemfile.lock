@@ -493,6 +493,7 @@ GEM
       ostruct
     stackprof (0.2.26)
     stringio (3.1.2)
+    technical-analysis (0.2.4)
     telegram-bot-ruby (0.19.2)
       dry-inflector
       faraday (~> 1.0)
@@ -578,6 +579,7 @@ DEPENDENCIES
   solid_cache
   solid_queue
   stackprof
+  technical-analysis
   telegram-bot-ruby
   thruster
   tzinfo-data

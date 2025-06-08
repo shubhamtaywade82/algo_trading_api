@@ -1,0 +1,2 @@
+class SwingPicksController < ApplicationController
+end

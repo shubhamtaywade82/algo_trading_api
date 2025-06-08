@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 Rails.application.routes.draw do
+  resources :swing_picks
   namespace :options do
     post '/suggest_strategies', to: 'strategy_suggestions#index'
   end

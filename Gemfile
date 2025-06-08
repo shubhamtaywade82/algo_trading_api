@@ -97,3 +97,5 @@ gem 'bindata'
 gem 'faye-websocket'
 
 gem 'ruby-openai', require: 'openai'
+
+gem 'technical-analysis'

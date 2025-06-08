@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_05_24_074237) do
+ActiveRecord::Schema[8.0].define(version: 2025_06_08_070725) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -167,7 +167,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_05_24_074237) do
     t.decimal "sell_bo_profit_range_min_perc"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["requirementable_type", "requirementable_id"], name: "index_margin_requirements_on_requirementable", unique: true
+    t.index ["requirementable_type", "requirementable_id"], name: "index_margin_requirements_on_requirementable"
   end
 
   create_table "mis_details", force: :cascade do |t|
@@ -272,6 +272,21 @@ ActiveRecord::Schema[8.0].define(version: 2025_05_24_074237) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "swing_picks", force: :cascade do |t|
+    t.bigint "instrument_id", null: false
+    t.string "setup_type"
+    t.decimal "trigger_price"
+    t.decimal "close_price"
+    t.decimal "ema"
+    t.decimal "rsi"
+    t.bigint "volume"
+    t.text "analysis"
+    t.integer "status"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["instrument_id"], name: "index_swing_picks_on_instrument_id"
+  end
+
   add_foreign_key "alerts", "instruments"
   add_foreign_key "derivatives", "instruments"
   add_foreign_key "levels", "instruments"
@@ -279,4 +294,5 @@ ActiveRecord::Schema[8.0].define(version: 2025_05_24_074237) do
   add_foreign_key "orders", "alerts"
   add_foreign_key "positions", "instruments"
   add_foreign_key "quotes", "instruments"
+  add_foreign_key "swing_picks", "instruments"
 end
