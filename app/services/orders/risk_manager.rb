@@ -2,19 +2,19 @@
 
 module Orders
   class RiskManager < ApplicationService
-    STOP_LOSS_PCT    = { stock: 10.0, option: 20.0 }.freeze
-    TAKE_PROFIT_PCT  = { stock: 25.0, option: 40.0 }.freeze
-    TRAIL_BUFFER_PCT = { stock: 5.0,  option: 15.0 }.freeze
+    STOP_LOSS_PCT    = { stock: 7.5, option: 25.0 }.freeze
+    TAKE_PROFIT_PCT  = { stock: 15.0, option: 35.0 }.freeze
+    TRAIL_BUFFER_PCT = { stock: 3.0,  option: 10.0 }.freeze
 
-    EMERGENCY_LOSS   = -3000.0
-    DANGER_ZONE_MIN  = -1000.0
-    DANGER_ZONE_MAX  = -500.0
-    DANGER_ZONE_BARS = 3
+    EMERGENCY_LOSS   = -5000.0
+    DANGER_ZONE_MIN  = -1500.0
+    DANGER_ZONE_MAX  = -750.0
+    DANGER_ZONE_BARS = 5
 
     # Spot LTP cache keys for NIFTY and BANKNIFTY indices
     SPOT_INDEX_MAP = {
-      'NIFTY' => '13_NSE_INDEX',
-      'BANKNIFTY' => '25_NSE_INDEX'
+      'NIFTY' => { segment: 0, id: 13 },        # IDX_I = 0
+      'BANKNIFTY' => { segment: 0, id: 25 }
     }.freeze
 
     def initialize(position, analysis)
@@ -135,10 +135,10 @@ module Orders
 
     def live_spot_ltp
       symbol = @pos['tradingSymbol'].to_s
-      index_key = SPOT_INDEX_MAP.find { |k, _| symbol.include?(k) }&.last
-      return nil unless index_key
+      index_info = SPOT_INDEX_MAP.find { |k, _| symbol.include?(k) }&.last
+      return nil unless index_info
 
-      Rails.cache.read("ltp_#{index_key}")&.to_f
+      MarketCache.read_ltp(index_info[:segment], index_info[:id])
     end
 
     def trend_broken?(spot_ltp)
