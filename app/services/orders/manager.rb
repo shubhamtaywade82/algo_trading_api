@@ -11,7 +11,8 @@ module Orders
       decision = Orders::RiskManager.call(@position, @analysis)
 
       if decision[:exit]
-        Orders::Executor.call(@position, decision[:exit_reason], @analysis)
+        merged = @analysis.merge(order_type: decision[:order_type]) if decision[:order_type]
+        Orders::Executor.call(@position, decision[:exit_reason], merged || @analysis)
       elsif decision[:adjust]
         Orders::Adjuster.call(@position, decision[:adjust_params])
       end

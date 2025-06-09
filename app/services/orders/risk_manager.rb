@@ -13,7 +13,7 @@ module Orders
 
     # Spot LTP cache keys for NIFTY and BANKNIFTY indices
     SPOT_INDEX_MAP = {
-      'NIFTY' => { segment: 0, id: 13 },        # IDX_I = 0
+      'NIFTY' => { segment: 0, id: 13 }, # IDX_I = 0
       'BANKNIFTY' => { segment: 0, id: 25 }
     }.freeze
 
@@ -57,7 +57,7 @@ module Orders
       if net_pnl <= EMERGENCY_LOSS
         reset_danger_count
         notify("🛑 Emergency SL: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
-        return { exit: true, exit_reason: "EmergencyStopLoss_#{net_pnl}" }
+        return { exit: true, exit_reason: "EmergencyStopLoss_#{net_pnl}", order_type: 'MARKET' }
       end
 
       # === 4. SL Adaptation (Options Only)
