@@ -151,8 +151,7 @@ module AlertProcessors
     def place_order!(payload)
       resp = Dhanhq::API::Orders.place(payload) # => {'orderId'=>…}
       ensure_edis!(payload[:quantity]) if cnc_sell?(payload)
-      alert.update!(broker_order_id: resp['orderId'],
-                    metadata: { placed_order: resp })
+      alert.update!(metadata: { placed_order: resp })
       logger.info("[Stock ##{alert.id}] ✅ placed #{resp}")
     end
 
