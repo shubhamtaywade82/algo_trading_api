@@ -53,8 +53,15 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        index_keys = Set.new
-        full_keys = Set.new
+        # index_keys = Set.new
+        index_keys = INDEXES.map do |ix|
+          subscription_key(ix[:security_id], ix[:exchange_segment])
+        end.to_set
+        # full_keys = Set.new
+        full_keys = Positions::ActiveCache.all.keys.map do |sid|
+          # Assume sid is already in proper format "securityId_segmentEnum"
+          sid.to_s
+        end.to_set
 
         # Add static indexes (NIFTY, BANKNIFTY)
         INDEXES.each do |ix|
