@@ -53,25 +53,15 @@ module Dhan
       end
 
       def self.subscribe(ws)
+        # debugger
         # index_keys = Set.new
-        index_keys = INDEXES.map do |ix|
-          subscription_key(ix[:security_id], ix[:exchange_segment])
-        end.to_set
         # full_keys = Set.new
-        full_keys = Positions::ActiveCache.all.keys.map do |sid|
-          # Assume sid is already in proper format "securityId_segmentEnum"
-          sid.to_s
-        end.to_set
+        index_keys = INDEXES.to_set do |ix|
+          subscription_key(ix[:security_id], ix[:exchange_segment])
+        end
+        full_keys = Positions::ActiveCache.all.keys.to_set(&:to_s)
 
-        # Add static indexes (NIFTY, BANKNIFTY)
-        # INDEXES.each do |ix|
-        #   index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
-        # end
 
-        # Add tradable active positions
-        # Positions::ActiveCache.all.each_key do |sid|
-        #   full_keys << sid
-        # end
 
         combined_keys = index_keys + full_keys
         return if combined_keys == @last_subscribed_keys
@@ -83,6 +73,12 @@ module Dhan
 
         # Build and send Full Packet (RequestCode 21) for tradable instruments
         send_subscriptions(ws, full_keys, 21)
+      end
+
+      def self.subscription_key(security_id, segment)
+        # Converts exchange segment to enum, and returns string key like "13_0"
+        seg_enum = segment.is_a?(Integer) ? segment : DhanhqMappings::SEGMENT_KEY_TO_ENUM[segment]
+        "#{security_id}_#{seg_enum}"
       end
 
       def self.send_subscriptions(ws, key_set, request_code)
@@ -103,8 +99,11 @@ module Dhan
             InstrumentList: batch
           }
 
+          pp payload
           ws.send(payload.to_json)
-          pp "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.map { |i| i[:SecurityId] }.join(', ')}"
+          pp do
+            "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
+          end
         end
       end
 
@@ -177,7 +176,7 @@ module Dhan
 
         name = instrument&.symbol_name || key
 
-        pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
+        pp { "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}" }
       end
     end
   end
