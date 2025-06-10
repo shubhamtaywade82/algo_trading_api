@@ -25,7 +25,6 @@ module Orders
       # Only include price for LIMIT, not MARKET orders
       payload[:price] = exit_price if order_type == 'LIMIT'
 
-      pp @analysis
       if ENV['PLACE_ORDER'] == 'true'
         response = Dhanhq::API::Orders.place(payload)
 
@@ -36,7 +35,7 @@ module Orders
 
           extra = @analysis[:order_type] ? " (#{@analysis[:order_type].to_s.upcase})" : ''
 
-          notify("✅ Exit Placed#{extra}: #{@pos['tradingSymbol']} | Reason: #{@reason} | Qty: #{@pos['netQty'].abs} | Price: ₹#{@pos['ltp']}")
+          notify("✅ Exit Placed#{extra}: #{@pos['tradingSymbol']} | Reason: #{@reason} | Qty: #{@pos['netQty'].abs} | Price: ₹#{@pos['ltp']} | Net PNL: ₹#{net_pnl}")
           Rails.logger.info("[Orders::Executor] Exit placed and logged for #{@pos['tradingSymbol']} — #{@reason}#{extra}")
         else
           Rails.logger.error("[Orders::Executor] Failed for #{@pos['tradingSymbol']}: #{response['message']}")

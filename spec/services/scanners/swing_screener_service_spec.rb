@@ -27,7 +27,7 @@ RSpec.describe Scanners::SwingScreenerService do
 
     candles = (1..250).map do |i|
       {
-        date: (Date.today - i).strftime('%Y-%m-%d'),
+        date: (Time.zone.today - i).strftime('%Y-%m-%d'),
         open: base_price,
         high: 98,
         low: base_price - 2,
@@ -37,7 +37,7 @@ RSpec.describe Scanners::SwingScreenerService do
     end
 
     candles[-1] = {
-      date: Date.today.strftime('%Y-%m-%d'),
+      date: Time.zone.today.strftime('%Y-%m-%d'),
       open: last_close,
       high: last_high,
       low: last_low,
@@ -46,19 +46,20 @@ RSpec.describe Scanners::SwingScreenerService do
     }
 
     {
-      'close' => candles.map { _1[:close] },
-      'high' => candles.map { _1[:high] },
-      'low' => candles.map { _1[:low] },
-      'open' => candles.map { _1[:open] },
-      'volume' => candles.map { _1[:volume] },
-      'timestamp' => candles.each_index.map { |i| (Date.today - 250 + i).to_time.to_i }
+      'close' => candles.pluck(:close),
+      'high' => candles.pluck(:high),
+      'low' => candles.pluck(:low),
+      'open' => candles.pluck(:open),
+      'volume' => candles.pluck(:volume),
+      'timestamp' => candles.each_index.map { |i| (Time.zone.today - 250 + i).to_time.to_i }
     }
   end
 
   before do
     allow(Dhanhq::API::Historical).to receive(:daily).and_return(mock_ohlc_data)
-    allow(Talib).to receive(:ema).and_return(Array.new(Scanners::SwingScreenerService::EMA_PERIOD, 90) + [ema_last])
-    allow(Talib).to receive(:rsi).and_return(Array.new(Scanners::SwingScreenerService::RSI_PERIOD, 60) + [rsi_last])
+    allow(Talib).to receive_messages(ema: Array.new(Scanners::SwingScreenerService::EMA_PERIOD, 90) + [ema_last],
+                                     rsi: Array.new(Scanners::SwingScreenerService::RSI_PERIOD,
+                                                    60) + [rsi_last])
     allow(Openai::SwingExplainer).to receive(:explain).and_return('AI: good setup')
     allow(TelegramNotifier).to receive(:send_message).and_return(true)
   end
@@ -70,7 +71,7 @@ RSpec.describe Scanners::SwingScreenerService do
     end
 
     it 'creates SwingPick records for breakout setups' do
-      expect { subject.call }.to change { SwingPick.count }.by_at_least(1)
+      expect { subject.call }.to change(SwingPick, :count).by_at_least(1)
     end
 
     context 'when price is near low and RSI is oversold' do
@@ -83,7 +84,7 @@ RSpec.describe Scanners::SwingScreenerService do
       let(:avg_volume)  { 100_000 }      # ✅
 
       it 'creates a reversal SwingPick record' do
-        expect { subject.call }.to change { SwingPick.count }.by_at_least(1)
+        expect { subject.call }.to change(SwingPick, :count).by_at_least(1)
         expect(SwingPick.last.setup_type).to eq('reversal')
       end
     end
@@ -95,7 +96,7 @@ RSpec.describe Scanners::SwingScreenerService do
       let(:ema_last)    { 100 }
 
       it 'skips the instrument' do
-        expect { subject.call }.not_to(change { SwingPick.count })
+        expect { subject.call }.not_to(change(SwingPick, :count))
       end
     end
 
@@ -111,7 +112,7 @@ RSpec.describe Scanners::SwingScreenerService do
 
     it 'skips instruments with missing candle data' do
       allow(Dhanhq::API::Historical).to receive(:daily).and_return([])
-      expect { subject.call }.not_to(change { SwingPick.count })
+      expect { subject.call }.not_to(change(SwingPick, :count))
     end
 
     it 'handles and logs DhanHQ failures gracefully' do

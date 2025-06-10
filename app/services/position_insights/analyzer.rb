@@ -43,7 +43,7 @@ module PositionInsights
       • Conclude clearly with “— end of brief”.
     SYS
 
-    INDEX_MAP = { 'NIFTY' => 13, 'BANKNIFTY' => 25 }
+    INDEX_MAP = { 'NIFTY' => 13, 'BANKNIFTY' => 25 }.freeze
 
     def enrich_positions_with_ltp_and_spot!(rows)
       segments = Hash.new { |h, k| h[k] = [] }
@@ -56,7 +56,7 @@ module PositionInsights
         segments['IDX_I'] << INDEX_MAP[index_name] if INDEX_MAP[index_name]
       end
 
-      segments.each { |_, ids| ids.uniq! }
+      segments.each_value(&:uniq!)
 
       ltp_data = Dhanhq::API::MarketFeed.ltp(segments)
 

@@ -23,10 +23,10 @@ module Scanners
         candles = safe_fetch_ohlc(instrument)
         next unless valid_candles?(candles)
 
-        closes  = candles.map { _1[:close] }
-        highs   = candles.map { _1[:high] }
-        lows    = candles.map { _1[:low] }
-        volumes = candles.map { _1[:volume] }
+        closes  = candles.pluck(:close)
+        highs   = candles.pluck(:high)
+        lows    = candles.pluck(:low)
+        volumes = candles.pluck(:volume)
 
         price_series = candles.map { |c| { date_time: c[:time], close: c[:close] } }
 
@@ -45,7 +45,7 @@ module Scanners
         setup_type = nil
         trigger_level = nil
 
-        pp "#{instrument.symbol_name}  #{price}, #{high20}, #{ema}, #{rsi}, #{vol}, #{volume_avg}"
+        Rails.logger.debug { "#{instrument.symbol_name}  #{price}, #{high20}, #{ema}, #{rsi}, #{vol}, #{volume_avg}" }
         if price > high20 && price > ema && rsi.between?(50, 70) && vol > 1.5 * volume_avg
           setup_type = 'breakout'
           trigger_level = high20
@@ -105,7 +105,7 @@ module Scanners
           low: raw['low'][i],
           open: raw['open'][i],
           volume: raw['volume'][i],
-          time: Time.at(raw['timestamp'][i])
+          time: Time.zone.at(raw['timestamp'][i])
         }
       end
     rescue StandardError => e

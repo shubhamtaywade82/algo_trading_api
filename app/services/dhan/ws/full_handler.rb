@@ -32,7 +32,6 @@ module Dhan
           pp "[FULL] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} VOL=#{packet[:volume]}"
         end
 
-
         # Run position analysis only if there's an active position
         pos = Positions::ActiveCache.fetch(sid, segment_key)
         return unless pos

@@ -1,6 +1,7 @@
 module Openai
   class Client
-    def self.[] # syntactic sugar → Openai::Client[:chat]
+    # syntactic sugar → Openai::Client[:chat]
+    def self.[]
       instance
     end
 
