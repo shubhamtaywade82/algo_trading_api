@@ -254,7 +254,7 @@ module AlertProcessors
 
       notify(<<~MSG.strip, tag: 'ORDER')
         ✅ Order Placed – Alert ##{alert.id}
-        • Symbol: #{instrument.symbol}
+        • Symbol: #{instrument.symbol_name}
         • Type: #{params[:transactionType]}
         • Qty: #{params[:quantity]}
         • Order ID: #{resp['orderId']}
@@ -270,7 +270,7 @@ module AlertProcessors
       )
       notify(<<~MSG.strip, tag: 'DRYRUN')
         💡 DRY-RUN (PLACE_ORDER=false) – Alert ##{alert.id}
-        • Symbol: #{instrument.symbol}
+        • Symbol: #{instrument.symbol_name}
         • Type: #{params[:transactionType]}
         • Qty: #{params[:quantity]}
       MSG
