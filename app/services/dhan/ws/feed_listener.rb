@@ -64,14 +64,14 @@ module Dhan
         end.to_set
 
         # Add static indexes (NIFTY, BANKNIFTY)
-        INDEXES.each do |ix|
-          index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
-        end
+        # INDEXES.each do |ix|
+        #   index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
+        # end
 
         # Add tradable active positions
-        Positions::ActiveCache.all.each_key do |sid|
-          full_keys << sid
-        end
+        # Positions::ActiveCache.all.each_key do |sid|
+        #   full_keys << sid
+        # end
 
         combined_keys = index_keys + full_keys
         return if combined_keys == @last_subscribed_keys
