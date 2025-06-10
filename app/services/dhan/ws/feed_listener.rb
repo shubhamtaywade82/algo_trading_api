@@ -53,18 +53,25 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        index_keys = Set.new
-        full_keys = Set.new
+        # index_keys = Set.new
+        index_keys = INDEXES.map do |ix|
+          subscription_key(ix[:security_id], ix[:exchange_segment])
+        end.to_set
+        # full_keys = Set.new
+        full_keys = Positions::ActiveCache.all.keys.map do |sid|
+          # Assume sid is already in proper format "securityId_segmentEnum"
+          sid.to_s
+        end.to_set
 
         # Add static indexes (NIFTY, BANKNIFTY)
-        INDEXES.each do |ix|
-          index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
-        end
+        # INDEXES.each do |ix|
+        #   index_keys << "#{ix[:security_id]}_#{reverse_convert_segment(ix[:exchange_segment])}"
+        # end
 
         # Add tradable active positions
-        Positions::ActiveCache.all.each_key do |sid|
-          full_keys << sid
-        end
+        # Positions::ActiveCache.all.each_key do |sid|
+        #   full_keys << sid
+        # end
 
         combined_keys = index_keys + full_keys
         return if combined_keys == @last_subscribed_keys
