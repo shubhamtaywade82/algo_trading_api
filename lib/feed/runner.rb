@@ -8,6 +8,7 @@ module Feed
           pp '🔌 Starting FeedListener in background...'
           Dhan::Ws::FeedListener.run
         rescue StandardError => e
+pp e.inspect
           Rails.logger.error("[FeedListener] ❌ #{e.class} - #{e.message}")
         end
       else
