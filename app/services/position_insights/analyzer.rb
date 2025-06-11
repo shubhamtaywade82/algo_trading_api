@@ -16,14 +16,13 @@ module PositionInsights
       normalized = normalize(@raw_positions)
       prompt = build_prompt(normalized)
 
-      answer = Openai::ChatRouter.ask!(
+      Openai::ChatRouter.ask!(
         prompt,
         system: SYSTEM_SEED,
         temperature: 0.3
       )
 
-      notify(answer, tag: 'POSITIONS_AI') if @interactive
-      answer
+      # notify(answer, tag: 'POSITIONS_AI') if @interactive
     rescue StandardError => e
       log_error(e.message)
       notify("❌ Positions AI failed: #{e.message}", tag: 'POSITIONS_AI_ERR')

@@ -18,13 +18,13 @@ module PortfolioInsights
       snapshot = build_snapshot(@raw)
       prompt   = build_prompt(snapshot)
 
-      answer = Openai::ChatRouter.ask!(
+      Openai::ChatRouter.ask!(
         prompt,
         system: SYSTEM_SEED,
         temperature: 0.35
       )
-      notify(answer, tag: 'PORTFOLIO_AI') if interactive
-      answer
+      # notify(answer, tag: 'PORTFOLIO_AI') if interactive
+      # answer
     rescue StandardError => e
       log_error(e.message)
       notify("❌ Portfolio AI failed: #{e.message}", tag: 'PORTFOLIO_AI_ERR')
