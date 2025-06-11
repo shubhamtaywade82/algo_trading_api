@@ -176,7 +176,7 @@ module Dhan
 
         name = instrument&.symbol_name || key
 
-        pp { "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}" }
+        # pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
       end
     end
   end
