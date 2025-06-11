@@ -7,9 +7,9 @@ module Feed
         Thread.new do
           pp '🔌 Starting FeedListener in background...'
           Dhan::Ws::FeedListener.run
-      #  rescue StandardError => e
+       rescue StandardError => e
 #pp e.inspect
-        #  Rails.logger.error("[FeedListener] ❌ #{e.class} - #{e.message}")
+         Rails.logger.error("[FeedListener] ❌ #{e.class} - #{e.message}")
         end
       else
         Rails.logger.info('[Startup] FeedListener disabled via ENV')
