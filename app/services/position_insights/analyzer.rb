@@ -2,7 +2,7 @@
 
 module PositionInsights
   class Analyzer < ApplicationService
-    MAX_WORDS   = 250
+    MAX_WORDS   = 350
     BATCH_SIZE  = 25
 
     def initialize(dhan_positions:, cash_balance: nil, interactive: false)
@@ -15,6 +15,7 @@ module PositionInsights
       enrich_positions_with_ltp_and_spot!(@raw_positions)
       normalized = normalize(@raw_positions)
       prompt = build_prompt(normalized)
+
       answer = Openai::ChatRouter.ask!(
         prompt,
         system: SYSTEM_SEED,
@@ -33,12 +34,14 @@ module PositionInsights
 
     SYSTEM_SEED = <<~SYS.freeze
       You are an Indian market trading assistant.
-      • Identify positions (CE, PE, Futures, Equity: Intraday/Normal).
-      • Assess risks explicitly using Greeks (Delta, Gamma, Theta).
+      • Identify instruments as Equity (Delivery/Intraday), F&O (CE/PE/FUT), Commodity, Currency.
+      • Include exchange, product type & expiry where applicable.
+      • Assess risks using Greeks (Delta, Gamma, Theta) for options.
+      • Show winners & losers across all positions (Equity + F&O) based on PnL% even for small PnL.
       • Consider underlying (NIFTY/BANKNIFTY).
-      • Mention margin implications & cash balance.
-      • Provide actionable hedging/exit suggestions.
-      • Bullet points, concise ≤ #{MAX_WORDS} words.
+      • Mention margin/cash balance & drawdown exposure.
+      • Provide actionable hedging or exit advice.
+      • Bullet style ≤ #{MAX_WORDS} words.
       • Emojis in headings (👉⚠️💡📉📈).
       • Conclude clearly with “— end of brief”.
     SYS
@@ -79,33 +82,54 @@ module PositionInsights
     def normalize(raw)
       raw.map do |p|
         qty = p['netQty'].to_f
+        buy_qty = p['buyQty'].to_f
         avg = (p['costPrice'] || p['averagePrice'] || p['buyAvg'] || 0).to_f
         ltp = p['lastTradedPrice'].to_f
-        pnl = (p['unrealizedProfit'] || ((ltp - avg) * qty)).to_f
 
-        pnl_pct = avg.zero? || qty.zero? ? 0 : (pnl / (avg * qty)) * 100
+        pnl, pnl_pct =
+          if p['positionType'] == 'CLOSED'
+            realized = p['realizedProfit'].to_f
+            pnl_pct = buy_qty.zero? ? 0 : (realized / (avg * buy_qty)) * 100
+            [realized, pnl_pct]
+          else
+            unrealized = (p['unrealizedProfit'] || ((ltp - avg) * qty)).to_f
+            pnl_pct = avg.zero? || qty.zero? ? 0 : (unrealized / (avg * qty)) * 100
+            [unrealized, pnl_pct]
+          end
 
-        type = p['drvOptionType'] ? "#{p['drvOptionType']}#{p['drvStrikePrice']}" : 'Equity/Futures'
+        instrument_type = infer_instrument_type(p)
 
         {
           symbol: p['tradingSymbol'],
+          exchange: p['exchangeSegment'],
+          product: p['productType'] || 'Unknown',
+          position_type: p['positionType'],
           qty: qty,
           avg: avg,
           ltp: ltp,
           pnl: pnl,
           pnl_pct: pnl_pct,
-          opt: type.strip,
+          instrument_type: instrument_type,
           expiry: p['drvExpiryDate'],
-          underlying_spot: p['underlying_spot'],
-          trade_type: p['positionType'] || 'Normal'
+          strike: p['drvStrikePrice'].to_f,
+          option_type: p['drvOptionType'],
+          underlying_spot: p['underlying_spot']
         }
       end
     end
 
-    def infer_ltp(avg, qty, u_pnl)
-      return 0 if qty.zero? || u_pnl.nil?
-
-      avg + (u_pnl.to_f / qty)
+    def infer_instrument_type(p)
+      if p['exchangeSegment'] == 'NSE_EQ' || p['exchangeSegment'] == 'BSE_EQ'
+        'Equity'
+      elsif p['exchangeSegment'] == 'MCX_COMM'
+        'Commodity'
+      elsif /CURRENCY/.match?(p['exchangeSegment'])
+        'Currency'
+      elsif p['drvOptionType']
+        "#{p['drvOptionType']} #{p['drvStrikePrice']}".strip
+      else
+        'Futures'
+      end
     end
 
     def build_prompt(rows)
@@ -113,10 +137,11 @@ module PositionInsights
 
       positions = rows.map do |r|
         [
-          "• #{r[:symbol].ljust(18)}",
-          "Type: #{r[:opt]}",
-          "Trade: #{r[:trade_type]}",
-          "Expiry: #{r[:expiry] || 'NA'}",
+          "• #{r[:symbol]} (#{r[:instrument_type]}) [#{r[:position_type]}]",
+          "Exch: #{r[:exchange]}",
+          "Prod: #{r[:product]}",
+          ("Expiry: #{r[:expiry]}" if r[:expiry] && r[:expiry] != '0001-01-01'),
+          ("Strike: #{r[:strike]}" if r[:strike] > 0),
           "Qty: #{r[:qty]}",
           "Avg: #{money[r[:avg]]}",
           "LTP: #{money[r[:ltp]]}",
@@ -132,9 +157,9 @@ module PositionInsights
         #{positions}
 
         Analyze clearly:
-        1️⃣ Clearly state winners & losers (negative PnL% means loss).
-        2️⃣ Explicit margin/theta risks, considering balance & underlying.
-        3️⃣ Hedging/exit advice (Delta, Gamma, Theta).
+        1️⃣ State winners & losers based on PnL%.
+        2️⃣ Include margin, theta risks, Greeks (Delta/Gamma/Theta) for options.
+        3️⃣ Provide specific hedging/exit recommendations.
       PROMPT
     end
   end
