@@ -15,7 +15,7 @@ module MarketCache
 
     Rails.cache.write(key, numeric_ltp, expires_in: 2.minutes)
 
-    Rails.logger.debug { "[MarketCache] LTP updated: #{key} => #{numeric_ltp}" }
+    # Rails.logger.debug { "[MarketCache] LTP updated: #{key} => #{numeric_ltp}" }
   rescue StandardError => e
     Rails.logger.error "[MarketCache] ❌ LTP write failed: #{e.class} - #{e.message}"
   end
@@ -31,7 +31,7 @@ module MarketCache
 
     # debugger
     Rails.cache.write(key, sanitized_data, expires_in: 2.minutes)
-    Rails.logger.debug { "[MarketCache] Market data written for #{key}" }
+    # Rails.logger.debug { "[MarketCache] Market data written for #{key}" }
   rescue StandardError => e
     Rails.logger.error "[MarketCache] ❌ Market data write failed: #{e.class} - #{e.message}"
   end

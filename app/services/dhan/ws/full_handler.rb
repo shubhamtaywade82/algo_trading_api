@@ -29,7 +29,7 @@ module Dhan
                                       })
 
         Rails.logger.debug do
-          pp "[FULL] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} VOL=#{packet[:volume]}"
+          # pp "[FULL] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} VOL=#{packet[:volume]}"
         end
 
         # Run position analysis only if there's an active position
