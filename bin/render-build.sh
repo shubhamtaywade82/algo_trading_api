@@ -6,6 +6,8 @@ set -o errexit
 echo "📦 Installing dependencies..."
 bundle install
 
+bundle exec rails g solid_cache:migration
+
 # Run database migrations
 echo "🛠 Running migrations..."
 bundle exec rails db:migrate
