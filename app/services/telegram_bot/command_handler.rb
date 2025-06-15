@@ -58,11 +58,11 @@ module TelegramBot
     def positions_brief
       TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
       positions = Dhanhq::API::Portfolio.positions
-      result    = PositionInsights::Analyzer.call(
-                    dhan_positions: positions,
-                    interactive: true
-                  )
-      TelegramNotifier.send_message(result, chat_id: @cid) if result
+
+      PositionInsights::Analyzer.call(
+                  dhan_positions: positions,
+                  interactive: true
+                )
     end
   end
 end

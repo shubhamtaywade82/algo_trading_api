@@ -12,17 +12,21 @@ module PositionInsights
     end
 
     def call
+      if @raw_positions.empty?
+        notify('No  open positions found', tag: 'POSITIONS_AI')
+        return
+      end
       enrich_positions_with_ltp_and_spot!(@raw_positions)
       normalized = normalize(@raw_positions)
       prompt = build_prompt(normalized)
 
-      Openai::ChatRouter.ask!(
+      answer = Openai::ChatRouter.ask!(
         prompt,
         system: SYSTEM_SEED,
         temperature: 0.3
       )
 
-      # notify(answer, tag: 'POSITIONS_AI') if @interactive
+      notify(answer, tag: 'POSITIONS_AI') if @interactive
     rescue StandardError => e
       log_error(e.message)
       notify("❌ Positions AI failed: #{e.message}", tag: 'POSITIONS_AI_ERR')
