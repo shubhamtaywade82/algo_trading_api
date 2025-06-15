@@ -31,11 +31,11 @@ module TelegramBot
 
     def institutional_portfolio_brief
       # ── Throttle: run max once per UTC-day ───────────────────────────
-      last_run = Rails.cache.read(ANALYSIS_CACHE_KEY)
-      if last_run&.to_date == Time.now.utc.to_date
-        TelegramNotifier.send_message("⚠️ Full analysis already generated today.\nUse /portfolio for a quick view.", chat_id: @cid)
-        return
-      end
+      # last_run = Rails.cache.read(ANALYSIS_CACHE_KEY)
+      # if last_run&.to_date == Time.now.utc.to_date
+      #   TelegramNotifier.send_message("⚠️ Full analysis already generated today.\nUse /portfolio for a quick view.", chat_id: @cid)
+      #   return
+      # end
 
       TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
 

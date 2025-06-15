@@ -99,3 +99,5 @@ gem 'faye-websocket'
 gem 'ruby-openai', require: 'openai'
 
 gem 'technical-analysis'
+
+gem 'ruby-technical-analysis'

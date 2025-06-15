@@ -36,7 +36,7 @@ module Openai
     end
 
     def self.cache_key(pick)
-      "swing:explanation:#{pick[:instrument].symbol_name}:#{pick[:setup_type]}:#{Date.today}"
+      "swing:explanation:#{pick[:instrument].symbol_name}:#{pick[:setup_type]}:#{Time.zone.today}"
     end
   end
 end

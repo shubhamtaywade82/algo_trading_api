@@ -122,7 +122,7 @@ module PositionInsights
         'Equity'
       elsif p['exchangeSegment'] == 'MCX_COMM'
         'Commodity'
-      elsif /CURRENCY/.match?(p['exchangeSegment'])
+      elsif p['exchangeSegment'].include?('CURRENCY')
         'Currency'
       elsif p['drvOptionType']
         "#{p['drvOptionType']} #{p['drvStrikePrice']}".strip
@@ -140,7 +140,7 @@ module PositionInsights
           "Exch: #{r[:exchange]}",
           "Prod: #{r[:product]}",
           ("Expiry: #{r[:expiry]}" if r[:expiry] && r[:expiry] != '0001-01-01'),
-          ("Strike: #{r[:strike]}" if r[:strike] > 0),
+          ("Strike: #{r[:strike]}" if (r[:strike]).positive?),
           "Qty: #{r[:qty]}",
           "Avg: #{money[r[:avg]]}",
           "LTP: #{money[r[:ltp]]}",

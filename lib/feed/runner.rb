@@ -5,11 +5,10 @@ module Feed
     def self.start
       if ENV['ENABLE_FEED_LISTENER'] == 'true'
         Thread.new do
-          pp '🔌 Starting FeedListener in background...'
+          Rails.logger.debug '🔌 Starting FeedListener in background...'
           Dhan::Ws::FeedListener.run
-       rescue StandardError => e
-#pp e.inspect
-         Rails.logger.error("[FeedListener] ❌ #{e.class} - #{e.message}")
+        rescue StandardError => e
+          Rails.logger.error("[FeedListener] ❌ #{e.class} - #{e.message}")
         end
       else
         Rails.logger.info('[Startup] FeedListener disabled via ENV')
@@ -17,7 +16,7 @@ module Feed
 
       if ENV['ENABLE_POSITION_MANAGER'] == 'true'
         Thread.new do
-          pp '🧠 Starting position & order manager loop...'
+          Rails.logger.debug '🧠 Starting position & order manager loop...'
           loop do
             Positions::ActiveCache.refresh!
             Positions::Manager.call

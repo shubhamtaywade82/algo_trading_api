@@ -34,15 +34,16 @@ module PortfolioInsights
 
     # ------------------------------------------------------------------
     def call
-      return Rails.cache.read(cache_key) if Rails.cache.exist?(cache_key)
+      # return Rails.cache.read(cache_key) if Rails.cache.exist?(cache_key)
 
       enrich_with_prices!(@raw_holdings)
       snaps   = build_snapshots(@raw_holdings)
       tech    = build_technicals(snaps)
       prompt  = build_prompt(snaps, tech)
-      answer  = ask_openai(prompt)
 
-      Rails.cache.write(cache_key, answer, expires_in: 24.hours)
+      answer = ask_openai(prompt)
+
+      Rails.cache.write(cache_key, answer, expires_in: 1.hour)
       notify(answer, tag: 'PORTFOLIO_AI_V2') if @interactive
       answer
     rescue StandardError => e
@@ -62,7 +63,13 @@ module PortfolioInsights
     end
 
     # ---------------- Price enrichment (one MarketFeed call) ----------
-    def default_seg(seg) = seg.presence || 'NSE_EQ'
+    def default_seg(seg)
+      if seg == 'ALL'
+        'NSE_EQ'
+      else
+        seg == 'BSE' ? 'BSE_EQ' : seg
+      end
+    end
 
     def enrich_with_prices!(rows)
       seg_map = Hash.new { |h, k| h[k] = [] }
@@ -88,7 +95,7 @@ module PortfolioInsights
         {
           symbol: h['tradingSymbol'],
           sec_id: h['securityId'],
-          seg: default_seg(h['exchangeSegment']),
+          seg: default_seg(h['exchange']),
           qty: qty, avg: avg, ltp: ltp,
           market_value: ltp * qty,
           pnl_abs: (ltp - avg) * qty,
@@ -100,31 +107,41 @@ module PortfolioInsights
 
     # ---------------- Technical analysis --------------------------------
     def build_technicals(snaps)
+      count = 0
       snaps.each_with_object({}) do |s, memo|
-        daily = fetch_history(s[:sec_id], s[:seg])
-        memo[s[:symbol]] = {
-          sma50: sma(daily, 50),
-          sma200: sma(daily, 200),
-          rsi14: rsi(daily, 14),
-          atr20: atr(daily, 20),
-          trend: trend_signal(daily, s[:ltp])
-        }
+        sleep(1) if (count % 5).zero?
+        candles = fetch_history(s[:sec_id], s[:seg]) # hash-of-arrays
+        count += 1
+        memo[s[:symbol]] = Indicators::HolyGrail.call(candles:) # one-liner
       end
     end
+    # def build_technicals(snaps)
+    #   snaps.each_with_object({}) do |s, memo|
+    #     daily = fetch_history(s[:sec_id], s[:seg])
+    #     memo[s[:symbol]] = {
+    #       sma50: sma(daily, 50),
+    #       sma200: sma(daily, 200),
+    #       rsi14: rsi(daily, 14),
+    #       atr20: atr(daily, 20),
+    #       trend: trend_signal(daily, s[:ltp])
+    #     }
+    #   end
+    # end
 
     # ------------- Historical helpers (simple wrappers) -----------------
     def fetch_history(sec_id, seg, period: 365)
       from = (Date.current - period).strftime('%Y-%m-%d')
       to   = Date.current.strftime('%Y-%m-%d')
+
       Dhanhq::API::Historical.daily(
         securityId: sec_id,
         exchangeSegment: seg,
         instrument: 'EQUITY',
         fromDate: from,
         toDate: to
-      )['data'] || []
+      ) || {}
     rescue StandardError
-      []
+      {}
     end
 
     def fetch_intraday(sec_id, seg)
@@ -135,9 +152,9 @@ module PortfolioInsights
         interval: '60',
         fromDate: Date.current.strftime('%Y-%m-%d'),
         toDate: Date.current.strftime('%Y-%m-%d')
-      )['data'] || []
+      ) || {}
     rescue StandardError
-      []
+      {}
     end
 
     # ---------------- Indicator math (pure Ruby) -----------------------
