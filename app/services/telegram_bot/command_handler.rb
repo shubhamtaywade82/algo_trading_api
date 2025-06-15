@@ -52,7 +52,6 @@ module TelegramBot
 
       return unless result
 
-      TelegramNotifier.send_message(result, chat_id: @cid)
       Rails.cache.write(ANALYSIS_CACHE_KEY, Time.now.utc, expires_in: 25.hours)
     end
 
