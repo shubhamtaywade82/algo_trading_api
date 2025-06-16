@@ -53,7 +53,6 @@ module Dhan
       end
 
       def self.subscribe(ws)
-        # debugger
         # index_keys = Set.new
         # full_keys = Set.new
         index_keys = INDEXES.to_set do |ix|

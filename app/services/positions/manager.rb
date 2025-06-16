@@ -34,6 +34,7 @@ module Positions
         cache.each_value do |position|
           next unless valid_position?(position)
 
+          position['ltp'] = estimate_ltp(position)
           analysis = Orders::Analyzer.call(position)
           Orders::Manager.call(position, analysis)
         end
@@ -56,7 +57,7 @@ module Positions
     # @param pos [Hash] position data
     # @return [Boolean]
     def valid_position?(pos)
-      pos['netQty'].to_i != 0 && pos['buyAvg'].to_f.positive?
+      pos['netQty'].to_i != 0 && pos['buyAvg'].to_f.positive? && pos['productType'] != 'CNC'
     end
 
     # Estimate LTP using net qty and unrealized profit

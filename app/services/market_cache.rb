@@ -29,7 +29,6 @@ module MarketCache
     key = build_key(META_KEY_PREFIX, segment_key, security_id)
     sanitized_data = { ltp: data[:ltp].to_f, open: data[:open].to_f, high: data[:high].to_f, low: data[:low].to_f, volume: data[:volume].to_i, oi: data[:oi].to_i, time: Time.zone.now.to_s }.compact # remove nils
 
-    # debugger
     Rails.cache.write(key, sanitized_data, expires_in: 2.minutes)
     # Rails.logger.debug { "[MarketCache] Market data written for #{key}" }
   rescue StandardError => e
