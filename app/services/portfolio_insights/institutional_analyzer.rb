@@ -41,7 +41,7 @@ module PortfolioInsights
 
       pp prompt
       answer = ask_openai(prompt)
-
+      # answer = prompt
       Rails.cache.write(cache_key, answer, expires_in: 1.hour)
       notify(answer, tag: 'PORTFOLIO_AI_V2') if @interactive
       answer
@@ -71,17 +71,57 @@ module PortfolioInsights
     end
 
     def enrich_with_prices!(rows)
-      pp rows
       seg_map = Hash.new { |h, k| h[k] = [] }
-      rows.each { |h| seg_map[default_seg(h['exchangeSegment'])] << h['securityId'].to_i }
-      seg_map.each_value do |ids|
-        ids.uniq!; ids.each_slice(LTP_BATCH_SIZE) do |slice|
-          resp = Dhanhq::API::MarketFeed.ltp(default_seg_ids_hash(slice, seg_map.key(ids)))
-          slice.each do |sid|
-            rows.find { |r| r['securityId'].to_i == sid }['ltp'] =
-              resp.dig('data', seg_map.key(ids), sid.to_s, 'last_price').to_f
+
+      rows.each do |h|
+        segment = extract_segment(h)
+        seg_map[segment] << h['securityId'].to_i
+      end
+
+      seg_map.each do |segment, ids|
+        ids.uniq.each_slice(LTP_BATCH_SIZE) do |slice|
+          retries = 0
+          begin
+            sleep(1.1) # respect 1/sec limit for Quote APIs
+
+            resp = Dhanhq::API::MarketFeed.ltp({ segment => slice })
+
+            # safer nested access
+            data = resp['data'][segment]
+
+            slice.each do |sid|
+              h = rows.find { |r| r['securityId'].to_i == sid }
+              ltp = begin
+                data.dig(sid.to_s, 'last_price').to_f
+              rescue StandardError
+                0.0
+              end
+              h['ltp'] = ltp > 0 ? ltp : 0.0
+            end
+          rescue StandardError => e
+            retries += 1
+            if retries < 3
+              Rails.logger.warn "[LTP] Retry #{retries} for #{segment} slice #{slice.inspect}: #{e.message}"
+              sleep(2.0)
+              retry
+            else
+              Rails.logger.error "[LTP] FAILED for #{segment} after retries: #{e.message}"
+              slice.each do |sid|
+                h = rows.find { |r| r['securityId'].to_i == sid }
+                h['ltp'] ||= 0.0
+              end
+            end
           end
         end
+      end
+    end
+
+    def extract_segment(h)
+      seg = h['exchangeSegment'] || h['exchange'] || 'NSE'
+      case seg
+      when 'ALL', 'NSE' then 'NSE_EQ'
+      when 'BSE' then 'BSE_EQ'
+      else seg
       end
     end
 
@@ -142,6 +182,7 @@ module PortfolioInsights
         t = tech[s[:symbol]] || {}
         [
           "• #{s[:symbol].ljust(12)}",
+          "Qty: #{s[:qty].to_i}",
           "Wt: #{format('%.1f', s[:weight])}%",
           "PnL: #{₹[s[:pnl_abs]]} (#{format('%.1f', s[:pnl_pct])}%)",
           "Trend: #{t[:trend] || 'N/A'} RSI: #{format('%.1f', t[:rsi14] || 0)}",
@@ -180,6 +221,8 @@ module PortfolioInsights
           You are the chief risk officer of a US$5 Bn global-macro hedge fund.
           Write as if finalising an internal investment committee memo:
           • precise position sizing (share count rounded to board-lot)
+          • NEVER suggest to sell more shares than current quantity.
+          • use Qty: field in each position to know the exact quantity held.
           • show new weight % after the trade
           • always attach a one-line rationale (valuation, momentum, catalyst)
           • use 🔺 TRIM / 🔻 ADD / ⛔️ EXIT prefixes
