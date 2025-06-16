@@ -39,6 +39,7 @@ module PortfolioInsights
       tech  = build_technicals(snaps)
       prompt = build_prompt(snaps, tech)
 
+      pp prompt
       answer = ask_openai(prompt)
 
       Rails.cache.write(cache_key, answer, expires_in: 1.hour)
