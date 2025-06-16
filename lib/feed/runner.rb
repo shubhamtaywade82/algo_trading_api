@@ -21,7 +21,7 @@ module Feed
             Positions::ActiveCache.refresh!
             Positions::Manager.call
             Orders::BracketPlacer.call if ENV['ENABLE_BRACKET_PLACER'] == 'true'
-            sleep 5
+            sleep 60
           end
         rescue StandardError => e
           Rails.logger.error("[ManagerLoop] ❌ #{e.class} - #{e.message}")
