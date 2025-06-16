@@ -14,7 +14,7 @@ class ApplicationService
   # @return [void]
   def notify(message, tag: nil)
     context = "[#{self.class.name}]"
-    final_message = tag.present? ? "#{context} [#{tag}] #{message}" : "#{context} #{message}"
+    final_message = tag.present? ? "#{context} [#{tag}] \n\n #{message}" : "#{context} #{message}"
     TelegramNotifier.send_message(final_message)
   rescue StandardError => e
     Rails.logger.error("[ApplicationService] Telegram Notify Failed: #{e.class} - #{e.message}")

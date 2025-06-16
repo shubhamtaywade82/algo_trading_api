@@ -18,7 +18,7 @@
 #=======================================================================
 module PortfolioInsights
   class InstitutionalAnalyzer < ApplicationService
-    MAX_TOKENS      = 4_000
+    MAX_TOKENS      = 8_000
     DAILY_CACHE_KEY = 'portfolio_ai_v2:%<cid>s:%<day>s'
     LTP_BATCH_SIZE  = 25 # <= now respected
     MAX_ALLOC_PCT   = 10.0
@@ -34,12 +34,10 @@ module PortfolioInsights
 
     # ------------------------------------------------------------------
     def call
-      # return Rails.cache.read(cache_key) if Rails.cache.exist?(cache_key)
-
       enrich_with_prices!(@raw_holdings)
-      snaps   = build_snapshots(@raw_holdings)
-      tech    = build_technicals(snaps)
-      prompt  = build_prompt(snaps, tech)
+      snaps = build_snapshots(@raw_holdings)
+      tech  = build_technicals(snaps)
+      prompt = build_prompt(snaps, tech)
 
       answer = ask_openai(prompt)
 
@@ -115,18 +113,6 @@ module PortfolioInsights
         memo[s[:symbol]] = Indicators::HolyGrail.call(candles:) # one-liner
       end
     end
-    # def build_technicals(snaps)
-    #   snaps.each_with_object({}) do |s, memo|
-    #     daily = fetch_history(s[:sec_id], s[:seg])
-    #     memo[s[:symbol]] = {
-    #       sma50: sma(daily, 50),
-    #       sma200: sma(daily, 200),
-    #       rsi14: rsi(daily, 14),
-    #       atr20: atr(daily, 20),
-    #       trend: trend_signal(daily, s[:ltp])
-    #     }
-    #   end
-    # end
 
     # ------------- Historical helpers (simple wrappers) -----------------
     def fetch_history(sec_id, seg, period: 365)
@@ -142,66 +128,6 @@ module PortfolioInsights
       ) || {}
     rescue StandardError
       {}
-    end
-
-    def fetch_intraday(sec_id, seg)
-      Dhanhq::API::Historical.intraday(
-        securityId: sec_id,
-        exchangeSegment: seg,
-        instrument: 'EQUITY',
-        interval: '60',
-        fromDate: Date.current.strftime('%Y-%m-%d'),
-        toDate: Date.current.strftime('%Y-%m-%d')
-      ) || {}
-    rescue StandardError
-      {}
-    end
-
-    # ---------------- Indicator math (pure Ruby) -----------------------
-    def sma(data, len)
-      closes = data.last(len).map { |d| d['close'].to_f }
-      return 0 if closes.size < len
-
-      closes.sum / len
-    end
-
-    def rsi(data, len)
-      closes = data.map { |d| d['close'].to_f }
-      return 0 if closes.size <= len
-
-      gains = []
-      losses = []
-      closes.each_cons(2) do |a, b|
-        diff = b - a
-        diff.positive? ? gains << diff : losses << diff.abs
-      end
-      avg_gain = gains.last(len).sum / len
-      avg_loss = losses.last(len).sum / len
-      return 50 if avg_loss.zero?
-
-      100 - (100 / (1 + (avg_gain / avg_loss)))
-    end
-
-    def atr(data, len)
-      trs = data.each_cons(2).map do |prev, curr|
-        high = curr['high'].to_f
-        low  = curr['low'].to_f
-        close_prev = prev['close'].to_f
-        [high - low, (high - close_prev).abs, (low - close_prev).abs].max
-      end
-      return 0 if trs.size < len
-
-      trs.last(len).sum / len
-    end
-
-    def trend_signal(daily, ltp)
-      sma50 = sma(daily, 50)
-      sma200 = sma(daily, 200)
-      return 'SIDE' if sma50.zero? || sma200.zero?
-      return 'UP'   if sma50 > sma200 && ltp > sma50
-      return 'DOWN' if sma50 < sma200 && ltp < sma50
-
-      'SIDE'
     end
 
     # ---------------- Prompt builder -----------------------------------
@@ -227,16 +153,20 @@ module PortfolioInsights
 
         #{body}
 
-        Rules:
-        • Keep single-name weight ≤ #{MAX_ALLOC_PCT}%.
-        • Trim winners above cap. Add / average losers with UP trend & RSI < 35.
-        • Size trades to max 1 ATR risk ≈ 1 % of equity.
+        ===== IC MANDATE =====
+        • Hard cap per name → #{MAX_ALLOC_PCT}% of equity
+        • New positions sized so 1 × ATR ≈ 1 % NAV risk
+        • Long only – no shorts
+        • Cash buffer ≥ 5 %
+        ======================
 
-        Generate an institutional-grade trade plan, one instruction per line:
-        «TRIM <SYMBOL> to #{MAX_ALLOC_PCT}% (sell N shares)»
-        «ADD  <SYMBOL> to #{MAX_ALLOC_PCT}% (buy  N shares)»
-        «EXIT <SYMBOL> full»
-        — end of brief
+        DELIVERABLE:
+        Write up to 12 bullet points, one per action, using this exact grammar:
+          🔺 TRIM <SYMBOL> to <new wt%> — sell <N> shares ( reason )
+          🔻 ADD  <SYMBOL> to <new wt%> — buy  <N> shares ( reason )
+          ⛔️ EXIT <SYMBOL> full — sell all shares ( reason )
+
+        Finish with “— end of brief”
       PROMPT
     end
 
@@ -244,9 +174,18 @@ module PortfolioInsights
     def ask_openai(prompt)
       Openai::ChatRouter.ask!(
         prompt,
-        system: 'You are a senior portfolio strategist at a global macro hedge fund. Return bullet‑point instructions only.',
-        temperature: 0.25,
-        max_tokens: MAX_TOKENS
+        system: <<~SYS,
+          You are the chief risk officer of a US$5 Bn global-macro hedge fund.
+          Write as if finalising an internal investment committee memo:
+          • precise position sizing (share count rounded to board-lot)
+          • show new weight % after the trade
+          • always attach a one-line rationale (valuation, momentum, catalyst)
+          • use 🔺 TRIM / 🔻 ADD / ⛔️ EXIT prefixes
+          • no small talk, no apologies – institutional tone.
+        SYS
+        temperature: 0.15,
+        max_tokens: MAX_TOKENS,
+        force: true
       )
     end
   end

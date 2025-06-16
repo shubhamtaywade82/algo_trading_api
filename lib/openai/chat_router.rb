@@ -4,15 +4,18 @@ module Openai
   class ChatRouter
     LIGHT   = 'gpt-3.5-turbo-0125'
     HEAVY   = 'gpt-4o'
-    TOKENS_LIMIT = 2_000 # ≈ words * 1.5
+    TOKENS_LIMIT = 3_000 # ≈ words * 1.5
 
     # High-level helper – returns plain text
     # ------------------------------------------------------------
     def self.ask!(user_prompt,
                   system: default_system,
                   model:  nil,
-                  temperature: 0.7, max_tokens: nil)
+                  temperature: 0.7,
+                  max_tokens: nil,
+                  force: false)
       mdl = model || choose_model("#{system} #{user_prompt}")
+      mdl = HEAVY if force
 
       params = {
         model: mdl,
