@@ -71,6 +71,7 @@ module PortfolioInsights
     end
 
     def enrich_with_prices!(rows)
+      pp rows
       seg_map = Hash.new { |h, k| h[k] = [] }
       rows.each { |h| seg_map[default_seg(h['exchangeSegment'])] << h['securityId'].to_i }
       seg_map.each_value do |ids|
