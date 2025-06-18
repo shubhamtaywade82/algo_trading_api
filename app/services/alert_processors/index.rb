@@ -118,11 +118,11 @@ module AlertProcessors
     def pre_trade_validation
       case alert[:signal_type]
       when 'long_entry'
-        close_opposite!(:pe)  # Close any PE before entering CE
-        true                  # Always allow new CE entry
+        # close_opposite!(:pe)  # Close any PE before entering CE
+        true # Always allow new CE entry
       when 'short_entry'
-        close_opposite!(:ce)  # Close any CE before entering PE
-        true                  # Always allow new PE entry
+        # close_opposite!(:ce)  # Close any CE before entering PE
+        true # Always allow new PE entry
       when 'long_exit'
         exit_position!(:ce)
         false
