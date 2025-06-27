@@ -81,16 +81,34 @@ module Webhooks
     #
     # @return [Instrument] the matching instrument or renders a 404
     def instrument
-      @instrument ||= Instrument.find_by(
-        underlying_symbol: alert_params[:ticker],
-        segment: segment_from_alert_type(alert_params[:instrument_type]),
-        exchange: alert_params[:exchange]
-      )
+      return @instrument if defined?(@instrument) && @instrument
 
-      return @instrument if @instrument
+      type = alert_params[:instrument_type].to_s.downcase
+      exch = alert_params[:exchange]
 
-      render json: { error: 'Instrument not found for the given parameters' },
-             status: :not_found and return
+      @instrument =
+        case type
+        when 'index', 'stock'
+          Instrument.find_by(
+            underlying_symbol: alert_params[:ticker],
+            segment: segment_from_alert_type(type), # index / equity
+            exchange: exch
+          )
+
+        when 'futures'
+          root = alert_params[:ticker].to_s.gsub(/\d+!$/, '')
+          Instrument.where(exchange: exch, segment: 'M')          # commodity
+                    .where(underlying_symbol: [root, "#{root}M"]) # main & mini
+                    .order(lot_size: :desc)
+                    .first
+        end
+
+      unless @instrument
+        render json: { error: 'Instrument not found for the given parameters' },
+               status: :not_found
+      end
+
+      @instrument
     end
 
     # Checks if the instrument type is 'index' or 'stock', ignoring case.
@@ -98,7 +116,7 @@ module Webhooks
     # @return [Boolean] true if relevant instrument type, false otherwise
     #
     def relevant_instrument_type?
-      %w[index stock].include?(alert_params[:instrument_type].to_s.downcase)
+      %w[index stock futures].include?(alert_params[:instrument_type].to_s.downcase)
     end
 
     # Converts the incoming `instrument_type` to the segment expected
@@ -112,6 +130,7 @@ module Webhooks
       case instrument_type
       when 'index' then 'index'
       when 'stock' then 'equity'
+      when 'futures' then 'commodity'
       else instrument_type
       end
     end

@@ -23,19 +23,25 @@ module AlertProcessors
     end
 
     def instrument
-      @instrument ||= Instrument.find_by!(
-        underlying_symbol: alert[:ticker],
+      return @instrument if defined?(@instrument) && @instrument
+
+      root  = alert[:ticker].to_s
+      root  = root.gsub(/\d+!$/, '') if alert[:instrument_type].to_s.downcase == 'futures'
+
+      @instrument = Instrument.find_by!(
+        underlying_symbol: root,
         segment: segment_from_alert_type(alert[:instrument_type]),
         exchange: alert[:exchange]
       )
     rescue ActiveRecord::RecordNotFound
-      raise "Instrument not found for #{alert[:ticker]}"
+      raise "Instrument not found for #{root}"
     end
 
     def segment_from_alert_type(instrument_type)
       case instrument_type
       when 'index' then 'index'
       when 'stock' then 'equity'
+      when 'futures' then 'commodity'
       else instrument_type
       end
     end

@@ -7,6 +7,8 @@ class AlertProcessorFactory
       AlertProcessors::Stock.new(alert)
     when 'index'
       AlertProcessors::Index.new(alert)
+    when 'futures'
+      AlertProcessors::McxCommodity.new(alert)
     else
       raise NotImplementedError, "Unsupported instrument type: #{alert.instrument_type}"
     end
