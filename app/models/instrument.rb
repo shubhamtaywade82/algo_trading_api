@@ -130,6 +130,36 @@ class Instrument < ApplicationRecord
     nil
   end
 
+  def historical_ohlc(from_date: nil, to_date: nil, oi: false)
+    Dhanhq::API::Historical.daily(
+      securityId: security_id,
+      exchangeSegment: exchange_segment,
+      instrument: instrument_type,
+      oi: oi,
+      fromDate: from_date || (Time.zone.today - 365).to_s,
+      toDate: to_date || (Time.zone.today - 1).to_s,
+      expiryCode: 0
+    )
+  rescue StandardError => e
+    Rails.logger.error("Failed to fetch Historical OHLC for Instrument #{security_id}: #{e.message}")
+    nil
+  end
+
+  def intraday_ohlc(interval: nil, oi: false, from_date: nil, to_date: nil)
+    Dhanhq::API::Historical.intraday(
+      securityId: security_id,
+      exchangeSegment: exchange_segment,
+      instrument: instrument_type,
+      interval: interval || '5',
+      oi: oi,
+      fromDate: from_date || (Time.zone.today - 1).to_s,
+      toDate: to_date || (Time.zone.today - 1).to_s
+    )
+  rescue StandardError => e
+    Rails.logger.error("Failed to fetch Historical OHLC for Instrument #{security_id}: #{e.message}")
+    nil
+  end
+
   def depth
     response = Dhanhq::API::MarketFeed.quote(exch_segment_enum)
     response['status'] == 'success' ? response.dig('data', exchange_segment, security_id.to_s) : nil

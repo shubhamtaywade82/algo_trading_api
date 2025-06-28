@@ -12,6 +12,8 @@ module TelegramBot
       when '/portfolio'  then quick_portfolio_brief
       when '/positions'  then positions_brief
       when '/portfolio_full'  then institutional_portfolio_brief
+      when '/nifty_analysis' then run_market_analysis('NIFTY')
+      when '/bank_nifty_analysis' then run_market_analysis('BANKNIFTY')
       else TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid)
       end
     end
@@ -27,6 +29,21 @@ module TelegramBot
                    interactive: true
                  )
       TelegramNotifier.send_message(result, chat_id: @cid) if result
+    end
+
+    # 4️⃣ — NEW  market-analysis hook
+    def run_market_analysis(symbol)
+      TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
+
+      Market::AnalysisService.call(symbol)
+      # if analysis.present?
+      #   TelegramNotifier.send_message("📊 *#{symbol} Analysis completed.*", chat_id: @cid)
+      # else
+      #   TelegramNotifier.send_message("⚠️ Couldn’t complete analysis for #{symbol}.", chat_id: @cid)
+      # end
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
+      TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
     end
 
     def institutional_portfolio_brief

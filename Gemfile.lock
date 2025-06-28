@@ -1,9 +1,9 @@
 GIT
   remote: https://github.com/shubhamtaywade82/dhanhq.git
-  revision: 52388c2c4464c24a6b1071265fef01c06bb88f1f
+  revision: 7c8d74923525de87ec45ee34e87104e5c17278d5
   branch: main
   specs:
-    dhanhq (0.2.0)
+    dhanhq (0.2.2)
       activesupport
       base64
       bindata
@@ -95,13 +95,13 @@ GEM
       descendants_tracker (~> 0.0.4)
       ice_nine (~> 0.11.0)
       thread_safe (~> 0.3, >= 0.3.1)
-    base64 (0.2.0)
+    base64 (0.3.0)
     bcrypt_pbkdf (1.1.1)
     bcrypt_pbkdf (1.1.1-arm64-darwin)
     bcrypt_pbkdf (1.1.1-x86_64-darwin)
-    benchmark (0.4.0)
+    benchmark (0.4.1)
     benchmark-ips (2.14.0)
-    bigdecimal (3.1.9)
+    bigdecimal (3.2.2)
     bindata (2.5.1)
     bootsnap (1.18.4)
       msgpack (~> 1.2)
@@ -167,7 +167,7 @@ GEM
       dry-logic (>= 1.4, < 2)
       dry-types (>= 1.7, < 2)
       zeitwerk (~> 2.6)
-    dry-types (1.8.2)
+    dry-types (1.8.3)
       bigdecimal (~> 3.0)
       concurrent-ruby (~> 1.0)
       dry-core (~> 1.0)
@@ -207,10 +207,10 @@ GEM
       faraday-retry (~> 1.0)
       ruby2_keywords (>= 0.0.4)
     faraday-em_http (1.0.0)
-    faraday-em_synchrony (1.0.0)
+    faraday-em_synchrony (1.0.1)
     faraday-excon (1.1.0)
     faraday-httpclient (1.0.1)
-    faraday-multipart (1.1.0)
+    faraday-multipart (1.1.1)
       multipart-post (~> 2.0)
     faraday-net_http (1.0.2)
     faraday-net_http_persistent (1.2.0)
