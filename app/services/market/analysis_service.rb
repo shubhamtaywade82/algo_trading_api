@@ -105,11 +105,11 @@ module Market
       {
         symbol: @instrument.symbol_name,
         ltp: ltp.to_f,
-        open: (ohlc[:open].last   || ohlc['open'].last).to_f,
-        high: (ohlc[:high].last   || ohlc['high'].last).to_f,
-        low: (ohlc[:low].last || ohlc['low'].last).to_f,
-        close: (ohlc[:close].last || ohlc['close'].last).to_f,
-        volume: (ohlc[:volume].last || ohlc['volume'].last).to_i,
+        open: (ohlc[:open]&.last   || ohlc['open']&.last)&.to_f,
+        high: (ohlc[:high]&.last   || ohlc['high']&.last)&.to_f,
+        low: (ohlc[:low]&.last || ohlc['low']&.last)&.to_f,
+        close: (ohlc[:close]&.last || ohlc['close']&.last)&.to_f,
+        volume: (ohlc[:volume]&.last || ohlc['volume']&.last).to_i,
         ts: Time.current,
         expiry: @expiry_override || nearest_expiry
       }
@@ -117,9 +117,11 @@ module Market
 
     # helper – fetch via Instrument#ohlc if signature matches
     def safe_ohlc_from_instrument
+      sleep(1.1)
       meth = @instrument.method(:ohlc)
       arity = meth.arity
-      safe { arity.zero? ? meth.call : meth.call(@candle, limit: 1) }&.first
+      ohlc = safe { arity.zero? ? meth.call : meth.call(@candle, limit: 1) }['ohlc']
+      { 'open' => [ohlc['open']], 'close' => [ohlc['close']], 'high' => [ohlc['high']], 'low' => [ohlc['low']] }
     end
 
     # helper – use new historical helpers the model exposes

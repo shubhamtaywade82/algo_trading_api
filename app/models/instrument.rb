@@ -152,7 +152,7 @@ class Instrument < ApplicationRecord
       instrument: instrument_type,
       interval: interval || '5',
       oi: oi,
-      fromDate: from_date || (Time.zone.today - 1).to_s,
+      fromDate: from_date || (Time.zone.today - 90).to_s,
       toDate: to_date || (Time.zone.today - 1).to_s
     )
   rescue StandardError => e
