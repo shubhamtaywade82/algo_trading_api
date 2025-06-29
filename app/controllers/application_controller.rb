@@ -3,6 +3,10 @@
 class ApplicationController < ActionController::API
   rescue_from StandardError, with: :handle_internal_error
 
+  rescue_from ActiveRecord::RecordNotFound do |e|
+    render json: { error: e.message }, status: :not_found
+  end
+
   private
 
   def handle_internal_error(exception)

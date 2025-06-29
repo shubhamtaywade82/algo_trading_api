@@ -89,7 +89,7 @@ module Webhooks
       @instrument =
         case type
         when 'index', 'stock'
-          Instrument.find_by(
+          Instrument.find_by!(
             underlying_symbol: alert_params[:ticker],
             segment: segment_from_alert_type(type), # index / equity
             exchange: exch
@@ -103,10 +103,7 @@ module Webhooks
                     .first
         end
 
-      unless @instrument
-        render json: { error: 'Instrument not found for the given parameters' },
-               status: :not_found
-      end
+      raise ActiveRecord::RecordNotFound, 'Instrument not found for the given parameters' unless @instrument
 
       @instrument
     end

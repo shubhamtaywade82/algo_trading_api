@@ -1,0 +1,18 @@
+{
+
+        "ticker": "NIFTY",
+        "instrument_type": "index",
+        "exchange": "NSE",
+        "time": "2025-06-29T10:15:00+05:30",
+        "strategy_type": "trend-following",
+        "order_type": "market",
+        "action": "buy",
+        "current_position": "flat",
+        "previous_position": "short",
+        "current_price": "22550.55",
+        "chart_interval": "5m",
+        "strategy_name": "SuperTrend",
+        "strategy_id": "INDEX123",
+        "signal_type": "long_entry"
+    
+}
