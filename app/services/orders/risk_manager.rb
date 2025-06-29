@@ -2,7 +2,7 @@
 
 module Orders
   class RiskManager < ApplicationService
-    STOP_LOSS_PCT    = { stock: 7.5, option: 15.0 }.freeze
+    STOP_LOSS_PCT    = { stock: 4.0, option: 15.0 }.freeze
     TAKE_PROFIT_PCT  = { stock: 15.0, option: 25.0 }.freeze
     TRAIL_BUFFER_PCT = { stock: 3.0,  option: 5.0 }.freeze
 
