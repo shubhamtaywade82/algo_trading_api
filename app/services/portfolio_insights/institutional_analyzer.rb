@@ -22,6 +22,7 @@ module PortfolioInsights
     DAILY_CACHE_KEY = 'portfolio_ai_v2:%<cid>s:%<day>s'
     LTP_BATCH_SIZE  = 25 # <= now respected
     MAX_ALLOC_PCT   = 10.0
+    EXEC_BAND_PCT   = 5 # max price deviation vs LTP
 
     def initialize(dhan_holdings:, dhan_positions: nil, dhan_balance: nil,
                    client_id: nil, interactive: false)
@@ -41,6 +42,7 @@ module PortfolioInsights
 
       pp prompt
       answer = ask_openai(prompt)
+      validate_prices!(answer, snaps) # sanity-check hallucinated prices
       # answer = prompt
       Rails.cache.write(cache_key, answer, expires_in: 1.hour)
       notify(answer, tag: 'PORTFOLIO_AI_V2') if @interactive
@@ -172,66 +174,82 @@ module PortfolioInsights
       {}
     end
 
-    # ---------------- Prompt builder -----------------------------------
+    # ---------- prompt --------------------------------------------------
     def build_prompt(snaps, tech)
       ₹ = ->(v) { "₹#{format('%.2f', v)}" }
-      cash = @cash_hash[:availabelBalance].to_f
-      cash_line = "Cash available: #{₹[cash]}" unless cash.zero?
+      cash_line = "Cash available: #{₹[@cash_hash[:availabelBalance].to_f]}" if @cash_hash.present?
 
-      body = snaps.map do |s|
+      table = snaps.map do |s|
         t = tech[s[:symbol]] || {}
         [
           "• #{s[:symbol].ljust(12)}",
           "Qty: #{s[:qty].to_i}",
+          "LTP: #{₹[s[:ltp]]}",
           "Wt: #{format('%.1f', s[:weight])}%",
           "PnL: #{₹[s[:pnl_abs]]} (#{format('%.1f', s[:pnl_pct])}%)",
-          "Trend: #{t[:trend] || 'N/A'} RSI: #{format('%.1f', t[:rsi14] || 0)}",
-          "ATR: #{format('%.2f', t[:atr20] || 0)}"
+          "Trend: #{t[:trend] || 'N/A'}  RSI: #{format('%.1f', t[:rsi14] || 0)}  ATR: #{format('%.2f', t[:atr20] || 0)}"
         ].join('  ')
       end.join("\n")
 
       <<~PROMPT
-        PORTFOLIO SUMMARY — #{Date.current}
+        PORTFOLIO SUMMARY — #{Date.today}
         #{cash_line}
 
-        #{body}
+        #{table}
 
         ===== IC MANDATE =====
-        • Hard cap per name → #{MAX_ALLOC_PCT}% of equity
-        • New positions sized so 1 × ATR ≈ 1 % NAV risk
-        • Long only – no shorts
-        • Cash buffer ≥ 5 %
+        • Cap per name → #{MAX_ALLOC_PCT}% NAV
+        • 1×ATR ≈ 1 % NAV risk sizing
+        • Long-only, cash buffer ≥ 5 %
         ======================
 
         DELIVERABLE:
-        Write up to 12 bullet points, one per action, using this exact grammar:
-          🔺 TRIM <SYMBOL> to <new wt%> — sell <N> shares ( reason )
-          🔻 ADD  <SYMBOL> to <new wt%> — buy  <N> shares ( reason )
-          ⛔️ EXIT <SYMBOL> full — sell all shares ( reason )
+        ≤ 12 bullets, *exact* grammar:
+          🔺 TRIM <SYMBOL> to <new wt%> — sell <N> shares at ₹<price> ( reason )
+          🔻 ADD  <SYMBOL> to <new wt%> — buy  <N> shares at ₹<price> ( reason )
+          ⛔️ EXIT <SYMBOL> full — sell all shares at ₹<price> ( reason )
+         AFTER the trade list, append exactly two labelled sections:
+
+         === CORE (≥ 3 yrs) ===
+         • <SYMBOL> — thesis, exit > ₹<price>
+
+         === TRADING (< 6 mos) ===
+         • <SYMBOL> — catalyst, exit @ ₹<price> or <date>
 
         Finish with “— end of brief”
       PROMPT
     end
 
-    # ---------------- OpenAI wrapper -----------------------------------
+    # ---------------- OpenAI wrapper ----------------------------------
     def ask_openai(prompt)
       Openai::ChatRouter.ask!(
         prompt,
         system: <<~SYS,
-          You are the chief risk officer of a US$5 Bn global-macro hedge fund.
-          Write as if finalising an internal investment committee memo:
-          • precise position sizing (share count rounded to board-lot)
-          • NEVER suggest to sell more shares than current quantity.
-          • use Qty: field in each position to know the exact quantity held.
-          • show new weight % after the trade
-          • always attach a one-line rationale (valuation, momentum, catalyst)
-          • use 🔺 TRIM / 🔻 ADD / ⛔️ EXIT prefixes
-          • no small talk, no apologies – institutional tone.
+          You are chief risk officer of a US$5 Bn hedge fund.  Rules:
+          • All limit prices must be within ±#{EXEC_BAND_PCT}% of LTP.
+          • NEVER sell more shares than “Qty:” shows.
+          • Show the new weight % after the trade.
+          • Classify every holding as either CORE (multi-year) or TRADING (< 6 m).
+          • Give a realistic exit price OR date in those lists.
+          • One-line valuation / momentum / catalyst rationale.
+          • Use ✅ grammar exactly; no extra commentary.
         SYS
         temperature: 0.15,
         max_tokens: MAX_TOKENS,
         force: true
       )
+    end
+
+    # ---------- sanity-check prices ------------------------------------
+    def validate_prices!(text, snaps)
+      text.scan(/([A-Z]{2,})[^₹]*₹([\d\.]+)/).each do |sym, price_str|
+        price = price_str.to_f
+        snap  = snaps.find { |r| r[:symbol] == sym }
+        next unless snap && snap[:ltp].positive?
+
+        diff = ((price - snap[:ltp]).abs / snap[:ltp]) * 100
+        Rails.logger.warn("⚠️ #{sym} price deviation #{format('%.1f', diff)}%") if diff > EXEC_BAND_PCT
+      end
     end
   end
 end
