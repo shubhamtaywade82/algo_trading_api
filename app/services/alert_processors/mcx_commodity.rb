@@ -87,7 +87,7 @@ module AlertProcessors
         log :info, "✅ Allocating #{lots} lot(s). Per lot cost: ₹#{per_lot_cost.round(2)}."
       end
 
-      lots * lot_size
+      lots # * lot_size
     end
 
     def build_order_payload(strike, derivative)
