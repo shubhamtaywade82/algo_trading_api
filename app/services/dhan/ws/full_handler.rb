@@ -7,7 +7,7 @@ module Dhan
         sid = packet[:security_id]
         segment_enum = packet[:exchange_segment]
         segment_key = DhanhqMappings::SEGMENT_ENUM_TO_KEY[segment_enum]
-        inst = FeedListener.find_instrument_cached(sid, segment_enum) or return
+        inst = FeedListener.find_instrument_cached(sid.to_i, segment_enum) or return
 
         # Write to cache only if LTP changed
         MarketCache.write_ltp(segment_key, sid, packet[:ltp])
@@ -29,7 +29,7 @@ module Dhan
                                       })
 
         Rails.logger.debug do
-          # pp "[FULL] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} VOL=#{packet[:volume]}"
+          pp "[FULL] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} VOL=#{packet[:volume]}"
         end
 
         # Run position analysis only if there's an active position

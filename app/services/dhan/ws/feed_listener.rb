@@ -41,7 +41,7 @@ module Dhan
           end
 
           ws.on(:close) do |event|
-            pp { "[WS] ✖ Disconnected (#{event.code}): #{event.reason}" }
+            pp "[WS] ✖ Disconnected (#{event.code}): #{event.reason}"
             EM.stop
             sleep 1
             run
@@ -59,8 +59,6 @@ module Dhan
           subscription_key(ix[:security_id], ix[:exchange_segment])
         end
         full_keys = Positions::ActiveCache.all.keys.to_set(&:to_s)
-
-
 
         combined_keys = index_keys + full_keys
         return if combined_keys == @last_subscribed_keys
@@ -98,11 +96,8 @@ module Dhan
             InstrumentList: batch
           }
 
-          pp payload
           ws.send(payload.to_json)
-          pp do
-            "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
-          end
+          pp "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
         end
       end
 
@@ -112,7 +107,7 @@ module Dhan
         packet = WebsocketPacketParser.new(data).parse
         return if packet.blank?
 
-        log_ltp_change(packet)
+        # log_ltp_change(packet)
         case packet[:feed_response_code]
         when 8
           FullHandler.call(packet)
@@ -121,7 +116,7 @@ module Dhan
         when 50
           pp "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
         else
-          pp { "[WS] Ignored packet type: #{packet[:feed_response_code]}" }
+          pp "[WS] Ignored packet type: #{packet[:feed_response_code]}"
         end
       rescue StandardError => e
         Rails.logger.error "[WS] ❌ Parse/Dispatch Error: #{e.class} - #{e.message}"
@@ -175,7 +170,7 @@ module Dhan
 
         name = instrument&.symbol_name || key
 
-        # pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
+        pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
       end
     end
   end
