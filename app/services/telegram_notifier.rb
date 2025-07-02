@@ -7,9 +7,9 @@ class TelegramNotifier
   TELEGRAM_API = 'https://api.telegram.org'
 
   # chat_id is now OPTIONAL (falls back to ENV)
-  def self.send_message(text, chat_id: nil)
+  def self.send_message(text, chat_id: nil, **extra_params)
     chat_id ||= ENV.fetch('TELEGRAM_CHAT_ID')
-    post('sendMessage', chat_id:, text:)
+    post('sendMessage', chat_id:, text:, **extra_params)
   end
 
   def self.send_chat_action(action:, chat_id: nil)

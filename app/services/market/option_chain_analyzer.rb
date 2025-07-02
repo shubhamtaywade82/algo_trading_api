@@ -3,42 +3,35 @@
 module Market
   class OptionChainAnalyzer
     def initialize(option_chain_data, spot_price)
-      @chain = option_chain_data
-      @spot_price = spot_price
+      @spot = spot_price.to_f
+      @chain_data = option_chain_data[:oc] || {}
+      @strikes = @chain_data.keys.map(&:to_f).sort
     end
 
-    def extract_strikes
-      strikes = @chain["optionDetailsList"] || []
+    def extract_data
+      return nil if @chain_data.blank? || @strikes.blank?
 
-      # Find ATM strike
-      atm = strikes.min_by { |s| (s["strikePrice"].to_f - @spot_price).abs }
+      atm_strike = @strikes.min_by { |s| (s - @spot).abs }
 
       {
-        atm: build_data(atm),
-        otm_call: build_data(
-          strikes.find { |s| s["strikePrice"].to_f > @spot_price }
-        ),
-        itm_call: build_data(
-          strikes.reverse.find { |s| s["strikePrice"].to_f < @spot_price }
-        ),
-        otm_put: build_data(
-          strikes.reverse.find { |s| s["strikePrice"].to_f < @spot_price }
-        ),
-        itm_put: build_data(
-          strikes.find { |s| s["strikePrice"].to_f > @spot_price }
-        )
+        atm: option_data_for_strike(atm_strike),
+        otm_call: option_data_for_strike(@strikes.detect { |s| s > @spot }),
+        itm_call: option_data_for_strike(@strikes.reverse.detect { |s| s < @spot }),
+        otm_put: option_data_for_strike(@strikes.reverse.detect { |s| s < @spot }),
+        itm_put: option_data_for_strike(@strikes.detect { |s| s > @spot })
       }
     end
 
     private
 
-    def build_data(strike)
-      return nil unless strike
+    def option_data_for_strike(strike)
+      return nil unless strike && @chain_data[format('%.6f', strike)]
 
+      node = @chain_data[format('%.6f', strike)]
       {
-        strike: strike["strikePrice"],
-        call: strike["call"],
-        put: strike["put"]
+        strike: strike,
+        call: node['ce'],
+        put: node['pe']
       }
     end
   end

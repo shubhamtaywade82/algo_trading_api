@@ -55,8 +55,10 @@ module Market
 
       return unless md
 
-      prompt  = build_prompt(md)
-      answer  = ask_openai(prompt)
+      prompt = build_prompt(md)
+      pp prompt
+      answer = ask_openai(prompt)
+      # answer = prompt
 
       push_telegram(answer, md)
 
@@ -102,6 +104,17 @@ module Market
 
       return if ltp.blank? || ohlc.blank?
 
+      option_chain_raw = safe { @instrument.fetch_option_chain(@expiry_override || nearest_expiry) }
+      options_data = nil
+
+      if option_chain_raw.present?
+        analyzer = Market::OptionChainAnalyzer.new(
+          option_chain_raw,
+          ltp.to_f
+        )
+        options_data = analyzer.extract_data
+      end
+
       {
         symbol: @instrument.symbol_name,
         ltp: ltp.to_f,
@@ -111,7 +124,8 @@ module Market
         close: (ohlc[:close]&.last || ohlc['close']&.last)&.to_f,
         volume: (ohlc[:volume]&.last || ohlc['volume']&.last).to_i,
         ts: Time.current,
-        expiry: @expiry_override || nearest_expiry
+        expiry: @expiry_override || nearest_expiry,
+        options: options_data
       }
     end
 
@@ -163,14 +177,29 @@ module Market
         🔮 You are an expert financial analyst specialising in Indian equity
         & derivatives markets, focused on buying **#{md[:symbol]}** options.
 
-        Current index level: **#{md[:ltp]}**
+        Current Spot Price: **₹#{md[:ltp]}**
+
+        Technicals:
+        • Open: ₹#{md[:open]}
+        • High: ₹#{md[:high]}
+        • Low: ₹#{md[:low]}
+        • Close: ₹#{md[:close]}
+        • Volume: #{md[:volume]}
+
+        Options Chain Data:
+        #{format_options_chain(md[:options])}
 
         Analyse:
         • Technicals (candlesticks, S/R, volatility, Greeks)
         • Fundamentals (FII/DII flows, macro news, RBI commentary)
-        • Real-time news sentiment
-
+        • OI & IV trends
+        • Greeks (delta, theta, vega, gamma)
+        • Intraday bias
+        • Recommend whether to buy Calls, Puts or Straddle/Strangle
+        • Suggest strike prices for expiry #{md[:expiry]}
         Produce intraday probabilities (%) for:
+        • Probability of ≥ 30-50% intraday profit
+        • Key risks
         – Significant upside – Significant downside – Flat market
 
         From **#{md[:ltp]}**, estimate whether #{md[:symbol]} closes higher,
@@ -178,7 +207,10 @@ module Market
 
         Then recommend the best intraday #{md[:symbol]} options-buying strategy:
         – Buy calls – Buy puts – Both (straddle / strangle)
-
+        Provide a concise trading plan with:
+        • Strikes to buy
+        • Stop-loss
+        • Target
         For each idea:
         • Suggest strike(s) for expiry **#{md[:expiry]}**
         • Premium range in ₹
@@ -189,6 +221,32 @@ module Market
         – Exact strike(s) to buy
         – Suggested stop-loss & target.
       PROMPT
+    end
+
+    def format_options_chain(data)
+      return 'No option chain data available.' unless data
+
+      blocks = %i[atm otm_call itm_call otm_put itm_put].map do |k|
+        opt = data[k]
+        next unless opt
+
+        <<~STR
+          ► #{k.to_s.upcase}
+          Strike: #{opt[:strike]}
+          CALL:
+            LTP: ₹#{opt[:call]['last_price']}
+            IV: #{opt[:call]['implied_volatility']}
+            OI: #{opt[:call]['oi']}
+            Delta: #{opt[:call].dig('greeks', 'delta')}
+          PUT:
+            LTP: ₹#{opt[:put]['last_price']}
+            IV: #{opt[:put]['implied_volatility']}
+            OI: #{opt[:put]['oi']}
+            Delta: #{opt[:put].dig('greeks', 'delta')}
+        STR
+      end
+
+      blocks.compact.join("\n\n")
     end
 
     # ----------------------------------------------------------------
@@ -216,12 +274,16 @@ module Market
     # 4️⃣  Telegram
     # ------------------------------------------------------------
     def push_telegram(text, md)
+      options_text = format_options_chain(md[:options])
+
       message = <<~TG
         #{TELEGRAM_TAG} – *#{md[:symbol]}*
         LTP  : ₹#{md[:ltp].round(2)}
         Time : #{md[:ts].strftime('%H:%M:%S')}
         Frame: #{@candle}
         Exp  : #{md[:expiry]}
+        ───────────────────────────
+        #{options_text}
         ───────────────────────────
         #{text}
       TG
@@ -235,6 +297,10 @@ module Market
     def nearest_expiry
       raw = safe { @instrument.expiry_list } || []
       raw.empty? ? [] : raw.first
+    end
+
+    def escape_markdown_v2(text)
+      text.gsub(/([_*\[\]()~`>#+\-=|{}.!\\])/, '\\\\\1')
     end
 
     def safe
