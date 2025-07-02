@@ -33,6 +33,7 @@ module Orders
 
       store_max_pct if @a[:pnl_pct] > @max_pct
 
+      # pp "net_pnl: #{net_pnl} take_profit_threshold: #{take_profit_threshold}"
       # === 1. Take Profit
       if net_pnl >= take_profit_threshold
         notify("✅ TP Hit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
