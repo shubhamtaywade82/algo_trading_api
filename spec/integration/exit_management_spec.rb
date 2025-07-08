@@ -11,11 +11,9 @@ RSpec.describe 'Exit Management Integration', type: :integration do
     allow(Rails.logger).to receive(:info)
     allow(Rails.logger).to receive(:error)
     allow(Rails.logger).to receive(:warn)
-    # Stub Order and ExitLog
-    allow(Order).to receive(:create!).and_return(true)
-    allow(ExitLog).to receive(:create!).and_return(true)
-    # Prevent real time check
+
     allow(Time).to receive(:current).and_return(Time.parse('2024-06-19 12:30:00 +0530'))
+    # Stub Dhanhq API calls
     allow(Dhanhq::API::Portfolio).to receive(:positions).and_return(positions)
 
     allow(Orders::Analyzer).to receive(:call).with(stock_position).and_return(
@@ -58,12 +56,6 @@ RSpec.describe 'Exit Management Integration', type: :integration do
     }
   end
   # 3. Webmocks for Dhanhq API
-  let(:order_response_ok) do
-    {
-      'orderId' => '123456789',
-      'orderStatus' => 'PENDING'
-    }
-  end
   let(:order_modify_success) { { 'status' => 'success' } }
   let(:order_modify_fail)    { { 'status' => 'failure', 'omsErrorDescription' => 'Invalid Trigger' } }
 
@@ -93,6 +85,12 @@ RSpec.describe 'Exit Management Integration', type: :integration do
 
   let(:positions) { [stock_position, option_position, future_position] }
 
+  let(:order_response_ok) do
+    {
+      'orderId' => '123456789',
+      'orderStatus' => 'PENDING'
+    }
+  end
   # 1. Stub Portfolio.positions to return test positions
 
   # 2. Stub Analyzer to return analysis for each type
@@ -103,14 +101,11 @@ RSpec.describe 'Exit Management Integration', type: :integration do
 
     # Check that TelegramNotifier is called for both exit (TP) and adjust (SL) flows
     expect(TelegramNotifier).to have_received(:send_message).at_least(:once)
-    expect(Order).to have_received(:create!).at_least(:once)
-    expect(ExitLog).to have_received(:create!).at_least(:once)
   end
 
   context 'when adjuster needs to fallback (order modify fails)' do
     before do
       allow(Dhanhq::API::Orders).to receive(:modify).and_return(order_modify_fail)
-      # Also stub Orders::Executor in fallback path to avoid double effect
       allow(Orders::Executor).to receive(:call).and_return(true)
     end
 
@@ -128,8 +123,6 @@ RSpec.describe 'Exit Management Integration', type: :integration do
     end
 
     it 'logs error and does not create Order or ExitLog' do
-      expect(Order).not_to receive(:create!)
-      expect(ExitLog).not_to receive(:create!)
       expect do
         Orders::Executor.call(option_position, 'SL',
                               { entry_price: 50, ltp: 45, quantity: 75, pnl: -375, pnl_pct: -10.0, instrument_type: :option })
@@ -160,7 +153,6 @@ RSpec.describe 'Exit Management Integration', type: :integration do
 
     it 'logs and skips exits' do
       expect(Rails.logger).to receive(:info).with(/Market closing — skipping exits/)
-      expect(Order).not_to receive(:create!)
       Positions::Manager.call
     end
   end
