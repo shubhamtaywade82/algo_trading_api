@@ -104,7 +104,6 @@ module AlertProcessors
                end
 
       return skip!(:no_affordable_strike) unless strike
-      return skip!(:no_affordable_strike) unless strike
 
       derivative = fetch_derivative(strike, expiry, option)
       return skip!(:no_derivative) unless derivative
@@ -296,9 +295,7 @@ module AlertProcessors
         log :info,
             "💡 Not enough margin for 30% allocation, but can buy 1 lot. (#{strike_info}) Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
       elsif lots.zero?
-        shortfall = per_lot_cost - available_balance
-        log :warn,
-            "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
+        # log_insufficient_margin(strike_info, per_lot_cost, available_balance)
         return 0
       else
         log :info,
@@ -445,15 +442,20 @@ module AlertProcessors
       per_lot_cost = strike[:last_price].to_f * lot_size
 
       if per_lot_cost > available_balance
-        shortfall = per_lot_cost - available_balance
-        log :warn,
-            "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
+        log_insufficient_margin(strike_info, per_lot_cost, available_balance)
         false
       else
         log :info,
             "✅ Can afford at least 1 lot. (#{strike_info}) Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
         true
       end
+    end
+
+    def log_insufficient_margin(strike_info, per_lot_cost, available_balance)
+      shortfall = per_lot_cost - available_balance
+      log :warn,
+          "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{per_lot_cost.round(2)}, " \
+          "Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
     end
   end
 end

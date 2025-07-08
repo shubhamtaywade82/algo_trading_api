@@ -2,10 +2,9 @@
 
 module Option
   class ChainAnalyzer
-    IV_RANK_MIN     = 0.00
-    IV_RANK_MAX     = 0.80
-    # MIN_DELTA       = 0.30
-    ATM_RANGE_PCT   = 0.01 # 1%
+    IV_RANK_MIN       = 0.00
+    IV_RANK_MAX       = 0.80
+    BASE_ATM_RANGE_PCT = 0.01 # fallback minimum range
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
 
     TOP_RANKED_LIMIT = 5
@@ -19,11 +18,11 @@ module Option
       @iv_rank          = iv_rank.to_f
       @historical_data  = historical_data || []
 
-      Rails.logger.debug { "Analysing Options for #{expiry}" }
+      Rails.logger.debug { "Analyzing Options for #{expiry}" }
       raise ArgumentError, 'Option Chain is missing or empty!' if @option_chain[:oc].blank?
     end
 
-    def analyze(signal_type:, strategy_type:)
+    def analyze(signal_type:, strategy_type:, signal_strength: 1.0)
       return { proceed: false, reason: 'IV rank outside range' } if iv_rank_outside_range?
       return { proceed: false, reason: 'Late entry, theta risk' } if discourage_late_entry_due_to_theta?
 
@@ -34,7 +33,8 @@ module Option
       return { proceed: false, reason: 'No tradable strikes found' } if filtered.empty?
 
       ranked = filtered.map do |opt|
-        opt.merge(score: score_for(opt, strategy_type))
+        score = score_for(opt, strategy_type, signal_type, signal_strength)
+        opt.merge(score: score)
       end.sort_by { |o| -o[:score] }
 
       top_candidates = ranked.first(TOP_RANKED_LIMIT)
@@ -61,25 +61,23 @@ module Option
         option = data[side]
         next unless option
 
-        # ⛔ Skip strikes with no valid IV or price
+        # Skip strikes with no valid IV or price
         next if option['implied_volatility'].to_f.zero? || option['last_price'].to_f.zero?
-
-        # TODO: Skip illiquid strikes where you can’t even buy 3 lots at the ask
-        # next if option['top_ask_quantity'].to_i < (3 * lot_size(option_key))
 
         strike_price = strike_str.to_f
         delta = option.dig('greeks', 'delta').to_f.abs
 
-        # ⛔ Skip strikes with delta below minimum threshold
+        # Skip strikes with low delta
         next if delta < min_delta_now
 
-        # ⛔ Skip if strike is outside ATM range
+        # Skip strikes outside adaptive ATM range
         next unless within_atm_range?(strike_price)
 
         build_strike_data(strike_price, option, data['volume'])
       end
     end
 
+    # Dynamic minimum delta thresholds depending on time of day
     def min_delta_now
       h = Time.zone.now.hour
       return 0.45 if h >= 14
@@ -89,8 +87,18 @@ module Option
       0.25
     end
 
+    # Dynamic ATM range based on volatility
+    def atm_range_pct
+      case iv_rank
+      when 0.0..0.2 then 0.01
+      when 0.2..0.5 then 0.015
+      else 0.025
+      end
+    end
+
     def within_atm_range?(strike)
-      strike.between?(@underlying_spot * (1 - ATM_RANGE_PCT), @underlying_spot * (1 + ATM_RANGE_PCT))
+      pct = atm_range_pct
+      strike.between?(@underlying_spot * (1 - pct), @underlying_spot * (1 + pct))
     end
 
     def build_strike_data(strike_price, option, volume)
@@ -116,8 +124,11 @@ module Option
       }
     end
 
-    def score_for(opt, strategy)
+    def score_for(opt, strategy, signal_type, signal_strength)
       spread     = opt[:bid_ask_spread] <= 0 ? 0.1 : opt[:bid_ask_spread]
+      last_price = opt[:last_price].to_f
+      relative_spread = spread / last_price
+
       oi         = [opt[:oi], 1].max
       volume     = [opt[:volume], 1].max
       delta      = opt[:greeks][:delta].abs
@@ -130,15 +141,49 @@ module Option
 
       lw, mw, = strategy == 'intraday' ? [0.35, 0.35, 0.3] : [0.25, 0.25, 0.5]
 
-      liquidity_score = ((oi * volume) + vol_chg.abs) / spread
+      # Liquidity score normalized for spread
+      liquidity_score = ((oi * volume) + vol_chg.abs) / (relative_spread.nonzero? || 0.01)
+
+      # Momentum
       momentum_score = (oi_chg / 1000.0)
       momentum_score += price_chg.positive? ? price_chg : price_chg.abs if delta >= 0 && price_chg.positive?
-      greeks_score = (delta * 100) + (gamma * 10) + (vega * 2) - (theta.abs * 3)
 
-      total = (liquidity_score * lw) + (momentum_score * mw) + (greeks_score * theta_weight)
-      # total *= 0.9 if opt[:iv] > 40 && strategy != 'intraday'
+      # Time-to-expiry penalty on theta
+      days_left = (@expiry - Date.today).to_i
+      theta_penalty = theta.abs * (days_left < 3 ? 2.0 : 1.0)
+      greeks_score = (delta * 100) + (gamma * 10) + (vega * 2) - (theta_penalty * 3)
+
+      # Add price-to-premium efficiency
+      efficiency = price_chg.zero? ? 0.0 : price_chg / last_price
+      efficiency_score = efficiency * 30 # weight tuning factor
+
+      total = (liquidity_score * lw) +
+              (momentum_score * mw) +
+              (greeks_score * theta_weight) +
+              efficiency_score
+
+      # Adjust for local IV skew
       z = local_iv_zscore(opt[:iv], opt[:strike_price])
       total *= 0.90 if z > 1.5
+
+      # Check skew tilt
+      tilt = skew_tilt
+      if signal_type == :ce && tilt == :call
+        total *= 1.10
+      elsif signal_type == :pe && tilt == :put
+        total *= 1.10
+      end
+
+      # Historical IV sanity check
+      hist_vol = historical_volatility
+      if hist_vol.positive?
+        iv_ratio = opt[:iv] / hist_vol
+        total *= 0.9 if iv_ratio > 1.5
+      end
+
+      # Factor in external signal strength
+      total *= signal_strength
+
       total
     end
 
@@ -146,32 +191,51 @@ module Option
       Time.zone.now.hour >= 13 ? 4.0 : 3.0
     end
 
-    # Down-rank strikes whose IV is far above the local smile (they’re expensive).
-    # Z-score vs linear fit of ±3 strikes; if z > 1.5 shave 10 % off total score.
     def local_iv_zscore(strike_iv, strike)
       neighbours = @option_chain[:oc].keys.map(&:to_f)
-                                     .select { |s| (s - strike).abs <= 3 * 100 } # 3 strikes ≈ 300-₹ span
-      ivs = neighbours.map { |s| @option_chain[:oc][format('%.6f', s)]['ce']['implied_volatility'].to_f }
+                                     .select { |s| (s - strike).abs <= 3 * 100 }
+      ivs = neighbours.map do |s|
+        @option_chain[:oc][format('%.6f', s)]['ce']['implied_volatility'].to_f
+      end
+      return 0 if ivs.empty?
+
       mean = ivs.sum / ivs.size
-      std = Math.sqrt(ivs.sum { |v| (v - (ivs.sum / ivs.size))**2 } / ivs.size)
+      std = Math.sqrt(ivs.sum { |v| (v - mean)**2 } / ivs.size)
       std.zero? ? 0 : (strike_iv - mean) / std
     end
 
-    # def intraday_trend
-    #   atm_strike = determine_atm_strike
-    #   atm_key = format('%.6f', atm_strike)
-    #   ce = @option_chain[:oc].dig(atm_key, 'ce')
-    #   pe = @option_chain[:oc].dig(atm_key, 'pe')
-    #   return :neutral unless ce && pe
+    def skew_tilt
+      ce_ivs = collect_side_ivs(:ce)
+      pe_ivs = collect_side_ivs(:pe)
 
-    #   ce_change = ce['last_price'].to_f - ce['previous_close_price'].to_f
-    #   pe_change = pe['last_price'].to_f - pe['previous_close_price'].to_f
+      avg_ce = ce_ivs.sum / ce_ivs.size.to_f if ce_ivs.any?
+      avg_pe = pe_ivs.sum / pe_ivs.size.to_f if pe_ivs.any?
 
-    #   return :bullish if ce_change.positive? && pe_change.negative?
-    #   return :bearish if ce_change.negative? && pe_change.positive?
+      return :call if avg_ce && avg_pe && avg_ce > avg_pe * 1.1
+      return :put if avg_pe && avg_ce && avg_pe > avg_ce * 1.1
 
-    #   :neutral
-    # end
+      :neutral
+    end
+
+    def collect_side_ivs(side)
+      @option_chain[:oc].values.map do |data|
+        iv = data.dig(side.to_s, 'implied_volatility')
+        iv&.to_f if iv && iv.to_f > 0
+      end.compact
+    end
+
+    def historical_volatility
+      return 0 if @historical_data.empty?
+
+      closes = @historical_data['close']
+      returns = closes.each_cons(2).map do |a, b|
+        Math.log(b / a)
+      rescue StandardError
+        0
+      end
+      std_dev = Math.sqrt(returns.sum { |r| (r - (returns.sum / returns.size))**2 } / returns.size)
+      std_dev * Math.sqrt(252) * 100 # Annualized historical volatility as percentage
+    end
 
     def intraday_trend
       window = 3
