@@ -25,7 +25,7 @@ RSpec.describe AlertProcessorFactory, type: :service do
     end
 
     context 'when instrument type is unsupported' do
-      let(:unsupported_alert) { build(:alert, instrument_type: 'unsupported', instrument: instrument) }
+      let(:unsupported_alert) { build(:alert, instrument_type: 'commodity', instrument: instrument) }
 
       it 'raises a NotImplementedError' do
         expect do
