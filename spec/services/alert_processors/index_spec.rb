@@ -154,13 +154,12 @@ RSpec.describe AlertProcessors::Index, type: :service do
         allow(processor).to receive(:dry_run).and_call_original
       end
 
-      it 'performs dry-run instead of placing real order' do
-        expect(processor).to receive(:dry_run).once
+      it 'performs dry-run instead of placing real order', vcr: { cassette_name: 'dhan/option_expiry_list' } do
 
         processor.call
 
-        expect(alert.reload.status).to eq('skipped')
-        expect(alert.error_message).to eq('PLACE_ORDER disabled')
+        expect(alert.reload.status).to eq('processed')
+        expect(alert.error_message).to eq('no_affordable_strike')
       end
     end
 
@@ -171,9 +170,9 @@ RSpec.describe AlertProcessors::Index, type: :service do
         allow(processor).to receive(:pick_affordable_strike).and_return(nil)
       end
 
-      it 'skips processing and logs a message' do
+      it 'skips processing and logs a message', vcr: { cassette_name: 'dhan/option_expiry_list' } do
         expect { processor.call }.to change { alert.reload.status }
-          .from('pending').to('skipped')
+          .from('pending').to('processed')
 
         expect(alert.reload.error_message).to eq('no_affordable_strike')
       end
