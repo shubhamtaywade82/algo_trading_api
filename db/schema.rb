@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_06_08_070725) do
+ActiveRecord::Schema[8.0].define(version: 2025_07_08_174626) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -39,6 +39,12 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_08_070725) do
     t.index ["instrument_type"], name: "index_alerts_on_instrument_type"
     t.index ["strategy_id"], name: "index_alerts_on_strategy_id"
     t.index ["ticker"], name: "index_alerts_on_ticker"
+  end
+
+  create_table "app_settings", primary_key: "key", id: :string, force: :cascade do |t|
+    t.string "value", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "delayed_jobs", force: :cascade do |t|

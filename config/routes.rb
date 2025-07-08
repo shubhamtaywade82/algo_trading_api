@@ -11,6 +11,10 @@ Rails.application.routes.draw do
     post :dhan_postback, to: 'dhan_postbacks#create'
   end
 
+  namespace :admin do
+    resources :settings, only: %i[index update], param: :key
+  end
+
   get '/funds', to: 'funds#index'
   get '/orders', to: 'orders#index'
   get '/orders/trades', to: 'orders#trades'
