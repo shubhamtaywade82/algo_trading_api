@@ -76,4 +76,4 @@ RSpec.configure do |config|
   config.include CsvMockHelper
   config.include JsonFixtureHelper
 end
-VCR.turn_off!
+# VCR.turn_off!

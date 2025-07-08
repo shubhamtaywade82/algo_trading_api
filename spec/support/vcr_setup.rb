@@ -11,7 +11,8 @@ VCR.configure do |config|
   config.default_cassette_options = { record: :once }
 
   # You can filter sensitive data, e.g. API keys:
-  config.filter_sensitive_data('<API_KEY>') { ENV.fetch('API_KEY', nil) }
+  config.filter_sensitive_data('<ACCESS_TOKEN>') { ENV.fetch('DHAN_CLIENT_ID', nil) }
+  config.filter_sensitive_data('<CLIENT_ID>') { ENV.fetch('DHAN_ACCESS_TOKEN', nil) }
 
   # Optionally, allow localhost connections for Selenium, etc.
   config.ignore_localhost = true

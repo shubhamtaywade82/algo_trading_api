@@ -8,7 +8,7 @@ Dhanhq.configure do |config|
 
   # Optional explicit sandbox for safety:
   config.base_url = if Rails.env.test?
-                      Dhanhq::Constants::SANDBOX_BASE_URL
+                      Dhanhq::Constants::LIVE_BASE_URL
                     else
                       Dhanhq::Constants::LIVE_BASE_URL
                     end
