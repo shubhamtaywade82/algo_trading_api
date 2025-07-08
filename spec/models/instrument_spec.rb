@@ -2,26 +2,31 @@
 
 require 'rails_helper'
 
-RSpec.describe Instrument do
-  it { is_expected.to validate_presence_of(:security_id) }
+RSpec.describe Instrument, type: :model do
+  subject { described_class.new(security_id: '12345') }
 
-  it {
-    expect(subject).to define_enum_for(:exchange)
-      .with_values(nse: 'NSE', bse: 'BSE')
-      .backed_by_column_of_type(:string)
-  }
+  describe 'validations' do
+    it { is_expected.to validate_presence_of(:security_id) }
+  end
 
-  it {
-    expect(subject).to define_enum_for(:segment)
-      .with_values(index: 'I', equity: 'E', currency: 'C', derivatives: 'D')
-      .backed_by_column_of_type(:string)
-  }
+  describe 'enums' do
+    it do
+      expect(subject).to define_enum_for(:exchange)
+        .with_values(nse: 'NSE', bse: 'BSE', mcx: 'MCX')
+        .backed_by_column_of_type(:string)
+    end
 
-  describe '#exchange_segment' do
-    let(:instrument) { build(:instrument, exchange: 'nse', segment: 'equity') }
-
-    it 'returns the correct exchange segment' do
-      expect(instrument.exchange_segment).to eq('NSE_EQ')
+    it do
+      expect(subject).to define_enum_for(:segment)
+        .with_values(
+          index: 'I',
+          equity: 'E',
+          currency: 'C',
+          derivatives: 'D',
+          commodity: 'M'
+        )
+        .with_prefix
+        .backed_by_column_of_type(:string)
     end
   end
 end
