@@ -367,9 +367,37 @@ module Orders
       analyzer.intraday_trend
     end
 
+    # ------------------------------------------------------------------
+    #  Option-chain helpers (for trend logic)
+    # ------------------------------------------------------------------
+
+    # @return [Hash, nil]  live option-chain or nil on failure
     def fetch_option_chain(underlying, expiry)
-      nil # hook to implement
+      cache_key = "rm_chain_#{underlying}_#{expiry}"
+
+      Rails.cache.fetch(cache_key, expires_in: 1.minute) do
+        inst = Instrument.find_by!(
+          underlying_symbol: underlying,
+          segment: 'index', # both NIFTY & BANKNIFTY live here
+          exchange: 'NSE'
+        )
+
+        # pick the asked expiry (from the position) if present,
+        # otherwise fall back to the nearest one
+        safe_expiry = if inst.expiry_list.include?(expiry)
+                        expiry
+                      else
+                        inst.expiry_list.first
+                      end
+
+        inst.fetch_option_chain(safe_expiry)
+      rescue StandardError => e
+        Rails.logger.warn { "[RiskManager] option-chain fetch failed – #{e.message}" }
+        nil
+      end
     end
+
+    alias _old_fetch_option_chain fetch_option_chain
 
     def extract_expiry_date(pos)
       raw_date = pos['drvExpiryDate']
