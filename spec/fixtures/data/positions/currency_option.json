@@ -1,0 +1,8 @@
+{
+    "securityId": 5,
+    "exchangeSegment": "NSE_CURRENCY",
+    "productType": "INTRADAY",
+    "tradingSymbol": "USDINR24JUL75CE",
+    "netQty": 1000,
+    "costPrice": 2.2
+}

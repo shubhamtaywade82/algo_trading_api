@@ -35,9 +35,9 @@ module AlertProcessors
     # ------------------------------------------------------------------------
     def call
       with_tag do
-        return skip! unless signal_guard!
+        return skip! unless signal_guard?
 
-        order = build_order_payload!
+        order = build_order_payload
         ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
 
         alert.update!(status: :processed)
@@ -58,7 +58,7 @@ module AlertProcessors
     # ------------------------------------------------------------------------
     #  Guards / validation
     # ------------------------------------------------------------------------
-    def signal_guard!
+    def signal_guard?
       return skip!(:short_not_allowed) if LONG_ONLY.include?(alert[:strategy_type]) && SHORT_SIGNALS.include?(alert[:signal_type])
 
       case alert[:signal_type]
@@ -73,7 +73,7 @@ module AlertProcessors
     # --------------------------------------------------------------------
     #  Order building – honours DhanHQ field-matrix
     # --------------------------------------------------------------------
-    def build_order_payload!
+    def build_order_payload
       order_type  = alert[:order_type].to_s.upcase
       txn_side    = side_for(alert[:signal_type])
 
@@ -89,13 +89,11 @@ module AlertProcessors
 
       case order_type
       when 'MARKET'
-      # price is **omitted** for true market orders
+        # 👉 true market order – nothing to add
       when 'LIMIT'
         payload[:price] = ltp.round(2)
       when 'STOP_LOSS', 'STOP_LOSS_MARKET'
-        trigger = alert[:stop_price].to_f
-        raise 'stop_price missing for SL order' unless trigger.positive?
-
+        trigger = derived_stop_price(txn_side)
         payload[:triggerPrice] = trigger.round(2)
         payload[:price]        = (order_type == 'STOP_LOSS_MARKET' ? 0 : ltp.round(2))
       else
@@ -217,5 +215,29 @@ module AlertProcessors
     end
 
     def logger = Rails.logger
+
+    def derived_stop_price(txn_side)
+      base_trigger = stop_price_from_metadata
+      return base_trigger if base_trigger.positive?
+
+      margin = (ltp * 0.05).round(2)
+      case txn_side
+      when 'BUY'  then (ltp - margin)   # long stop 5 % below entry
+      when 'SELL' then (ltp + margin)   # short stop 5 % above entry
+      else
+        raise "Unexpected txn_side #{txn_side}"
+      end
+    end
+    private :derived_stop_price
+
+    # Reads a numeric :stop_price inside alert.metadata (if present)
+    # Returns 0.0 when the key is missing or not numeric.
+    def stop_price_from_metadata
+      m = alert.metadata || {}
+      price = m['stop_price'] || m[:stop_price]
+      price.to_f
+    rescue StandardError
+      0.0
+    end
   end
 end

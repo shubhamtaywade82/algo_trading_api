@@ -1,0 +1,8 @@
+{
+    "securityId": 7,
+    "exchangeSegment": "NSE_EQ",
+    "productType": "INTRADAY",
+    "tradingSymbol": "SBIN",
+    "netQty": 0,
+    "costPrice": 780.0
+}

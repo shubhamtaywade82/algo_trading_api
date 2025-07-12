@@ -1,0 +1,8 @@
+{
+    "securityId": 8,
+    "exchangeSegment": "NSE_EQ",
+    "productType": "INTRADAY",
+    "tradingSymbol": "RELIANCE",
+    "netQty": 25,
+    "costPrice": 0.0
+}

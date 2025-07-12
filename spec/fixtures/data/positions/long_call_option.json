@@ -1,0 +1,9 @@
+{
+    "securityId": 3,
+    "exchangeSegment": "NSE_FNO",
+    "productType": "INTRADAY",
+    "tradingSymbol": "NIFTY24JUL22500CE",
+    "netQty": 75,
+    "costPrice": 110.0,
+    "drvExpiryDate": "2025-07-31"
+}

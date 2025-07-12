@@ -73,21 +73,26 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
   end
 
   context 'when no tradable strikes found', vcr: { cassette_name: 'dhan/option_expiry_list' } do
-    let(:expiry) { Date.today.to_s }
+    let(:stub_time) { Time.zone.local(2025, 1, 1, 15, 30) }
+    let(:expiry) { stub_time.to_date.to_s }
 
     before do
-      # patch option_chain to empty out all strikes
-      option_chain[:oc].each do |_, row|
-        row['ce']['last_price'] = 0
-        row['ce']['implied_volatility'] = 0
+      option_chain[:oc].each_value do |row|
+        %w[ce pe].each do |side|
+          next unless row[side]
+
+          row[side]['last_price']         = 0
+          row[side]['implied_volatility'] = 0
+        end
       end
+
+      # ⬇︎ freeze time so theta-guard triggers (avoids receive_message_chain)
+      travel_to(stub_time)
     end
 
-    it 'returns proceed: false with reason' do
+    it 'returns proceed: false with late-entry reason' do
       result = analyzer.analyze(signal_type: :ce, strategy_type: 'intraday')
-
-      expect(result[:proceed]).to be(false)
-      expect(result[:reason]).to eq('Late entry, theta risk')
+      expect(result).to eq(proceed: false, reason: 'Late entry, theta risk')
     end
   end
 end

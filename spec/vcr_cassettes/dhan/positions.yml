@@ -1,0 +1,45 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.dhan.co/positions
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      User-Agent:
+      - Faraday v1.10.4
+      Access-Token:
+      - "<CLIENT_ID>"
+      Client-Id:
+      - "<ACCESS_TOKEN>"
+      Accept:
+      - application/json
+      Content-Type:
+      - application/json
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: ''
+    headers:
+      Date:
+      - Sat, 12 Jul 2025 01:44:31 GMT
+      Content-Type:
+      - application/json
+      Transfer-Encoding:
+      - chunked
+      Connection:
+      - keep-alive
+      Vary:
+      - Access-Control-Request-Headers
+      - Access-Control-Request-Method
+      - Origin
+    body:
+      encoding: UTF-8
+      string: '[{"dhanClientId":"<ACCESS_TOKEN>","tradingSymbol":"CRUDEOIL-17Jul2025-5850-CE","securityId":"455907","positionType":"CLOSED","exchangeSegment":"MCX_COMM","productType":"MARGIN","buyAvg":66.917854,"costPrice":80.667854,"buyQty":28,"sellAvg":74.91428,"sellQty":28,"netQty":0,"realizedProfit":22390.0,"unrealizedProfit":0.0,"rbiReferenceRate":1.0,"multiplier":100,"carryForwardBuyQty":14,"carryForwardSellQty":0,"carryForwardBuyValue":84700.0,"carryForwardSellValue":0.0,"dayBuyQty":14,"daySellQty":28,"dayBuyValue":102670.0,"daySellValue":209760.0,"drvExpiryDate":"2025-07-17","drvOptionType":"CALL","drvStrikePrice":5850.0,"crossCurrency":false},{"dhanClientId":"<ACCESS_TOKEN>","tradingSymbol":"NIFTY-Jul2025-25300-CE","securityId":"47293","positionType":"CLOSED","exchangeSegment":"NSE_FNO","productType":"MARGIN","buyAvg":141.66667,"costPrice":141.66667,"buyQty":675,"sellAvg":71.172226,"sellQty":675,"netQty":0,"realizedProfit":-47583.75,"unrealizedProfit":0.0,"rbiReferenceRate":1.0,"multiplier":1,"carryForwardBuyQty":0,"carryForwardSellQty":0,"carryForwardBuyValue":0.0,"carryForwardSellValue":0.0,"dayBuyQty":675,"daySellQty":675,"dayBuyValue":95625.0,"daySellValue":48041.25,"drvExpiryDate":"2025-07-17
+        14:30:00","drvOptionType":"CALL","drvStrikePrice":25300.0,"crossCurrency":false},{"dhanClientId":"<ACCESS_TOKEN>","tradingSymbol":"NIFTY-Jul2025-25300-PE","securityId":"47294","positionType":"CLOSED","exchangeSegment":"NSE_FNO","productType":"MARGIN","buyAvg":112.95,"costPrice":112.95,"buyQty":75,"sellAvg":116.0,"sellQty":75,"netQty":0,"realizedProfit":228.75,"unrealizedProfit":0.0,"rbiReferenceRate":1.0,"multiplier":1,"carryForwardBuyQty":0,"carryForwardSellQty":0,"carryForwardBuyValue":0.0,"carryForwardSellValue":0.0,"dayBuyQty":75,"daySellQty":75,"dayBuyValue":8471.25,"daySellValue":8700.0,"drvExpiryDate":"2025-07-17
+        14:30:00","drvOptionType":"PUT","drvStrikePrice":25300.0,"crossCurrency":false},{"dhanClientId":"<ACCESS_TOKEN>","tradingSymbol":"BCPL","securityId":"542057","positionType":"LONG","exchangeSegment":"BSE_EQ","productType":"CNC","buyAvg":90.0,"costPrice":90.0,"buyQty":1,"sellAvg":0.0,"sellQty":0,"netQty":1,"realizedProfit":0.0,"unrealizedProfit":0.94999695,"rbiReferenceRate":1.0,"multiplier":1,"carryForwardBuyQty":0,"carryForwardSellQty":0,"carryForwardBuyValue":0.0,"carryForwardSellValue":0.0,"dayBuyQty":1,"daySellQty":0,"dayBuyValue":90.0,"daySellValue":0.0,"drvExpiryDate":"0001-01-01","drvOptionType":"NA","drvStrikePrice":0.0,"crossCurrency":false},{"dhanClientId":"<ACCESS_TOKEN>","tradingSymbol":"TATACHEM","securityId":"3405","positionType":"LONG","exchangeSegment":"NSE_EQ","productType":"CNC","buyAvg":913.0,"costPrice":913.0,"buyQty":1,"sellAvg":0.0,"sellQty":0,"netQty":1,"realizedProfit":0.0,"unrealizedProfit":-6.700012,"rbiReferenceRate":1.0,"multiplier":1,"carryForwardBuyQty":0,"carryForwardSellQty":0,"carryForwardBuyValue":0.0,"carryForwardSellValue":0.0,"dayBuyQty":1,"daySellQty":0,"dayBuyValue":913.0,"daySellValue":0.0,"drvExpiryDate":"0001-01-01","drvOptionType":"NA","drvStrikePrice":0.0,"crossCurrency":false},{"dhanClientId":"<ACCESS_TOKEN>","tradingSymbol":"TATAPOWER","securityId":"3426","positionType":"LONG","exchangeSegment":"NSE_EQ","productType":"CNC","buyAvg":398.0,"costPrice":398.0,"buyQty":1,"sellAvg":0.0,"sellQty":0,"netQty":1,"realizedProfit":0.0,"unrealizedProfit":-1.1499939,"rbiReferenceRate":1.0,"multiplier":1,"carryForwardBuyQty":0,"carryForwardSellQty":0,"carryForwardBuyValue":0.0,"carryForwardSellValue":0.0,"dayBuyQty":1,"daySellQty":0,"dayBuyValue":398.0,"daySellValue":0.0,"drvExpiryDate":"0001-01-01","drvOptionType":"NA","drvStrikePrice":0.0,"crossCurrency":false}]'
+  recorded_at: Sat, 12 Jul 2025 01:44:30 GMT
+recorded_with: VCR 6.3.1

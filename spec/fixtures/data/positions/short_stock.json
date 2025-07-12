@@ -1,0 +1,8 @@
+{
+    "securityId": 2,
+    "exchangeSegment": "NSE_EQ",
+    "productType": "INTRADAY",
+    "tradingSymbol": "INFY",
+    "netQty": -40,
+    "costPrice": 1500.0
+}

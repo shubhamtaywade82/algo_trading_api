@@ -1,0 +1,8 @@
+{
+    "securityId": 6,
+    "exchangeSegment": "IDX_I",
+    "productType": "INTRADAY",
+    "tradingSymbol": "NIFTY",
+    "netQty": 10,
+    "costPrice": 22500.0
+}

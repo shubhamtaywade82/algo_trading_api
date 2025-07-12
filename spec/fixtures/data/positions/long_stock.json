@@ -1,0 +1,8 @@
+{
+    "securityId": 1,
+    "exchangeSegment": "NSE_EQ",
+    "productType": "INTRADAY",
+    "tradingSymbol": "TCS",
+    "netQty": 50,
+    "costPrice": 3300.0
+}

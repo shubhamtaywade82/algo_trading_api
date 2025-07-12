@@ -86,7 +86,7 @@ RSpec.describe Positions::Manager, type: :service do
     end
 
     it 'rescues and logs error' do
-      expect(Rails.logger).to receive(:error).with(/\[Positions::Manager\] Error: Boom/)
+      expect(Rails.logger).to receive(:error).with(/\[Positions::Manager\] Error: .*Boom/)
       expect { described_class.call }.not_to raise_error
     end
   end

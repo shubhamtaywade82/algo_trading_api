@@ -3,159 +3,112 @@
 require 'rails_helper'
 
 RSpec.describe Orders::RiskManager, type: :service do
-  let(:position) { { 'securityId' => 'OPT123', 'exchangeSegment' => 'NSEFO' } }
+  # ------------------------------------------------------------------
+  # Helpers already available in your spec_helper / support files:
+  #   • build(:option_position)
+  #   • stub_charges(0)
+  #   • stub_chain_trend(value)   – :bullish / :bearish / nil
+  #   • stub_spot_ltp(value)
+  # ------------------------------------------------------------------
+  let(:position) { build(:option_position) }
+
+  def analysis(attrs = {})
+    {
+      entry_price: 100,
+      ltp: 100,
+      quantity: 75,
+      pnl: 0,
+      pnl_pct: 0,
+      instrument_type: :option
+    }.merge(attrs)
+  end
 
   before do
-    stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
-
-    allow(Charges::Calculator).to receive(:call).and_return(0)
-    allow(Rails.cache).to receive(:read).and_return({ max_pct: analysis[:pnl_pct], danger_zone_count: 0 })
-    allow(Rails.cache).to receive(:write)
+    Rails.cache.clear
+    stub_charges(0)
+    stub_chain_trend(nil)
   end
 
-  context 'when take profit threshold is reached' do
-    let(:analysis) do
-      { pnl: 5000, pnl_pct: 66.67, entry_price: 100, ltp: 166.67, quantity: 75, instrument_type: :option }
-    end
-
-    it 'returns exit with take profit reason' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(true)
-      expect(result[:exit_reason]).to match(/TakeProfit/)
-    end
+  # ------------------------------------------------------------
+  # ① Emergency-loss Exit
+  # ------------------------------------------------------------
+  it 'exits on emergency rupee loss' do
+    result = described_class.call(position, analysis(pnl: -6_000, pnl_pct: -60))
+    expect(result).to include(exit_reason: 'EmergencyStopLoss')
   end
 
-  context 'when rupee stop loss is hit but in buffer zone' do
-    let(:analysis) { { pnl: -600, pnl_pct: -10, entry_price: 100, ltp: 92, quantity: 75, instrument_type: :option } }
-
-    it 'does NOT exit immediately, due to buffer zone' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(false)
-      expect(result[:adjust]).to be(false)
-    end
+  # ------------------------------------------------------------
+  # ② Take-Profit Exit
+  # ------------------------------------------------------------
+  it 'exits on take-profit target' do
+    result = described_class.call(position, analysis(pnl: 2_600, pnl_pct: 35))
+    expect(result).to include(exit_reason: 'TakeProfit')
   end
 
-  context 'when rupee stop loss is breached (below danger zone)' do
-    let(:analysis) { { pnl: -1100, pnl_pct: -15, entry_price: 100, ltp: 86, quantity: 75, instrument_type: :option } }
-
-    before do
-      allow(Rails.cache).to receive(:read).and_return({ max_pct: 10, danger_zone_count: 2 })
-      allow(Rails.cache).to receive(:write)
-    end
-
-    it 'returns exit when way below danger zone' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(true)
-      expect(result[:exit_reason]).to match(/DangerZone|EmergencyStopLoss/)
-    end
+  # ------------------------------------------------------------
+  # ③ Danger-Zone Exit (after 5 bars OR deep loss)
+  # ------------------------------------------------------------
+  it 'exits after 5 consecutive danger-zone bars' do
+    4.times { described_class.call(position, analysis(pnl: -1_000, pnl_pct: -10)) }
+    result = described_class.call(position, analysis(pnl: -1_000, pnl_pct: -10))
+    expect(result).to include(exit_reason: 'DangerZone')
   end
 
-  context 'when rupee stop loss is in buffer zone (between -1000 and -500)' do
-    let(:analysis) { { pnl: -700, pnl_pct: -12, entry_price: 100, ltp: 93, quantity: 75, instrument_type: :option } }
-
-    before do
-      # Pretend we're on the 1st bar in danger zone
-      allow(Charges::Calculator).to receive(:call).and_return(0)
-      allow(Rails.cache).to receive(:read).and_return({ max_pct: 10, danger_zone_count: 1 })
-      allow(Rails.cache).to receive(:write)
-    end
-
-    it 'does not exit immediately (buffered holding)' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(false)
-      expect(result[:adjust]).to be(false)
-    end
+  # ------------------------------------------------------------
+  # ④ Trend-Reversal Exit (3 bars against bias)
+  # ------------------------------------------------------------
+  it 'exits on confirmed trend reversal (3 bearish vs long CE)' do
+    stub_chain_trend(:bearish)
+    2.times { described_class.call(position, analysis(pnl_pct: 2)) } # warm-up
+    result = described_class.call(position, analysis(pnl_pct: 2))
+    expect(result).to include(exit_reason: 'TrendReversalExit')
   end
 
-  context 'when rupee stop loss is breached (below -1000)' do
-    let(:analysis) { { pnl: -1100, pnl_pct: -20, entry_price: 100, ltp: 85, quantity: 75, instrument_type: :option } }
-
-    before do
-      allow(Charges::Calculator).to receive(:call).and_return(0)
-      allow(Rails.cache).to receive(:read).and_return({ max_pct: 10, danger_zone_count: 2 })
-      allow(Rails.cache).to receive(:write)
-    end
-
-    it 'returns exit with danger zone exit reason' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(true)
-      expect(result[:exit_reason]).to match(/DangerZone/)
-    end
+  # ------------------------------------------------------------
+  # ⑤ Spot Trend-Break Exit
+  # ------------------------------------------------------------
+  it 'exits when spot price breaks entry trend' do
+    custom = analysis(spot_entry_price: 22_500, pnl_pct: 5)
+    stub_spot_ltp(22_000) # spot below entry ⇒ break for long CE
+    result = described_class.call(position, custom)
+    expect(result).to include(exit_reason: 'TrendBreakExit')
   end
 
-  context 'when buffered exit triggers after prolonged time in buffer zone' do
-    let(:analysis) do
-      {
-        pnl: -800,
-        pnl_pct: -14,
-        entry_price: 100,
-        ltp: 90,
-        quantity: 75,
-        instrument_type: :option
-        # (optional: order_type: :limit, exit_price: 90.0)
-      }
-    end
-
-    before do
-      # This is the 3rd consecutive bar in the buffer zone
-      allow(Charges::Calculator).to receive(:call).and_return(0)
-      allow(Rails.cache).to receive(:read).and_return({ max_pct: 10, danger_zone_count: 2 }) # prior was 2, now increments to 3
-      allow(Rails.cache).to receive(:write)
-    end
-
-    it 'returns exit with danger zone exit after 3 bars' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(true)
-      expect(result[:exit_reason]).to match(/DangerZone/)
-
-      expect(result[:order_type]).to eq(:limit)
-    end
+  # ------------------------------------------------------------
+  # ⑥ Percentage Stop-Loss Exit
+  # ------------------------------------------------------------
+  it 'exits on hard % stop-loss' do
+    result = described_class.call(position, analysis(pnl: -1_200, pnl_pct: -20))
+    expect(result).to include(exit_reason: 'StopLoss')
   end
 
-  context 'when percentage stop loss is hit' do
-    let(:analysis) { { pnl: -300, pnl_pct: -35, entry_price: 100, ltp: 96, quantity: 75, instrument_type: :option } }
-
-    it 'returns exit with percentage stop loss reason' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(true)
-      expect(result[:exit_reason]).to match(/StopLoss/)
-    end
+  # ------------------------------------------------------------
+  # ⑦ Break-Even Exit
+  # ------------------------------------------------------------
+  it 'exits at break-even after large prior gains' do
+    # ➊ record a peak gain
+    described_class.call(position, analysis(pnl_pct: 15))
+    # ➋ now price drifts back to entry
+    res = described_class.call(position, analysis(pnl_pct: 0.1, ltp: 100.1))
+    expect(res).to include(exit_reason: 'BreakEvenTrail')
   end
 
-  context 'when trailing stop adjustment is required' do
-    let(:analysis) { { pnl: 400, pnl_pct: 20, entry_price: 100, ltp: 108, quantity: 75, instrument_type: :option } }
+  # ------------------------------------------------------------
+  # ⑧ Trailing-Stop Adjustment
+  # ------------------------------------------------------------
+  it 'returns adjust hash when draw-down exceeds buffer' do
+    described_class.call(position, analysis(pnl_pct: 25)) # create max_pct
+    result = described_class.call(position, analysis(pnl_pct: 18, ltp: 118))
 
-    before do
-      allow(Charges::Calculator).to receive(:call).and_return(0)
-      # Simulate max profit was higher, so drawdown is sufficient
-      allow(Rails.cache).to receive(:read).and_return({ max_pct: 40, danger_zone_count: 0 })
-      allow(Rails.cache).to receive(:write)
-    end
-
-    it 'returns adjust with adjust_params' do
-      result = described_class.call(position, analysis)
-      expect(result[:adjust]).to be(true)
-      expect(result[:adjust_params]).to have_key(:trigger_price)
-    end
+    expect(result).to include(exit: false, adjust: true)
+    expect(result[:adjust_params]).to have_key(:trigger_price)
   end
 
-  context 'when no exit or adjustment is required' do
-    let(:analysis) { { pnl: 100, pnl_pct: 5, entry_price: 100, ltp: 101.5, quantity: 75, instrument_type: :option } }
-
-    it 'returns no exit and no adjust' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(false)
-      expect(result[:adjust]).to be(false)
-    end
-  end
-
-  context 'when break-even trail triggers exit' do
-    let(:analysis) { { pnl: 400, pnl_pct: 45, entry_price: 100, ltp: 100, quantity: 75, instrument_type: :option } }
-
-    it 'returns exit with break-even trail reason' do
-      result = described_class.call(position, analysis)
-      expect(result[:exit]).to be(true)
-      expect(result[:exit_reason]).to match(/BreakEven_Trail/)
-    end
+  # ------------------------------------------------------------
+  # ⑨ No-Action Path
+  # ------------------------------------------------------------
+  it 'does nothing when no rule triggers' do
+    res = described_class.call(position, analysis(pnl_pct: 5))
+    expect(res).to eq(exit: false, adjust: false)
   end
 end

@@ -2,14 +2,20 @@
 
 module Orders
   class RiskManager < ApplicationService
+    attr_reader :pos, :a, :key, :cache, :max_pct, :danger_count, :trend_against_count, :spot_entry_price
+
+    # --------------------------- CONFIG CONSTANTS --------------------------- #
     STOP_LOSS_PCT    = { stock: 4.0, option: 15.0 }.freeze
-    TAKE_PROFIT_PCT  = { stock: 15.0, option: 25.0 }.freeze
+    TAKE_PROFIT_PCT  = { stock: 15.0, option: 30.0 }.freeze
     TRAIL_BUFFER_PCT = { stock: 3.0,  option: 5.0 }.freeze
+    TIGHT_TRAIL_PCT = { stock: 1.0, option: 3.0 }.freeze
 
     EMERGENCY_LOSS   = -5000.0
     DANGER_ZONE_MIN  = -1500.0
     DANGER_ZONE_MAX  = -750.0
     DANGER_ZONE_BARS = 5
+    TREND_AGAINST_MAX = 3
+    BREAK_EVEN_THRESHOLD_PCT = 10.0 # require at least +10% peak gain for BE rule
 
     # Spot LTP cache keys for NIFTY and BANKNIFTY indices
     SPOT_INDEX_MAP = {
@@ -17,101 +23,386 @@ module Orders
       'BANKNIFTY' => { segment: 0, id: 25 }
     }.freeze
 
+    PERCENT_SL_ENABLED = -> { AppConfig.bool(:enable_percent_sl, default: true) }
+
     def initialize(position, analysis)
       @pos      = position.with_indifferent_access
       @a        = analysis
+
       @key      = cache_key(@pos)
       @cache    = load_cache
-      @max_pct  = @cache[:max_pct] || @a[:pnl_pct]
-      @danger_count = @cache[:danger_zone_count] || 0
+
+      @max_pct = [@cache[:max_pct], @a[:pnl_pct]].max
+      @danger_count        = (@cache[:danger_zone_count] || 0).to_i
+      @trend_against_count = (@cache[:trend_against_count] || 0).to_i
+
+      # Load spot_entry_price from analysis or cache
+      @spot_entry_price = @a[:spot_entry_price] || @cache[:spot_entry_price]
+
+      return if @spot_entry_price
+
+      if (spot = live_spot_ltp)
+        persist_cache(spot_entry_price: spot)
+        @spot_entry_price = spot
+      end
     end
 
     def call
       charges = Charges::Calculator.call(@pos, @a)
       net_pnl = @a[:pnl] - charges
-      is_option = @a[:instrument_type] == :option
+      persist_cache(max_pct: @max_pct) if @a[:pnl_pct] > @cache[:max_pct]
 
-      store_max_pct if @a[:pnl_pct] > @max_pct
+      # return take_profit_exit(net_pnl) if net_pnl >= take_profit_threshold
 
-      # pp "net_pnl: #{net_pnl} take_profit_threshold: #{take_profit_threshold}"
-      # === 1. Take Profit
-      if net_pnl >= take_profit_threshold
-        notify("✅ TP Hit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
-        return { exit: true, exit_reason: "TakeProfit_#{net_pnl}" }
+      # result = check_danger_zone(net_pnl)
+      # return result if result
+
+      # ① Emergency Exit
+      return emergency_exit(net_pnl) if net_pnl <= EMERGENCY_LOSS
+
+      # ② Take Profit
+      return take_profit_exit(net_pnl) if net_pnl >= take_profit_threshold
+
+      # ③ Danger Zone Exit
+      result = check_danger_zone(net_pnl)
+      return result if result
+
+      # ④ Trend Reversal Exit (options only)
+      if option_position?
+        result = check_trend_reversal
+        return result if result
       end
 
-      # === 2. Danger Zone Buffer
-      if net_pnl <= DANGER_ZONE_MAX && net_pnl > DANGER_ZONE_MIN
+      # ⑤ Trend Break Exit (options only)
+      if option_position?
+        result = check_trend_break
+        return result if result
+      end
+
+      # ⑥ Stop Loss
+      return stop_loss_exit if percent_stop_hit?
+
+      # ⑦ Break Even Exit
+      result = check_break_even
+      return result if result
+
+      # ⑧ Trailing Stop Adjustment
+      trailing_adjustment
+
+      # # 2️⃣ Hard %-stop-loss
+      # return exit!(:stop_loss, 'MARKET') if percent_stop_hit?
+
+      # # 3️⃣ Hard take-profit
+      # return take_profit_exit(net_pnl) if net_pnl >= take_profit_threshold
+
+      # # 4️⃣ Danger-zone buffer
+      # dz = check_danger_zone(net_pnl)
+      # return dz if dz
+
+      # # 5️⃣ Option-only adaptive logic
+      # if option_position?
+      #   r = handle_option_chain_logic
+      #   return r if r
+      # end
+
+      # # 6️⃣ Trailing-SL adjust
+      # trailing_adjustment
+
+      # # pp "net_pnl: #{net_pnl} take_profit_threshold: #{take_profit_threshold}"
+      # # === 1. Take Profit
+      # if net_pnl >= take_profit_threshold
+      #   notify("✅ TP Hit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+      #   return { exit: true, exit_reason: "TakeProfit_#{net_pnl}" }
+      # end
+
+      # # === 2. Danger Zone Buffer
+      # if net_pnl <= DANGER_ZONE_MAX && net_pnl > DANGER_ZONE_MIN
+      #   @danger_count += 1
+      #   store_danger_count(@danger_count)
+      # else
+      #   reset_danger_count
+      # end
+
+      # if @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
+      #   reset_danger_count
+      #   notify("⚠️ Danger Zone Exit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+      #   return { exit: true, exit_reason: "DangerZone_#{net_pnl}", order_type: :limit }
+      # end
+
+      # # === 3. Emergency Cutoff
+      # if net_pnl <= EMERGENCY_LOSS
+      #   reset_danger_count
+      #   notify("🛑 Emergency SL: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+      #   return { exit: true, exit_reason: "EmergencyStopLoss_#{net_pnl}", order_type: 'MARKET' }
+      # end
+
+      # # === 4. SL Adaptation (Options Only)
+      # if is_option
+      #   spot_ltp = live_spot_ltp
+      #   if spot_ltp && trend_broken?(spot_ltp)
+      #     notify("🔻 Trend Broken — Tight Exit: #{@pos['tradingSymbol']}")
+      #     return { exit: true, exit_reason: 'TrendBreakExit' }
+      #   end
+
+      #   if spot_ltp && retracing_but_uptrend?(spot_ltp)
+      #     # Loosen SL by 5% to allow retracement
+      #     loosened_sl = STOP_LOSS_PCT[:option] + 5.0
+      #     if @a[:pnl_pct] <= -loosened_sl
+      #       notify("🛑 Loosened % SL Hit (Retrace Allow): #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
+      #       return { exit: true, exit_reason: "LoosenedStopLoss_#{@a[:pnl_pct]}%" }
+      #     end
+      #   elsif @a[:pnl_pct] <= -STOP_LOSS_PCT[:option]
+      #     notify("🛑 % SL Hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
+      #     return { exit: true, exit_reason: "StopLoss_#{@a[:pnl_pct]}%" }
+      #   end
+      # elsif @a[:pnl_pct] <= -STOP_LOSS_PCT[:stock]
+      #   # === 5. % Stop-loss for Stocks
+      #   notify("🛑 % SL Hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
+      #   return { exit: true, exit_reason: "StopLoss_#{@a[:pnl_pct]}%" }
+      # end
+
+      # # === 6. Break-even Trail
+      # if @a[:pnl_pct] >= 40.0 && @a[:ltp] <= @a[:entry_price]
+      #   notify("📉 BE Trail Exit: #{@pos['tradingSymbol']} | Price fallback to entry.")
+      #   return { exit: true, exit_reason: 'BreakEven_Trail' }
+      # end
+
+      # # === 7. Trailing Stop Adjustment
+      # drawdown = @max_pct - @a[:pnl_pct]
+      # buffer_pct = TRAIL_BUFFER_PCT[@a[:instrument_type]]
+
+      # if @a[:pnl_pct].positive? && drawdown >= buffer_pct
+      #   new_trigger = (@a[:ltp] * (1 - (buffer_pct / 100.0))).round(2)
+      #   return {
+      #     adjust: true,
+      #     adjust_params: { trigger_price: new_trigger }
+      #   }
+      # end
+
+      # { exit: false, adjust: false }
+    end
+
+    private
+
+    # === Hard rule helpers ================================================== #
+
+    def emergency_exit(net_pnl)
+      reset_danger_count
+      notify("🛑 Emergency exit: #{@pos['tradingSymbol']} Net ₹#{net_pnl.round(2)}")
+      exit!(:emergency_stop_loss, 'MARKET')
+    end
+
+    def take_profit_exit(net_pnl)
+      notify("✅ Take profit hit: #{@pos['tradingSymbol']} Net ₹#{net_pnl.round(2)}")
+      exit!(:take_profit, 'MARKET')
+    end
+
+    def stop_loss_exit
+      notify("🛑 Stop Loss Hit: #{pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
+      exit!(:stop_loss, 'MARKET')
+    end
+
+    def check_danger_zone(net_pnl)
+      return nil if net_pnl <= EMERGENCY_LOSS
+
+      if net_pnl.between?(DANGER_ZONE_MIN, DANGER_ZONE_MAX)
         @danger_count += 1
         store_danger_count(@danger_count)
       else
         reset_danger_count
       end
 
-      if @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
-        reset_danger_count
-        notify("⚠️ Danger Zone Exit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
-        return { exit: true, exit_reason: "DangerZone_#{net_pnl}", order_type: :limit }
-      end
+      return unless @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
 
-      # === 3. Emergency Cutoff
-      if net_pnl <= EMERGENCY_LOSS
-        reset_danger_count
-        notify("🛑 Emergency SL: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
-        return { exit: true, exit_reason: "EmergencyStopLoss_#{net_pnl}", order_type: 'MARKET' }
-      end
-
-      # === 4. SL Adaptation (Options Only)
-      if is_option
-        spot_ltp = live_spot_ltp
-        if spot_ltp && trend_broken?(spot_ltp)
-          notify("🔻 Trend Broken — Tight Exit: #{@pos['tradingSymbol']}")
-          return { exit: true, exit_reason: 'TrendBreakExit' }
-        end
-
-        if spot_ltp && retracing_but_uptrend?(spot_ltp)
-          # Loosen SL by 5% to allow retracement
-          loosened_sl = STOP_LOSS_PCT[:option] + 5.0
-          if @a[:pnl_pct] <= -loosened_sl
-            notify("🛑 Loosened % SL Hit (Retrace Allow): #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
-            return { exit: true, exit_reason: "LoosenedStopLoss_#{@a[:pnl_pct]}%" }
-          end
-        elsif @a[:pnl_pct] <= -STOP_LOSS_PCT[:option]
-          notify("🛑 % SL Hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
-          return { exit: true, exit_reason: "StopLoss_#{@a[:pnl_pct]}%" }
-        end
-      elsif @a[:pnl_pct] <= -STOP_LOSS_PCT[:stock]
-        # === 5. % Stop-loss for Stocks
-        notify("🛑 % SL Hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
-        return { exit: true, exit_reason: "StopLoss_#{@a[:pnl_pct]}%" }
-      end
-
-      # === 6. Break-even Trail
-      if @a[:pnl_pct] >= 40.0 && @a[:ltp] <= @a[:entry_price]
-        notify("📉 BE Trail Exit: #{@pos['tradingSymbol']} | Price fallback to entry.")
-        return { exit: true, exit_reason: 'BreakEven_Trail' }
-      end
-
-      # === 7. Trailing Stop Adjustment
-      drawdown = @max_pct - @a[:pnl_pct]
-      buffer_pct = TRAIL_BUFFER_PCT[@a[:instrument_type]]
-
-      if @a[:pnl_pct].positive? && drawdown >= buffer_pct
-        new_trigger = (@a[:ltp] * (1 - (buffer_pct / 100.0))).round(2)
-        return {
-          adjust: true,
-          adjust_params: { trigger_price: new_trigger }
-        }
-      end
-
-      { exit: false, adjust: false }
+      reset_danger_count
+      notify("⚠️ Danger zone exit: #{@pos['tradingSymbol']}")
+      exit!(:danger_zone, 'LIMIT')
     end
 
-    private
+    def check_trend_reversal
+      trend = fetch_intraday_trend
+      return nil unless trend.present?
+
+      bias = position_bias(@pos)
+
+      if trend != :neutral && trend != bias
+        @trend_against_count += 1
+        store_trend_against_count(@trend_against_count)
+        notify("🔻 Trend Against Count = #{@trend_against_count}")
+      else
+        @trend_against_count = 0
+        store_trend_against_count(0)
+      end
+
+      if @trend_against_count >= TREND_AGAINST_MAX
+        reset_trend_against_count
+        notify("🔻 Trend Reversal Confirmed — Exiting #{pos['tradingSymbol']} at break-even.")
+        return exit!(:trend_reversal_exit, 'MARKET')
+      end
+
+      nil
+    end
+
+    def check_trend_break
+      spot_ltp = live_spot_ltp
+      return nil unless spot_ltp
+
+      if trend_broken?(spot_ltp)
+        notify("🔻 Spot Trend Break — Exiting #{pos['tradingSymbol']}")
+        return exit!(:trend_break_exit, 'MARKET')
+      end
+
+      nil
+    end
+
+    def check_break_even
+      return nil unless @max_pct >= BREAK_EVEN_THRESHOLD_PCT
+
+      if @a[:pnl_pct].abs < 0.5
+        notify("📉 Break-even Exit: #{pos['tradingSymbol']} | Max PnL was #{@max_pct}%, now near entry.")
+        return exit!(:break_even_trail, 'MARKET')
+      end
+
+      nil
+    end
+
+    # ------------------------- Trailing SL Adjust ---------------------------
+
+    def trailing_adjustment
+      return { exit: false, adjust: false } unless (@a[:pnl_pct]).positive?
+
+      trail_buffer_pct =
+        @a[:pnl_pct] >= 15.0 ? TIGHT_TRAIL_PCT[:option] : TRAIL_BUFFER_PCT[:option]
+
+      drawdown = @max_pct - @a[:pnl_pct]
+      return { exit: false, adjust: false } unless drawdown >= trail_buffer_pct
+
+      new_trigger = (@a[:ltp] * (1 - (trail_buffer_pct / 100.0))).round(2)
+      notify("🔁 Trailing SL adjust → new trigger ₹#{new_trigger}")
+      {
+        exit: false,
+        adjust: true,
+        adjust_params: { trigger_price: new_trigger }
+      }
+    end
+
+    # ------------------------- Helper Methods -------------------------------
+
+    def percent_stop_hit?
+      thresh = option_position? ? STOP_LOSS_PCT[:option] : STOP_LOSS_PCT[:stock]
+      @a[:pnl_pct] <= -thresh
+    end
+
+    def exit!(reason, order_type = nil)
+      { exit: true, exit_reason: reason.to_s.camelize, order_type: order_type }
+    end
+
+    def option_position? = a[:instrument_type] == :option
 
     def take_profit_threshold
       pct = TAKE_PROFIT_PCT[@a[:instrument_type]]
       @a[:entry_price] * @a[:quantity] * pct / 100.0
+    end
+
+    def handle_option_chain_logic
+      trend = fetch_intraday_trend
+
+      if trend.present?
+        bias = position_bias(@pos)
+
+        if trend != :neutral && trend != bias
+          @trend_against_count += 1
+          store_trend_against_count(@trend_against_count)
+        else
+          @trend_against_count = 0
+          store_trend_against_count(0)
+        end
+
+        if @trend_against_count >= 2
+          notify("🔻 Trend reversal confirmed — exiting #{@pos['tradingSymbol']} at break-even")
+          reset_trend_against_count
+          return exit!(:trend_reversal_exit, 'MARKET')
+        end
+      end
+
+      spot_ltp = live_spot_ltp
+      if spot_ltp && trend_broken?(spot_ltp)
+        notify("🔻 Spot price trend break — exiting #{@pos['tradingSymbol']}")
+        return exit!(:trend_break_exit, 'MARKET')
+      end
+
+      if @a[:pnl_pct] <= -STOP_LOSS_PCT[:option]
+        notify("🛑 % SL hit: #{@pos['tradingSymbol']} | P&L #{@a[:pnl_pct]}%")
+        return exit!(:stop_loss, 'MARKET')
+      end
+
+      nil
+    end
+
+    def trend_broken?(spot_ltp)
+      return false unless @spot_entry_price
+
+      long = @pos['netQty'].to_i.positive?
+      (long && spot_ltp < @spot_entry_price) || (!long && spot_ltp > @spot_entry_price)
+    end
+
+    def fetch_intraday_trend
+      underlying = detect_underlying_from_symbol(@pos['tradingSymbol'])
+      expiry     = extract_expiry_date(@pos)
+
+      return nil unless underlying && expiry
+
+      option_chain = fetch_option_chain(underlying, expiry)
+      spot_price   = live_spot_ltp
+      iv_rank      = 0.3 # stub for now
+
+      return nil unless option_chain && spot_price
+
+      analyzer = Option::ChainAnalyzer.new(
+        option_chain,
+        expiry: expiry,
+        underlying_spot: spot_price,
+        iv_rank: iv_rank
+      )
+      analyzer.intraday_trend
+    end
+
+    def fetch_option_chain(underlying, expiry)
+      nil # hook to implement
+    end
+
+    def extract_expiry_date(pos)
+      raw_date = pos['drvExpiryDate']
+      return nil if raw_date.blank? || raw_date == '0001-01-01'
+
+      begin
+        Date.parse(raw_date.to_s)
+      rescue StandardError
+        nil
+      end
+    end
+
+    def detect_underlying_from_symbol(symbol)
+      SPOT_INDEX_MAP.keys.find { |idx| symbol.upcase.include?(idx) }
+    end
+
+    def position_bias(pos)
+      sym = pos[:tradingSymbol].to_s.upcase
+      long = pos[:netQty].to_i.positive?
+
+      if sym.include?('CE')      then long ? :bullish : :bearish
+      elsif sym.include?('PE')   then long ? :bearish : :bullish
+      else
+        :neutral
+      end
+    end
+
+    def trend_broken?(spot_ltp)
+      return false unless @spot_entry_price
+
+      long = pos[:netQty].to_i.positive?
+      (long && spot_ltp <  @spot_entry_price) ||
+        (!long && spot_ltp > @spot_entry_price)
     end
 
     def cache_key(pos)
@@ -119,34 +410,84 @@ module Orders
     end
 
     def load_cache
-      Rails.cache.read(@key) || { max_pct: @a[:pnl_pct], danger_zone_count: 0 }
+      Rails.cache.read(@key) || {
+        max_pct: @a[:pnl_pct],
+        danger_zone_count: 0,
+        trend_against_count: 0,
+        spot_entry_price: nil
+      }
     end
 
-    def store_max_pct
-      Rails.cache.write(@key, load_cache.merge(max_pct: @a[:pnl_pct]), expires_in: 1.day)
+    def persist_cache(new_values = {})
+      Rails.cache.write(@key, load_cache.merge(new_values), expires_in: 1.day)
     end
 
     def store_danger_count(count)
-      Rails.cache.write(@key, load_cache.merge(danger_zone_count: count), expires_in: 1.day)
+      persist_cache(danger_zone_count: count)
+    end
+
+    def store_trend_against_count(count)
+      persist_cache(trend_against_count: count)
     end
 
     def reset_danger_count
-      Rails.cache.write(@key, load_cache.merge(danger_zone_count: 0), expires_in: 1.day)
+      persist_cache(danger_zone_count: 0)
+    end
+
+    def reset_trend_against_count
+      persist_cache(trend_against_count: 0)
     end
 
     def live_spot_ltp
-      symbol = @pos['tradingSymbol'].to_s
-      index_info = SPOT_INDEX_MAP.find { |k, _| symbol.include?(k) }&.last
-      return nil unless index_info
-
-      MarketCache.read_ltp(index_info[:segment], index_info[:id])
+      idx = SPOT_INDEX_MAP.detect { |k, _| pos[:tradingSymbol].to_s.include?(k) }&.last
+      MarketCache.read_ltp(idx[:segment], idx[:id]) if idx
     end
 
-    def trend_broken?(spot_ltp)
-      # Basic logic: if long and spot < entry, or short and spot > entry
-      long = @pos['netQty'].to_i.positive?
-      (long && spot_ltp < @a[:entry_price]) || (!long && spot_ltp > @a[:entry_price])
+    # # === Trailing-SL adjust ================================================= #
+    # def trailing_adjustment
+    #   return { exit: false, adjust: false } unless @a[:pnl_pct].positive?
+
+    #   buffer_pct = @a[:pnl_pct] >= 15 ? TIGHT_TRAIL_PCT[:option] : TRAIL_BUFFER_PCT[:option]
+    #   drawdown   = @max_pct - @a[:pnl_pct]
+    #   return { exit: false, adjust: false } unless drawdown >= buffer_pct
+
+    #   new_trigger = (a[:ltp] * (1 - (buffer_pct / 100.0))).round(2)
+    #   notify("🔁 Trailing-SL adjust → ₹#{new_trigger}")
+    #   { adjust: true, adjust_params: { trigger_price: new_trigger } }
+    # end
+
+    # -- trailing-SL adjust block (identical logic) ---------------------
+    def trailing_sl_adjust
+      drawdown   = @max_pct - @a[:pnl_pct]
+      buffer_pct = TRAIL_BUFFER_PCT[@a[:instrument_type]]
+
+      return { exit: false, adjust: false } unless @a[:pnl_pct].positive? && drawdown >= buffer_pct
+
+      new_trigger = (@a[:ltp] * (1 - (buffer_pct / 100.0))).round(2)
+      { adjust: true, adjust_params: { trigger_price: new_trigger } }
     end
+
+    # -- danger-zone (moved into helper to keep call() tidy) -----------
+    def danger_zone_logic(net_pnl)
+      if net_pnl <= DANGER_ZONE_MAX && net_pnl > DANGER_ZONE_MIN
+        @danger_count += 1
+        store_danger_count(@danger_count)
+      else
+        reset_danger_count
+      end
+
+      return unless @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
+
+      reset_danger_count
+      notify("⚠️ Danger-zone exit: #{@pos['tradingSymbol']} | Net ₹#{net_pnl.round(2)}")
+      throw :risk_manager_result, exit!(:danger_zone, :limit)
+    end
+
+    def store_max_pct
+      persist_cache(max_pct: @a[:pnl_pct])
+    end
+
+    # === Misc helpers ======================================================= #
 
     def retracing_but_uptrend?(spot_ltp)
       long = @pos['netQty'].to_i.positive?

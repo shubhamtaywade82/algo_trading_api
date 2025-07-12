@@ -1,0 +1,8 @@
+{
+    "securityId": 9,
+    "exchangeSegment": "NSE_EQ",
+    "productType": "INTRADAY",
+    "tradingSymbol": "ITC",
+    "netQty": 30,
+    "costPrice": 450.0
+}
