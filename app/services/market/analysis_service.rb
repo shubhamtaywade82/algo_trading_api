@@ -18,7 +18,7 @@
 module Market
   class AnalysisService < ApplicationService
     TELEGRAM_TAG   = '📈 Analyse'
-    DEFAULT_CANDLE = '15m'
+    DEFAULT_CANDLE = '5m'
 
     # ─────────────────────────────────────────────────────────────
     # constructor (only *symbol* is strictly required)
@@ -238,11 +238,17 @@ module Market
             IV: #{opt[:call]['implied_volatility']}
             OI: #{opt[:call]['oi']}
             Delta: #{opt[:call].dig('greeks', 'delta')}
+            Theta: #{opt[:call].dig('greeks', 'theta')}
+            Gamma: #{opt[:call].dig('greeks', 'gamma')}
+            Vega: #{opt[:call].dig('greeks', 'vega')}
           PUT:
             LTP: ₹#{opt[:put]['last_price']}
             IV: #{opt[:put]['implied_volatility']}
             OI: #{opt[:put]['oi']}
             Delta: #{opt[:put].dig('greeks', 'delta')}
+            Theta: #{opt[:put].dig('greeks', 'theta')}
+            Gamma: #{opt[:put].dig('greeks', 'gamma')}
+            Vega: #{opt[:put].dig('greeks', 'vega')}
         STR
       end
 

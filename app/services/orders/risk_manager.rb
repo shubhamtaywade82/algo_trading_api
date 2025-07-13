@@ -11,8 +11,8 @@ module Orders
     TIGHT_TRAIL_PCT = { stock: 1.0, option: 3.0 }.freeze
 
     EMERGENCY_LOSS   = -5000.0
-    DANGER_ZONE_MIN  = -1500.0
-    DANGER_ZONE_MAX  = -750.0
+    DANGER_ZONE_MIN  = -2000.0
+    DANGER_ZONE_MAX  = -1000.0
     DANGER_ZONE_BARS = 5
     TREND_AGAINST_MAX = 3
     BREAK_EVEN_THRESHOLD_PCT = 10.0 # require at least +10% peak gain for BE rule
