@@ -577,6 +577,7 @@ DEPENDENCIES
   ruby-technical-analysis
   rubycritic
   shoulda-matchers
+  simplecov
   solid_cable
   solid_cache
   solid_queue
