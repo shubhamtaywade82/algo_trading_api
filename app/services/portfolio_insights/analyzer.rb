@@ -18,6 +18,7 @@ module PortfolioInsights
       snapshot = build_snapshot(@raw)
       prompt   = build_prompt(snapshot)
 
+      typing_ping
       Openai::ChatRouter.ask!(
         prompt,
         system: SYSTEM_SEED,
