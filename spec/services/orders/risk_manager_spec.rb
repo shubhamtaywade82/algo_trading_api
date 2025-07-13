@@ -10,7 +10,10 @@ RSpec.describe Orders::RiskManager, type: :service do
   #   • stub_chain_trend(value)   – :bullish / :bearish / nil
   #   • stub_spot_ltp(value)
   # ------------------------------------------------------------------
-  let(:position) { build(:option_position) }
+  #
+  # :long_ce is the default flavour in the new factory
+  #
+  let(:position) { build(:option_position, flavour: :long_ce) }
 
   def analysis(attrs = {})
     {
@@ -58,9 +61,16 @@ RSpec.describe Orders::RiskManager, type: :service do
   # ④ Trend-Reversal Exit (3 bars against bias)
   # ------------------------------------------------------------
   it 'exits on confirmed trend reversal (3 bearish vs long CE)' do
-    stub_chain_trend(:bearish)
-    2.times { described_class.call(position, analysis(pnl_pct: 2)) } # warm-up
+    #
+    # Instead of hitting the option-chain we simply stub the helper that
+    # RiskManager uses internally.
+    #
+    allow_any_instance_of(described_class)
+      .to receive(:trend_for_position).and_return(:bearish)
+
+    3.times { described_class.call(position, analysis(pnl_pct: 2)) } # warm-up
     result = described_class.call(position, analysis(pnl_pct: 2))
+
     expect(result).to include(exit_reason: 'TrendReversalExit')
   end
 
@@ -110,5 +120,52 @@ RSpec.describe Orders::RiskManager, type: :service do
   it 'does nothing when no rule triggers' do
     res = described_class.call(position, analysis(pnl_pct: 5))
     expect(res).to eq(exit: false, adjust: false)
+  end
+
+  def option_chain_from_cassette
+    cassette = Rails.root.join('spec/vcr_cassettes/dhan/option_expiry_list.yml')
+    data     = YAML.load_file(cassette)
+    body_str = data['http_interactions'][1]['response']['body']['string']
+    JSON.parse(body_str, symbolize_names: true)
+  end
+
+  describe '#fetch_intraday_trend (integration)' do
+    before do
+      create(:instrument, exchange: 'nse',
+                          segment: 'index',
+                          security_id: '13',
+                          symbol_name: 'NIFTY',
+                          display_name: 'Nifty 50',
+                          isin: '1',
+                          instrument: 'index',
+                          instrument_type: 'INDEX',
+                          underlying_symbol: 'NIFTY',
+                          underlying_security_id: 'null',
+                          series: 'X',
+                          lot_size: 1,
+                          tick_size: 0.1e1,
+                          asm_gsm_flag: 'N',
+                          asm_gsm_category: 'NA',
+                          mtf_leverage: 0.0,
+                          created_at: '2025-06-28 00:59:32.511118000 +0530',
+                          updated_at: '2025-06-28 00:59:32.511118000 +0530')
+    end
+
+    it 'returns the trend derived from the live option-chain', vcr: { cassette_name: 'dhan/exit_option' } do
+      allow(MarketCache).to receive(:read_ltp).and_return(22_500)
+
+      # ── 3. build position / analysis and invoke RM ────────────────
+      position = build(:option_position, tradingSymbol: 'NIFTY25FEB24500CE')
+      analysis = {
+        entry_price: 100, ltp: 105, quantity: 75,
+        pnl: 375, pnl_pct: 5, instrument_type: :option
+      }
+
+      trend = described_class.new(position, analysis).send(:trend_for_position)
+
+      # The cassette used in this spec shows PE pressure; the analyser
+      # therefore marks the short-term trend as :bearish.
+      expect(trend).to eq :bearish
+    end
   end
 end

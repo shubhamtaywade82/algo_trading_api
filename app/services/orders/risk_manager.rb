@@ -220,8 +220,8 @@ module Orders
     end
 
     def check_trend_reversal
-      trend = fetch_intraday_trend
-      return nil unless trend.present?
+      trend = trend_for_position
+      return nil if trend.blank?
 
       bias = position_bias(@pos)
 
@@ -271,6 +271,25 @@ module Orders
     def trailing_adjustment
       return { exit: false, adjust: false } unless (@a[:pnl_pct]).positive?
 
+      # ① Is the prevailing trend still in our favour?
+      trend = trend_for_position
+      bias  = position_bias(pos)
+
+      if trend && trend != :neutral && trend != bias
+        @trend_against_count += 1
+        store_trend_against_count(@trend_against_count)
+      else
+        @trend_against_count = 0
+        store_trend_against_count(0)
+      end
+
+      # bail-out if the trend has flipped against us for N consecutive ticks
+      if @trend_against_count >= TREND_AGAINST_MAX
+        notify("🔻 Trend flipped for #{@trend_against_count} checks — trailing exit.")
+        reset_trend_against_count
+        return exit!(:trend_trail_exit, 'MARKET')
+      end
+
       trail_buffer_pct =
         @a[:pnl_pct] >= 15.0 ? TIGHT_TRAIL_PCT[:option] : TRAIL_BUFFER_PCT[:option]
 
@@ -305,7 +324,7 @@ module Orders
     end
 
     def handle_option_chain_logic
-      trend = fetch_intraday_trend
+      trend = trend_for_position
 
       if trend.present?
         bias = position_bias(@pos)
@@ -346,25 +365,53 @@ module Orders
       (long && spot_ltp < @spot_entry_price) || (!long && spot_ltp > @spot_entry_price)
     end
 
-    def fetch_intraday_trend
-      underlying = detect_underlying_from_symbol(@pos['tradingSymbol'])
-      expiry     = extract_expiry_date(@pos)
-
+    # ------------------------------------------------------------------
+    #  🔎  Get the up-to-date intraday trend via Option::ChainAnalyzer
+    #      • returns  :bullish / :bearish / :neutral  (or nil on failure)
+    # ------------------------------------------------------------------
+    def trend_for_position
+      underlying = detect_underlying_from_symbol(pos['tradingSymbol'])
+      expiry     = extract_expiry_date(pos)
       return nil unless underlying && expiry
+
+      chain = fetch_option_chain(underlying, expiry)
+      spot  = live_spot_ltp
+      iv_r  = 0.3 # <-- you may still pipe-through the real IV-rank later
+      return nil unless chain && spot
+
+      Option::ChainAnalyzer
+        .new(chain,
+             expiry: expiry,
+             underlying_spot: spot,
+             iv_rank: iv_r)
+        .current_trend # <-- public wrapper, no visibility issues
+    end
+
+    def fetch_intraday_trend
+      underlying = detect_underlying_from_symbol(pos['tradingSymbol'])
+      expiry     = extract_expiry_date(pos)
+
+      # If the context is incomplete we treat the trend as neutral
+      return :neutral unless underlying && expiry
 
       option_chain = fetch_option_chain(underlying, expiry)
       spot_price   = live_spot_ltp
-      iv_rank      = 0.3 # stub for now
+      iv_rank      = 0.3 # (stub until a real IV-rank service is wired)
 
-      return nil unless option_chain && spot_price
+      # Missing live data ⇒ assume neutral – never raise, never nil
+      return :neutral unless option_chain && spot_price
 
-      analyzer = Option::ChainAnalyzer.new(
-        option_chain,
-        expiry: expiry,
-        underlying_spot: spot_price,
-        iv_rank: iv_rank
-      )
-      analyzer.intraday_trend
+      trend = Option::ChainAnalyzer.new(
+                option_chain,
+                expiry: expiry,
+                underlying_spot: spot_price,
+                iv_rank: iv_rank
+              ).intraday_trend
+
+      trend.presence || :neutral
+    rescue StandardError => e
+      Rails.logger.warn { "[RiskManager] fetch_intraday_trend failed – #{e.message}" }
+      :neutral
     end
 
     # ------------------------------------------------------------------

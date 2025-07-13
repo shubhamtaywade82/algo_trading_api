@@ -48,6 +48,15 @@ module Option
       }
     end
 
+    # ------------------------------------------------------------------
+    # 🎯  Public helper – fetch the latest intraday trend
+    #      (keeps the heavy-lifting method itself private)
+    # ------------------------------------------------------------------
+    def current_trend # alias: `trend`
+      intraday_trend
+    end
+    alias trend current_trend
+
     private
 
     def iv_rank_outside_range?
