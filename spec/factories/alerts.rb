@@ -20,7 +20,7 @@ FactoryBot.define do
     signal_type { 'long_entry' }
     metadata { {} }
 
-    association :instrument
+    instrument
 
     trait :processed do
       status { 'processed' }

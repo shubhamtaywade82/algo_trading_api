@@ -40,7 +40,7 @@ module PortfolioInsights
       tech  = build_technicals(snaps)
       prompt = build_prompt(snaps, tech)
 
-      pp prompt
+      Rails.logger.debug prompt
       answer = ask_openai(prompt)
       validate_prices!(answer, snaps) # sanity-check hallucinated prices
       # answer = prompt
@@ -98,7 +98,7 @@ module PortfolioInsights
               rescue StandardError
                 0.0
               end
-              h['ltp'] = ltp > 0 ? ltp : 0.0
+              h['ltp'] = ltp.positive? ? ltp : 0.0
             end
           rescue StandardError => e
             retries += 1
@@ -192,7 +192,7 @@ module PortfolioInsights
       end.join("\n")
 
       <<~PROMPT
-        PORTFOLIO SUMMARY — #{Date.today}
+        PORTFOLIO SUMMARY — #{Time.zone.today}
         #{cash_line}
 
         #{table}

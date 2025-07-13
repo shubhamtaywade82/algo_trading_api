@@ -65,7 +65,7 @@ module AlertProcessors
       # add more as needed
     }.freeze
 
-    def lot_size_for(expiry, option_type)
+    def lot_size_for(_expiry, _option_type)
       MCX_LOT_SIZES.fetch(instrument.underlying_symbol, 100) # fallback default
     end
 
