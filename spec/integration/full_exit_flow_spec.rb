@@ -80,7 +80,6 @@ RSpec.describe 'Full Exit Flow', type: :integration do
       stub_chain_trend(:bearish) # long CE vs bearish chain
       stub_spot_ltp(22_600) # any non-nil spot will do
       allow_any_instance_of(Orders::RiskManager).to receive(:trend_for_position).and_return(:bearish)
-    
     end
 
     it 'routes to TrendReversalExit on 3rd bar' do
