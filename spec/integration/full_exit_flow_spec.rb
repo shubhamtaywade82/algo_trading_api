@@ -58,12 +58,15 @@ RSpec.describe 'Full Exit Flow', type: :integration do
 
   # --------------------------------------------------------------------------------------------------------------------
   context 'danger-zone after 5 bars' do
-    let(:dz_analysis) { { entry_price: 100, ltp: 90, quantity: 75, pnl: -750, pnl_pct: -10, instrument_type: :option } }
+    # within -2k … -1k
+    let(:dz_analysis) do
+      { entry_price: 100, ltp: 85, quantity: 75, pnl: -1_125, pnl_pct: -15, instrument_type: :option }
+    end
 
     it 'routes to DangerZone on 5th bar' do
       4.times { drive_stack(position, dz_analysis) }     # warm-up cache
       expect(Orders::Executor).to receive(:call)
-        .with(position.with_indifferent_access, 'DangerZone', hash_including(pnl: -750))
+        .with(position.with_indifferent_access, 'DangerZone', hash_including(pnl: -1_125))
 
       drive_stack(position, dz_analysis)                 # 5th call
     end
@@ -73,10 +76,15 @@ RSpec.describe 'Full Exit Flow', type: :integration do
   context 'trend-reversal (3 bars vs bias)' do
     let(:analysis) { { entry_price: 100, ltp: 102, quantity: 75, pnl: 150, pnl_pct: 2, instrument_type: :option } }
 
-    before { stub_chain_trend(:bearish) } # long CE vs bearish chain
+    before do
+      stub_chain_trend(:bearish) # long CE vs bearish chain
+      stub_spot_ltp(22_600) # any non-nil spot will do
+      allow_any_instance_of(Orders::RiskManager).to receive(:trend_for_position).and_return(:bearish)
+    
+    end
 
     it 'routes to TrendReversalExit on 3rd bar' do
-      2.times { drive_stack(position, analysis) }        # first two bars
+      3.times { drive_stack(position, analysis) }        # first two bars
       expect(Orders::Executor).to receive(:call)
         .with(position.with_indifferent_access, 'TrendReversalExit', hash_including(pnl_pct: 2))
 
