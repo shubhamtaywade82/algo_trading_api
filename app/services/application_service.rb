@@ -20,6 +20,10 @@ class ApplicationService
     Rails.logger.error("[ApplicationService] Telegram Notify Failed: #{e.class} - #{e.message}")
   end
 
+  def typing_ping
+          TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
+  end
+
   # # Logs an info-level message with class context
   # def log_info(msg)
   #   Rails.logger.info("[#{self.class.name}] #{msg}")
