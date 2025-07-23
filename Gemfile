@@ -57,6 +57,7 @@ group :development, :test do
   gem 'stackprof'
 
   gem 'rubycritic', require: false
+  gem 'simplecov', require: false
 end
 
 group :test do

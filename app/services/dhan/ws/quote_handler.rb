@@ -7,7 +7,7 @@ module Dhan
         sid = packet[:security_id]
         segment_enum = packet[:exchange_segment]
         segment_key = DhanhqMappings::SEGMENT_ENUM_TO_KEY[segment_enum]
-        inst = FeedListener.find_instrument_cached(sid.to_i, segment_enum) or return
+        FeedListener.find_instrument_cached(sid.to_i, segment_enum) or return
 
         MarketCache.write_ltp(segment_key, sid, packet[:ltp])
 
@@ -21,9 +21,7 @@ module Dhan
                                         time: Time.zone.now
                                       })
 
-
       # pp "[QUOTE] #{inst.symbol_name} ▶ LTP=#{packet[:ltp]} O/H/L=#{packet[:day_open]}/#{packet[:day_high]}/#{packet[:day_low]}"
-
       rescue StandardError => e
         Rails.logger.error "[QUOTE] ❌ #{e.class} - #{e.message}"
       end

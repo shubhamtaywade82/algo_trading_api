@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe Instrument, type: :model do
+RSpec.describe Instrument, type: :model do # rubocop:disable RSpecRails/InferredSpecType
   subject { described_class.new(security_id: '12345') }
 
   describe 'validations' do

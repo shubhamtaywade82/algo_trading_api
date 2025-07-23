@@ -56,7 +56,7 @@ module Market
       return unless md
 
       prompt = build_prompt(md)
-      pp prompt
+      Rails.logger.debug prompt
       answer = ask_openai(prompt)
       # answer = prompt
 

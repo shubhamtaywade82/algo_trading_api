@@ -52,7 +52,8 @@ module Option
     # 🎯  Public helper – fetch the latest intraday trend
     #      (keeps the heavy-lifting method itself private)
     # ------------------------------------------------------------------
-    def current_trend # alias: `trend`
+    # alias: `trend`
+    def current_trend
       intraday_trend
     end
     alias trend current_trend
