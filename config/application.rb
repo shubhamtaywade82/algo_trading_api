@@ -50,15 +50,21 @@ module AlgoTradingApp
     config.time_zone = 'Asia/Kolkata'
     config.active_record.default_timezone = :local
 
-    config.after_initialize do
-      # Start Feed + Manager loops only if enabled via ENV
-      if ENV['ENABLE_FEED_LISTENER'] == 'true' || ENV['ENABLE_POSITION_MANAGER'] == 'true'
-        require Rails.root.join('lib/feed/runner')
-        Feed::Runner.start
-      end
+    # ─────────────────────────────────────────────
+    # Inline background loops (only for local / dev)
+    # ─────────────────────────────────────────────
+    unless ENV['RENDER_ROLE']
+      config.after_initialize do
+        # Start Feed + Manager loops only if enabled via ENV
+        if ENV['ENABLE_FEED_LISTENER'] == 'true' || ENV['ENABLE_POSITION_MANAGER'] == 'true'
+          # require Rails.root.join('lib/feed/runner')
+          # Feed::Runner.start
+          Feed::Runner.start_feed_listener
+        end
 
-      # Optional: Rebuild crontab for development
-      system('bundle exec whenever --update-crontab') if Rails.env.development?
+        # Optional: Rebuild crontab for development
+        system('bundle exec whenever --update-crontab') if Rails.env.development?
+      end
     end
   end
 end
