@@ -4,7 +4,8 @@
 module Positions
   class ActiveCache
     CACHE_KEY = 'active_positions_cache'
-    CACHE_TTL = 60 # seconds
+    CACHE_TTL = 30 # seconds
+    REFRESH_SEC = 30
 
     # Refreshes cache from DhanHQ API (run every 30-60s)
     #

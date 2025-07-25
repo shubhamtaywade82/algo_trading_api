@@ -10,10 +10,7 @@ module Orders
     TRAIL_BUFFER_PCT = { stock: 3.0,  option: 5.0 }.freeze
     TIGHT_TRAIL_PCT = { stock: 1.0, option: 3.0 }.freeze
 
-    EMERGENCY_LOSS   = -5000.0
-    DANGER_ZONE_MIN  = -2000.0
-    DANGER_ZONE_MAX  = -1000.0
-    DANGER_ZONE_BARS = 5
+    EMERGENCY_LOSS = -5000.0
     TREND_AGAINST_MAX = 3
     BREAK_EVEN_THRESHOLD_PCT = 10.0 # require at least +10% peak gain for BE rule
 
@@ -56,9 +53,9 @@ module Orders
       # ② Take Profit
       return take_profit_exit(net_pnl) if net_pnl >= take_profit_threshold
 
-      # ③ Danger Zone Exit
-      result = check_danger_zone(net_pnl)
-      return result if result
+      # # ③ Danger Zone Exit
+      # result = check_danger_zone(net_pnl)
+      # return result if result
 
       # ④ Trend Reversal Exit (options only)
       if option_position?
@@ -103,22 +100,22 @@ module Orders
       exit!(:stop_loss, 'MARKET')
     end
 
-    def check_danger_zone(net_pnl)
-      return nil if net_pnl <= EMERGENCY_LOSS
+    # def check_danger_zone(net_pnl)
+    #   return nil if net_pnl <= EMERGENCY_LOSS
 
-      if net_pnl.between?(DANGER_ZONE_MIN, DANGER_ZONE_MAX)
-        @danger_count += 1
-        store_danger_count(@danger_count)
-      else
-        reset_danger_count
-      end
+    #   if net_pnl.between?(DANGER_ZONE_MIN, DANGER_ZONE_MAX)
+    #     @danger_count += 1
+    #     store_danger_count(@danger_count)
+    #   else
+    #     reset_danger_count
+    #   end
 
-      return unless @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
+    #   return unless @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
 
-      reset_danger_count
-      notify("⚠️ Danger zone exit: #{@pos['tradingSymbol']}")
-      exit!(:danger_zone, 'LIMIT')
-    end
+    #   reset_danger_count
+    #   notify("⚠️ Danger zone exit: #{@pos['tradingSymbol']}")
+    #   exit!(:danger_zone, 'LIMIT')
+    # end
 
     def check_trend_reversal
       trend = trend_for_position
@@ -334,14 +331,6 @@ module Orders
       else
         :neutral
       end
-    end
-
-    def trend_broken?(spot_ltp)
-      return false unless @spot_entry_price
-
-      long = pos[:netQty].to_i.positive?
-      (long && spot_ltp <  @spot_entry_price) ||
-        (!long && spot_ltp > @spot_entry_price)
     end
 
     def cache_key(pos)

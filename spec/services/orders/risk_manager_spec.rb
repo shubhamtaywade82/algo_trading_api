@@ -48,14 +48,14 @@ RSpec.describe Orders::RiskManager, type: :service do
     expect(result).to include(exit_reason: 'TakeProfit')
   end
 
-  # ------------------------------------------------------------
-  # ③ Danger-Zone Exit (after 5 bars OR deep loss)
-  # ------------------------------------------------------------
-  it 'exits after 5 consecutive danger-zone bars' do
-    4.times { described_class.call(position, analysis(pnl: -1_000, pnl_pct: -10)) }
-    result = described_class.call(position, analysis(pnl: -1_000, pnl_pct: -10))
-    expect(result).to include(exit_reason: 'DangerZone')
-  end
+  # # ------------------------------------------------------------
+  # # ③ Danger-Zone Exit (after 5 bars OR deep loss)
+  # # ------------------------------------------------------------
+  # it 'exits after 5 consecutive danger-zone bars' do
+  #   4.times { described_class.call(position, analysis(pnl: -1_000, pnl_pct: -10)) }
+  #   result = described_class.call(position, analysis(pnl: -1_000, pnl_pct: -10))
+  #   expect(result).to include(exit_reason: 'DangerZone')
+  # end
 
   # ------------------------------------------------------------
   # ④ Trend-Reversal Exit (3 bars against bias)
