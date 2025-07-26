@@ -25,7 +25,7 @@ services:
 
       # Helps avoid memory issues on free tier
       - key: WEB_CONCURRENCY
-        value: "1"
+        value: "2"
   # ─────── Cron service (every 5 min) ─────────────────────────────
   - type: cron
     name: ta_update
