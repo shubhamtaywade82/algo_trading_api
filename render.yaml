@@ -26,14 +26,21 @@ services:
       # Helps avoid memory issues on free tier
       - key: WEB_CONCURRENCY
         value: "2"
-
-jobs:
+  # ─────── Cron service (every 5 min) ─────────────────────────────
   - type: cron
     name: ta_update
-    plan: starter
     runtime: ruby
+    plan: starter # 512 MB / 0.5 CPU – free tier
     schedule: "*/5 * * * *"
-    command: "bundle exec rake technical_analysis:update"
+    startCommand: "bundle exec rake technical_analysis:update"
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: AlgoTradingAPI-DB
+          property: connectionString
+      - key: DHAN_API_KEY
+        sync: false
+      - key: DHAN_API_SECRET
+        sync: false
       - key: RAILS_ENV
         value: production
