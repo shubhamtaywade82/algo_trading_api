@@ -47,7 +47,7 @@ module Orders
     private
 
     def fetch_ltp
-      MarketCache.read_ltp(@pos['exchangeSegment'], @pos['securityId']) || fallback_ltp
+      MarketCache.read_ltp(@pos['exchangeSegment'], @pos['securityId'])&.round(2) || fallback_ltp&.round(2)
     end
 
     def fallback_ltp
