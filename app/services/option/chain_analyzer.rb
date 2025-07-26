@@ -7,9 +7,9 @@ module Option
     BASE_ATM_RANGE_PCT = 0.01 # fallback minimum range
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
 
-    TOP_RANKED_LIMIT = 5
+    TOP_RANKED_LIMIT = 3
 
-    attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank
+    attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank, :ta
 
     def initialize(option_chain, expiry:, underlying_spot:, iv_rank:, historical_data: [])
       @option_chain     = option_chain.with_indifferent_access
@@ -18,34 +18,89 @@ module Option
       @iv_rank          = iv_rank.to_f
       @historical_data  = historical_data || []
 
+      @ta = Indicators::HolyGrail.new(candles: historical_data).call if historical_data.present?
+
       Rails.logger.debug { "Analyzing Options for #{expiry}" }
       raise ArgumentError, 'Option Chain is missing or empty!' if @option_chain[:oc].blank?
     end
 
     def analyze(signal_type:, strategy_type:, signal_strength: 1.0)
-      return { proceed: false, reason: 'IV rank outside range' } if iv_rank_outside_range?
-      return { proceed: false, reason: 'Late entry, theta risk' } if discourage_late_entry_due_to_theta?
-
-      trend = intraday_trend
-      return { proceed: false, reason: 'Trend does not confirm signal' } unless trend_confirms?(trend, signal_type)
-
-      filtered = gather_filtered_strikes(signal_type)
-      return { proceed: false, reason: 'No tradable strikes found' } if filtered.empty?
-
-      ranked = filtered.map do |opt|
-        score = score_for(opt, strategy_type, signal_type, signal_strength)
-        opt.merge(score: score)
-      end.sort_by { |o| -o[:score] }
-
-      top_candidates = ranked.first(TOP_RANKED_LIMIT)
-
-      {
-        proceed: true,
-        trend: trend,
+      # ------------------------------------------------------------------
+      # initialise skeleton result
+      # ------------------------------------------------------------------
+      result = {
+        proceed: true, # optimistic default
+        reason: nil,
         signal_type: signal_type,
-        selected: top_candidates.first,
-        ranked: top_candidates
+        trend: nil,
+        momentum: nil,
+        adx: nil,
+        selected: nil,
+        ranked: [],
+        ta_snapshot: ta ? ta.to_h : {}
       }
+
+      # ------------------------------------------------------------------
+      # 0️⃣  Tech-analysis veto (uncomment if you want a hard block)
+      # ------------------------------------------------------------------
+      # if ta&.proceed? == false
+      #   result.merge!(proceed: false, reason: 'holy_grail_veto')
+      #   return result
+      # end
+
+      # ------------------------------------------------------------------
+      # 1️⃣  Sanity checks that are always required
+      # ------------------------------------------------------------------
+      if iv_rank_outside_range?
+        result[:proceed] = false
+        result[:reason] = 'IV rank outside range'
+      elsif discourage_late_entry_due_to_theta?
+        result[:proceed] = false
+        result[:reason] = 'Late entry, theta risk'
+      end
+
+      # ------------------------------------------------------------------
+      # 2️⃣  Spot bias, momentum & ADX from HolyGrail (or legacy fallback)
+      # ------------------------------------------------------------------
+      result[:trend]    = ta ? ta.bias.to_sym      : intraday_trend
+      result[:momentum] = ta ? ta.momentum.to_sym  : :flat
+      result[:adx]      = ta&.adx
+      adx_ok            = ta ? ta.adx.to_f >= 25 : true
+
+      if result[:proceed] && # only test if still live
+         !(trend_confirms?(result[:trend], signal_type) &&
+           adx_ok &&
+           result[:momentum] != :flat)
+        result[:proceed] = false
+        result[:reason] = 'trend/momentum filter'
+      end
+
+      # ------------------------------------------------------------------
+      # 3️⃣  Strike selection & scoring  (only when all gates passed)
+      # ------------------------------------------------------------------
+      if result[:proceed]
+        filtered = gather_filtered_strikes(signal_type)
+
+        if filtered.empty?
+          result[:proceed] = false
+          result[:reason] = 'No tradable strikes found'
+        else
+          m_boost = result[:momentum] == :strong ? 1.15 : 1.0
+          ranked  = filtered.map do |opt|
+                      score = score_for(opt, strategy_type,
+                                        signal_type, signal_strength) * m_boost
+                      opt.merge(score: score)
+                    end.sort_by { |o| -o[:score] }
+
+          result[:ranked]   = ranked.first(TOP_RANKED_LIMIT)
+          result[:selected] = result[:ranked].first
+        end
+      end
+
+      # ------------------------------------------------------------------
+      # 4️⃣  final return  (single exit-point)
+      # ------------------------------------------------------------------
+      result
     end
 
     # ------------------------------------------------------------------
@@ -159,7 +214,7 @@ module Option
       momentum_score += price_chg.positive? ? price_chg : price_chg.abs if delta >= 0 && price_chg.positive?
 
       # Time-to-expiry penalty on theta
-      days_left = (@expiry - Date.today).to_i
+      days_left = (@expiry - Time.zone.today).to_i
       theta_penalty = theta.abs * (days_left < 3 ? 2.0 : 1.0)
       greeks_score = (delta * 100) + (gamma * 10) + (vega * 2) - (theta_penalty * 3)
 

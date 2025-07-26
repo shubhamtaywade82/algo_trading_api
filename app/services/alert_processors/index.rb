@@ -87,6 +87,10 @@ module AlertProcessors
         signal_type: option
       )
 
+      log :info, "Spot bias  : #{result[:trend]&.upcase}  (ADX #{result[:adx]&.round(1)})"
+      log :info, "Momentum   : #{result[:momentum]}"
+      log :info, "Proceed? => #{result[:proceed]}"
+
       return skip!(result[:reason] || :analyzer_rejected) unless result[:proceed]
 
       log_result_summary(result)
