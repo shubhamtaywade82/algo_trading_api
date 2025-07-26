@@ -18,12 +18,12 @@ bundle exec rails db:migrate
 # bundle exec whenever --update-crontab || echo "Skipping whenever (not supported on Render)."
 
 # Uncomment below only if needed for fresh deployments
-# echo "🌱 Seeding database..."
-# bundle exec rails db:seed
+echo "🌱 Seeding database..."
+bundle exec rails db:seed
 
 # Optional data imports (comment if not needed)
-# echo "📊 Importing instruments..."
-# bundle exec rails import:instruments
+echo "📊 Importing instruments..."
+bundle exec rails import:instruments
 bundle exec rails import:mis_details
 
 # echo "🔄 Updating levels..."
