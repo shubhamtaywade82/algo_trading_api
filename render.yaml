@@ -26,3 +26,14 @@ services:
       # Helps avoid memory issues on free tier
       - key: WEB_CONCURRENCY
         value: "2"
+
+jobs:
+  - type: cron
+    name: ta_update
+    plan: starter
+    runtime: ruby
+    schedule: "*/5 * * * *"
+    command: "bundle exec rake technical_analysis:update"
+    envVars:
+      - key: RAILS_ENV
+        value: production
