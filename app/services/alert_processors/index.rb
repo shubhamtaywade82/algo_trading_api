@@ -26,6 +26,12 @@ module AlertProcessors
     MIN_OI_THRESHOLD  = 50_000
     MIN_PREMIUM       = ENV.fetch('MIN_OPTION_PREMIUM', 5).to_f
 
+    # ─── RR % from entry price
+    DEFAULT_STOP_LOSS_PCT  = 0.12      # 12 % for options
+    DEFAULT_TARGET_PCT     = 0.20      # RR = 1 : 2
+    DEFAULT_TRAIL_JUMP_PCT = 0.05      # trail every 5 % move in price
+    USE_SUPER_ORDER        = ENV.fetch('USE_SUPER_ORDER', 'true') == 'true'
+
     # Entry-point that the Sidekiq job / controller calls
     # ----------------------------------------------------------------
     def call
@@ -108,9 +114,15 @@ module AlertProcessors
       derivative = fetch_derivative(strike, expiry, option)
       return skip!(:no_derivative) unless derivative
 
-      order = build_order_payload(strike, derivative)
+      if USE_SUPER_ORDER
+        order = build_super_order_payload(strike, derivative)
+        return skip!(:ltp_unavailable) unless order
 
-      ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
+        ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
+      else
+        order = build_order_payload(strike, derivative) # ← legacy 1-leg
+        ENV['PLACE_ORDER'] == 'true' ? place_simple_order!(order) : dry_run(order)
+      end
     end
 
     # -- Validation helpers ---------------------------------------------------
@@ -165,6 +177,13 @@ module AlertProcessors
       return 0.5 if ivs.empty? || ivs.max == ivs.min
 
       ((current - ivs.min) / (ivs.max - ivs.min)).clamp(0, 1).round(2)
+    end
+
+    def option_ltp(derivative)
+      # the Derivative model already wraps a Dhan quote call; fallback kept for safety
+      derivative.ltp || Dhanhq::API::Quote.ltp(derivative.security_id)
+    rescue StandardError
+      nil
     end
 
     def build_analyzer(chain, expiry, iv_rank)
@@ -233,6 +252,33 @@ module AlertProcessors
       )
     end
 
+    # ------------------------------------------------------------------
+    # Build stop-loss / target / trail using ATR%.
+    # Fallback to the fixed defaults when ATR% is unavailable.
+    # ------------------------------------------------------------------
+    def rrules_for(entry_price)
+      atr_pct = current_atr_pct
+
+      if atr_pct&.positive?
+        # Empirical mapping for 0 Δ.4 near-ATM options:
+        #   • option_move ≈ atr_pct × 4
+        #   • we risk ½ of that move, aim for 1×, trail at ¼
+        sl_pct     = (atr_pct * 2).clamp(0.05, 0.18)   # 0.5 × exp move
+        tp_pct     = (atr_pct * 4).clamp(0.10, 0.40)   # 1.0 × exp move
+        trail_pct  = atr_pct.clamp(0.03, 0.12) # 0.25 × exp move
+      else
+        sl_pct = DEFAULT_STOP_LOSS_PCT
+        tp_pct = DEFAULT_TARGET_PCT
+        trail_pct = DEFAULT_TRAIL_JUMP_PCT
+      end
+
+      {
+        stop_loss: (entry_price * (1 - sl_pct)).round(2),
+        target: (entry_price * (1 + tp_pct)).round(2),
+        trail_jump: (entry_price * trail_pct).round(2)
+      }
+    end
+
     # -- Order building & execution ------------------------------------------
     def build_order_payload(strike, derivative)
       {
@@ -243,6 +289,32 @@ module AlertProcessors
         securityId: derivative.security_id,
         exchangeSegment: derivative.exchange_segment,
         quantity: calculate_quantity(strike, derivative.lot_size)
+      }
+    end
+
+    def build_super_order_payload(strike, derivative)
+      qty = calculate_quantity(strike, derivative.lot_size)
+      return if qty.zero?
+
+      live = option_ltp(derivative)
+      unless live
+        log :error, "LTP fetch failed for #{derivative.security_id}"
+        return
+      end
+
+      rr = rrules_for(live) || rrules_for(strike[:last_price])
+      pp rr, live
+      {
+        transactionType: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY
+        exchangeSegment: derivative.exchange_segment,
+        productType: Dhanhq::Constants::MARGIN,
+        orderType: alert[:order_type].to_s.upcase, # MARKET/LIMIT
+        securityId: derivative.security_id,
+        quantity: qty,
+        # price: strike[:last_price].round(2), # entry
+        targetPrice: rr[:target],
+        stopLossPrice: rr[:stop_loss],
+        trailingJump: rr[:trail_jump]
       }
     end
 
@@ -258,6 +330,34 @@ module AlertProcessors
         • Qty: #{params[:quantity]}
         • Order ID: #{resp['orderId']}
       MSG
+    end
+
+    def place_super_order!(params)
+      resp = Dhanhq::API::SuperOrders.place(params)
+      log :info, "super-order placed → #{resp}"
+      alert.update!(error_message: "SO #{resp['orderId']}")
+
+      notify(<<~MSG.strip, tag: 'SUPER')
+        🚀 Super-Order Placed – Alert ##{alert.id}
+        • Symbol : #{instrument.symbol_name}
+        • Qty    : #{params[:quantity]}
+        • Entry  : ₹#{params[:price]}
+        • SL     : ₹#{params[:stopLossPrice]}
+        • TP     : ₹#{params[:targetPrice]}
+        • Trail  : ₹#{params[:trailingJump]}
+        • SO-ID  : #{resp['orderId']}
+      MSG
+    end
+
+    # ────────────────────────────────────────────────────────────
+    # Latest 5-minute ATR% that Market::AnalysisUpdater wrote.
+    # Returns nil if no fresh row (<10 min old) exists.
+    # ────────────────────────────────────────────────────────────
+    def current_atr_pct
+      row = IntradayAnalysis.for(instrument.underlying_symbol, '5m')
+      return nil unless row && row.calculated_at > 10.minutes.ago
+
+      row.atr_pct.to_f # eg 0.0082  ( = 0.82 %)
     end
 
     def dry_run(params)

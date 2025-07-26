@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_07_08_174626) do
+ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -135,6 +135,19 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_08_174626) do
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_instruments_unique", unique: true
   end
 
+  create_table "intraday_analyses", force: :cascade do |t|
+    t.string "symbol"
+    t.string "timeframe"
+    t.decimal "atr"
+    t.decimal "atr_pct"
+    t.decimal "last_close"
+    t.datetime "calculated_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["calculated_at"], name: "index_intraday_analyses_on_calculated_at"
+    t.index ["symbol"], name: "index_intraday_analyses_on_symbol"
+  end
+
   create_table "levels", force: :cascade do |t|
     t.bigint "instrument_id", null: false
     t.decimal "high"
@@ -173,7 +186,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_08_174626) do
     t.decimal "sell_bo_profit_range_min_perc"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["requirementable_type", "requirementable_id"], name: "index_margin_requirements_on_requirementable"
+    t.index ["requirementable_type", "requirementable_id"], name: "index_margin_requirements_on_requirementable", unique: true
   end
 
   create_table "mis_details", force: :cascade do |t|
@@ -185,6 +198,16 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_08_174626) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_mis_details_on_instrument_id"
+  end
+
+  create_table "ohlcv_blobs", force: :cascade do |t|
+    t.string "symbol"
+    t.string "timeframe"
+    t.date "day"
+    t.jsonb "data"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["symbol", "timeframe", "day"], name: "index_ohlcv_blobs_on_symbol_and_timeframe_and_day", unique: true
   end
 
   create_table "order_features", force: :cascade do |t|

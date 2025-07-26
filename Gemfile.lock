@@ -1,9 +1,9 @@
 GIT
   remote: https://github.com/shubhamtaywade82/dhanhq.git
-  revision: 7c8d74923525de87ec45ee34e87104e5c17278d5
+  revision: 8e8558a482cc74d0432445ef30dbaf1d88fe27b5
   branch: main
   specs:
-    dhanhq (0.2.2)
+    dhanhq (0.2.3)
       activesupport
       base64
       bindata
