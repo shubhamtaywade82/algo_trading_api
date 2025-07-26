@@ -1,4 +1,4 @@
-if Rails.env.development? && ENV['ENABLE_TA_LOOP'] == 'true'
+if ENV['ENABLE_TA_LOOP'] == 'true'
   Rails.application.config.after_initialize do
     Thread.new do
       loop do

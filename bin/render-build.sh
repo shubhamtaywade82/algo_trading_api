@@ -9,8 +9,8 @@ bundle install
 #bundle exec rails g solid_cache:install
 
 # Run database migrations
-echo "🛠 Running migrations..."
-bundle exec rails db:migrate
+# echo "🛠 Running migrations..."
+# bundle exec rails db:migrate
 
 # Run whenever to update cron jobs (only relevant if using cron-based jobs)
 # Note: Render does NOT support system-level cron, so use a worker instead.
