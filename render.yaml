@@ -26,28 +26,28 @@ services:
       # Helps avoid memory issues on free tier
       - key: WEB_CONCURRENCY
         value: "2"
-  # ─────── Cron service (every 5 min) ─────────────────────────────
-  - type: cron
-    name: ta_update
-    runtime: ruby
-    plan: starter                 # free 512 MB / 0.5 CPU container
-    schedule: "*/5 * * * *"       # every 5 minutes
-    buildCommand: "./bin/render-build.sh"             # must match web build
-    startCommand: >
-      bash -c "
-        bundle install --jobs 4 --quiet &&
-        bundle exec rake technical_analysis:update
-      "
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: AlgoTradingAPI-DB
-          property: connectionString
+  # # ─────── Cron service (every 5 min) ─────────────────────────────
+  # - type: cron
+  #   name: ta_update
+  #   runtime: ruby
+  #   plan: starter                 # free 512 MB / 0.5 CPU container
+  #   schedule: "*/5 * * * *"       # every 5 minutes
+  #   buildCommand: "./bin/render-build.sh"             # must match web build
+  #   startCommand: >
+  #     bash -c "
+  #       bundle install --jobs 4 --quiet &&
+  #       bundle exec rake technical_analysis:update
+  #     "
+  #   envVars:
+  #     - key: DATABASE_URL
+  #       fromDatabase:
+  #         name: AlgoTradingAPI-DB
+  #         property: connectionString
 
-      - key: DHAN_API_KEY
-        sync: false
-      - key: DHAN_API_SECRET
-        sync: false
+  #     - key: DHAN_API_KEY
+  #       sync: false
+  #     - key: DHAN_API_SECRET
+  #       sync: false
 
-      - key: RAILS_ENV
-        value: production
+  #     - key: RAILS_ENV
+  #       value: production
