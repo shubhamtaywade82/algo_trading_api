@@ -17,8 +17,7 @@ module Option
       @underlying_spot  = underlying_spot.to_f
       @iv_rank          = iv_rank.to_f
       @historical_data  = historical_data || []
-
-      @ta = Indicators::HolyGrail.new(candles: historical_data).call if historical_data.present?
+      @ta = Indicators::HolyGrail.call(candles: historical_data) if historical_data.present?
 
       Rails.logger.debug { "Analyzing Options for #{expiry}" }
       raise ArgumentError, 'Option Chain is missing or empty!' if @option_chain[:oc].blank?

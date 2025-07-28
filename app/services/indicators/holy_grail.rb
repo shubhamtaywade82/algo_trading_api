@@ -53,9 +53,9 @@ module Indicators
         end
 
       momentum =
-        if macd_h[:macd] > macd_h[:signal] && rsi14 > 52
+        if macd_h[:macd] > macd_h[:signal] && rsi14 > 50
           :up
-        elsif macd_h[:macd] < macd_h[:signal] && rsi14 < 48
+        elsif macd_h[:macd] < macd_h[:signal] && rsi14 < 50
           :down
         else
           :flat
@@ -63,11 +63,21 @@ module Indicators
 
       proceed =
         case bias
-        when :bullish then adx14 >= 25 && momentum == :up
-        when :bearish then adx14 >= 25 && momentum == :down
-        else false
+        when :bullish
+          passed = adx14 >= 20.0 && momentum == :up
+          Rails.logger.debug { "[HolyGrail] Not proceeding (bias: bullish): adx=#{adx14}, momentum=#{momentum}" } unless passed
+          passed
+        when :bearish
+          passed = adx14 >= 20.0 && momentum == :down
+          Rails.logger.debug { "[HolyGrail] Not proceeding (bias: bearish): adx=#{adx14}, momentum=#{momentum}" } unless passed
+          passed
+        else
+          Rails.logger.debug { "[HolyGrail] Not proceeding (bias: #{bias}): neutral bias, adx=#{adx14}, momentum=#{momentum}" }
+          false
         end
 
+      latest_time = Time.zone.at(stamps.last)
+      Rails.logger.debug { "[HolyGrail] (#{latest_time}) Not proceeding ..." }
       trend =
         if ema200 < closes.last && sma50 > ema200 then :up
         elsif ema200 > closes.last && sma50 < ema200 then :down
@@ -115,7 +125,14 @@ module Indicators
     end
 
     # — technical_analysis gem —
-    def atr(len) = TA::Atr.calculate(ohlc_rows, period: len).last.atr
-    def adx(len) = TA::Adx.calculate(ohlc_rows, period: len).last.adx
+    def atr(len)
+      TA::Atr.calculate(ohlc_rows.last(len * 2), period: len).first.atr
+    end
+
+    def adx(len)
+      ad = TA::Adx.calculate(ohlc_rows.last(len * 2), period: len)
+      pp ad
+      ad.last.adx
+    end
   end
 end
