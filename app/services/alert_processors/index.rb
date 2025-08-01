@@ -27,9 +27,9 @@ module AlertProcessors
     MIN_PREMIUM       = ENV.fetch('MIN_OPTION_PREMIUM', 5).to_f
 
     # ─── RR % from entry price
-    DEFAULT_STOP_LOSS_PCT  = 0.12      # 12 % for options
+    DEFAULT_STOP_LOSS_PCT  = 0.15      # 12 % for options
     DEFAULT_TARGET_PCT     = 0.20      # RR = 1 : 2
-    DEFAULT_TRAIL_JUMP_PCT = 0.05      # trail every 5 % move in price
+    DEFAULT_TRAIL_JUMP_PCT = 0.03      # trail every 5 % move in price
     USE_SUPER_ORDER        = ENV.fetch('USE_SUPER_ORDER', 'true') == 'true'
 
     # Entry-point that the Sidekiq job / controller calls
