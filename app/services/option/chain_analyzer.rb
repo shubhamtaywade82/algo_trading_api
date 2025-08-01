@@ -7,7 +7,7 @@ module Option
     BASE_ATM_RANGE_PCT = 0.01 # fallback minimum range
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
 
-    TOP_RANKED_LIMIT = 3
+    TOP_RANKED_LIMIT = 10
 
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank, :ta
 
