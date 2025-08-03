@@ -131,8 +131,7 @@ module Indicators
 
     def adx(len)
       ad = TA::Adx.calculate(ohlc_rows.last(len * 2), period: len)
-      pp ad
-      ad.last.adx
+      ad.first.adx
     end
   end
 end
