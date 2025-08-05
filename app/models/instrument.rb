@@ -146,6 +146,9 @@ class Instrument < ApplicationRecord
   end
 
   def intraday_ohlc(interval: nil, oi: false, from_date: nil, to_date: nil)
+    to_date ||= MarketCalendar.today_or_last_trading_day.to_s
+    from_date ||= (Date.parse(to_date) - 90).to_s # fetch last 5 sessions by default
+
     Dhanhq::API::Historical.intraday(
       securityId: security_id,
       exchangeSegment: exchange_segment,
