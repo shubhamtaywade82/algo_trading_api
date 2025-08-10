@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class Instrument < ApplicationRecord
+  include InstrumentCandleAccessors
+
   # Associations
   has_one :mis_detail, dependent: :destroy
   has_many :derivatives, dependent: :destroy

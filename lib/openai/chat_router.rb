@@ -4,7 +4,7 @@ module Openai
   class ChatRouter
     LIGHT   = 'gpt-3.5-turbo-0125'
     HEAVY   = 'gpt-4o'
-    TOKENS_LIMIT = 3_000 # ≈ words * 1.5
+    TOKENS_LIMIT = 200 # ≈ words * 1.5
 
     # High-level helper – returns plain text
     # ------------------------------------------------------------
@@ -14,9 +14,9 @@ module Openai
                   temperature: 0.7,
                   max_tokens: nil,
                   force: false)
-      mdl = model || choose_model("#{system} #{user_prompt}")
-      mdl = HEAVY if force
+      mdl = resolve_model(model, force, "#{system} #{user_prompt}")
 
+      pp mdl
       params = {
         model: mdl,
         messages: [
@@ -38,11 +38,29 @@ module Openai
       token_estimate(text) > TOKENS_LIMIT ? HEAVY : LIGHT
     end
 
+    # =========================================================
+    # Helpers
+    # =========================================================
+    def self.resolve_model(explicit_model, force, text)
+      return HEAVY if force
+      return explicit_model if explicit_model.present?
+
+      # Environment-based default
+      env_default = Rails.env.production? ? HEAVY : LIGHT
+
+      # If you later want token-based switching, uncomment:
+      # token_estimate(text) > TOKENS_LIMIT ? HEAVY : env_default
+      env_default
+    end
+    private_class_method :resolve_model
+
     # Very light-weight fallback when tiktoken isn't installed.
     # A token ≈ 4 characters for English-ish text.
+    # very rough: 1 token ≈ 4 characters
     def self.token_estimate(str)
       (str.to_s.length / 4.0).ceil
     end
+    private_class_method :token_estimate
 
     def self.default_system
       'You are a helpful assistant specialised in Indian equities & derivatives.'
