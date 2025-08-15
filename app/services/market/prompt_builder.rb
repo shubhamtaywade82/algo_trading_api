@@ -94,7 +94,7 @@ module Market
              • High-vol breakout (>1% either way) → straddle/strangle candidate
              • Explicitly state: “Close likely higher / lower / flat” with rationale.
              a) Intraday bias: State explicit bias: Bullish / Bearish / Range-bound (one word).
-             b) Closing outcome buckets (today):
+             b) Closing outcome buckets (today) with expected clossing range:
               • Significant upside  (>= +0.5%):  __ %
               • Significant downside(<= -0.5%): __ %
               • Flat market        (-0.5%..+0.5%): __ %
