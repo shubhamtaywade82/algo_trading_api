@@ -91,6 +91,6 @@ module InstrumentCandleAccessors
   end
 
   def default_from_date
-    default_to_date - 90.days
+    default_to_date - 10.days
   end
 end
