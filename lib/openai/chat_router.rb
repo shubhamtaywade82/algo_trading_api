@@ -3,7 +3,7 @@
 module Openai
   class ChatRouter
     LIGHT   = 'gpt-5-mini'
-    HEAVY   = 'gpt-5'
+    HEAVY   = 'gpt-4o'
     TOKENS_LIMIT = 300 # ≈ words * 1.5
 
     # High-level helper – returns plain text
