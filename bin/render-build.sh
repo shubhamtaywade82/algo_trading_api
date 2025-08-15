@@ -4,7 +4,7 @@ set -o errexit
 
 # Install gems
 echo "📦 Installing dependencies..."
-bundle install
+bundle update
 
 #bundle exec rails g solid_cache:install
 
