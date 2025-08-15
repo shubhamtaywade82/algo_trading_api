@@ -30,6 +30,9 @@ module TelegramBot
                    interactive: true
                  )
       TelegramNotifier.send_message(result, chat_id: @cid) if result
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
+      TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
     end
 
     # 4️⃣ — NEW  market-analysis hook
@@ -72,7 +75,7 @@ module TelegramBot
       return unless result
 
       Rails.cache.write(ANALYSIS_CACHE_KEY, Time.now.utc, expires_in: 25.hours)
-      rescue StandardError => e
+    rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
       TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
     end
@@ -85,6 +88,9 @@ module TelegramBot
                   dhan_positions: positions,
                   interactive: true
                 )
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
+      TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
     end
   end
 end
