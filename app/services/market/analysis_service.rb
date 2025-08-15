@@ -54,10 +54,10 @@ module Market
 
       # prompt = build_prompt(md)
       prompt = PromptBuilder.build_prompt(md) # , context: 'Prefer 0.35–0.55 delta; if IV percentile > 70, avoid fresh straddles.')
-      Rails.logger.debug prompt
+      # Rails.logger.debug prompt
       answer = ask_openai(prompt)
       # answer = prompt
-
+      # Rails.logger.debug answer
       push_telegram(answer, md)
 
       nil if answer # optional return for console / tests
@@ -448,7 +448,7 @@ module Market
           system: 'You are an elite Indian derivatives strategist.',
           temperature: 0.4                     # keep previous settings
         )
-      rescue OpenAI::Error::RateLimitError
+      rescue OpenAI::Error
         attempt += 1
         raise if attempt > retries
 
@@ -463,6 +463,18 @@ module Market
     def push_telegram(text, md)
       options_text = format_options_chain(md[:options])
 
+      # message = <<~TG
+      #   #{TELEGRAM_TAG} – *#{md[:symbol]}*
+      #   LTP  : ₹#{md[:ltp].round(2)}
+      #   Time : #{md[:ts].strftime('%H:%M:%S')}
+      #   Frame: #{@candle}
+      #   Exp  : #{md[:expiry]}
+      #   ───────────────────────────
+      #   #{options_text}
+
+      #   #{text}
+      # TG
+
       message = <<~TG
         #{TELEGRAM_TAG} – *#{md[:symbol]}*
         LTP  : ₹#{md[:ltp].round(2)}
@@ -470,8 +482,6 @@ module Market
         Frame: #{@candle}
         Exp  : #{md[:expiry]}
         ───────────────────────────
-        #{options_text}
-
         #{text}
       TG
 
