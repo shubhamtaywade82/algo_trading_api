@@ -234,7 +234,6 @@ module PortfolioInsights
           • One-line valuation / momentum / catalyst rationale.
           • Use ✅ grammar exactly; no extra commentary.
         SYS
-        temperature: 0.15,
         max_tokens: MAX_TOKENS,
         force: true
       )

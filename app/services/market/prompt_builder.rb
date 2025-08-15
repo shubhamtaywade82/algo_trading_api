@@ -65,6 +65,7 @@ module Market
           === EXPERT OPTIONS BUYING ANALYST ===
 
           You are an expert financial analyst specializing in the Indian equity & derivatives markets, with a focus on buying **#{md[:symbol]}** index options.
+          NOTE: Please make the text consise and quick readable
 
           === CURRENT MARKET DATA ===
           India VIX: #{vix_value}%
@@ -94,10 +95,10 @@ module Market
              • High-vol breakout (>1% either way) → straddle/strangle candidate
              • Explicitly state: “Close likely higher / lower / flat” with rationale.
              a) Intraday bias: State explicit bias: Bullish / Bearish / Range-bound (one word).
-             b) Closing outcome buckets (today) with expected clossing range:
-              • Significant upside  (>= +0.5%):  __ %
-              • Significant downside(<= -0.5%): __ %
-              • Flat market        (-0.5%..+0.5%): __ %
+             b) Closing outcome buckets (today) with **price ranges**:
+              • Significant upside (≥ +0.5%):   __%  | Close: ₹LOW–₹HIGH
+              • Significant downside (≤ −0.5%): __%  | Close: ₹LOW–₹HIGH
+              • Flat (−0.5%…+0.5%):             __%  | Close: ₹LOW–₹HIGH
 
           2) Strategy selection & strikes:
              • Pick exactly ONE primary idea + ONE hedge (CE/PE/straddle/strangle)
@@ -111,8 +112,13 @@ module Market
              • Entry triggers, stop-loss (% of premium), T1 & T2 targets
              • Time-based exit if no move (e.g., exit by 14:30 IST)
              • Comment on IV context (avoid paying extreme IV unless expecting expansion)
-
-          4) Output format (concise, trade-desk ready):
+          4) **Closing range** (mandatory line):
+             • **Method to use:** Start with mid = Bollinger middle band. Base move = min(ATR-14, 0.75% of LTP).
+               Scale by time remaining to close (linear), widen by +20% if India VIX > 14, shrink by −20% if VIX < 10.
+               Round to nearest 5 points for NIFTY / 10 for BANKNIFTY.
+             • **Print exactly this line:**
+              `CLOSE RANGE: ₹<low>–₹<high> (<−x% to +y% from LTP>)`
+          5) Output format (concise, trade-desk ready):
              • Probability bands (≥30 %, ≥50 %, ≥70 %) with one-line rationale
              • PRIMARY: <strategy, strikes, entry ₹, SL %, T1/T2 ₹, reasoning>
              • HEDGE:   <strategy, strikes, entry ₹, SL %, T1/T2 ₹, reasoning>
@@ -120,6 +126,7 @@ module Market
              • **ONE-LINE BIAS**: Add one final line **exactly** as `Bias: CALLS` or `Bias: PUTS` or `Bias: NEUTRAL`
                (pick one based on directional probabilities, IV context and Greeks). This line must appear
                on its own, right before the closing marker below.
+             • **Also include the line above for closing range.**
 
           Finish with an actionable summary:
             – Exact strike(s) to buy

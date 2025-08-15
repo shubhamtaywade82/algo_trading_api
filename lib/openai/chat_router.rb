@@ -2,16 +2,15 @@
 
 module Openai
   class ChatRouter
-    LIGHT   = 'gpt-3.5-turbo-0125'
-    HEAVY   = 'gpt-4o'
-    TOKENS_LIMIT = 200 # ≈ words * 1.5
+    LIGHT   = 'gpt-5-mini'
+    HEAVY   = 'gpt-5'
+    TOKENS_LIMIT = 300 # ≈ words * 1.5
 
     # High-level helper – returns plain text
     # ------------------------------------------------------------
     def self.ask!(user_prompt,
                   system: default_system,
                   model:  nil,
-                  temperature: 0.7,
                   max_tokens: nil,
                   force: false)
       mdl = resolve_model(model, force, "#{system} #{user_prompt}")
@@ -22,8 +21,7 @@ module Openai
         messages: [
           { role: 'system', content: system },
           { role: 'user',   content: user_prompt }
-        ],
-        temperature: temperature
+        ]
       }
       params[:max_tokens] = max_tokens if max_tokens
 
@@ -49,8 +47,11 @@ module Openai
       env_default = Rails.env.production? ? HEAVY : LIGHT
 
       # If you later want token-based switching, uncomment:
-      # token_estimate(text) > TOKENS_LIMIT ? HEAVY : env_default
-      env_default
+      if Rails.env.production?
+        token_estimate(text) > TOKENS_LIMIT ? HEAVY : env_default
+      else
+        env_default
+      end
     end
     private_class_method :resolve_model
 

@@ -21,8 +21,7 @@ module PortfolioInsights
       typing_ping
       Openai::ChatRouter.ask!(
         prompt,
-        system: SYSTEM_SEED,
-        temperature: 0.35
+        system: SYSTEM_SEED
       )
       # notify(answer, tag: 'PORTFOLIO_AI') if interactive
       # answer

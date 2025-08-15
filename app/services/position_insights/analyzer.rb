@@ -22,8 +22,7 @@ module PositionInsights
 
       answer = Openai::ChatRouter.ask!(
         prompt,
-        system: SYSTEM_SEED,
-        temperature: 0.3
+        system: SYSTEM_SEED
       )
 
       notify(answer, tag: 'POSITIONS_AI') if @interactive

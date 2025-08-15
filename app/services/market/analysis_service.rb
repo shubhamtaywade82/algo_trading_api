@@ -443,10 +443,9 @@ module Market
       attempt = 0
 
       begin
-        Openai::ChatRouter.ask!(               # ← use your central router
+        Openai::ChatRouter.ask!( # ← use your central router
           prompt,
-          system: 'You are an elite Indian derivatives strategist.',
-          temperature: 0.4                     # keep previous settings
+          system: 'You are an elite Indian derivatives strategist.'
         )
       rescue OpenAI::Error::RateLimitError
         attempt += 1
@@ -471,11 +470,9 @@ module Market
         Exp  : #{md[:expiry]}
         ───────────────────────────
         #{options_text}
-
-        #{text}
       TG
-
       TelegramNotifier.send_message(message)
+      TelegramNotifier.send_message(text)
     end
 
     # ------------------------------------------------------------
