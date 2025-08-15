@@ -97,7 +97,7 @@ gem 'telegram-bot-ruby'
 gem 'bindata'
 gem 'faye-websocket'
 
-gem 'ruby-openai', '8.2', require: 'openai'
+gem 'ruby-openai', require: 'openai'
 
 gem 'technical-analysis'
 
