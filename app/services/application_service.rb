@@ -21,7 +21,7 @@ class ApplicationService
   end
 
   def typing_ping
-          TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
+    TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
   end
 
   # # Logs an info-level message with class context
