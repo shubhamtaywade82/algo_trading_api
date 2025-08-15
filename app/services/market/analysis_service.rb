@@ -450,7 +450,7 @@ module Market
           prompt,
           system: 'You are an elite Indian derivatives strategist.'
         )
-      rescue OpenAI::Error::RateLimitError
+      rescue OpenAI::Error
         attempt += 1
         raise if attempt > retries
 
