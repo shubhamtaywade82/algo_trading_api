@@ -72,6 +72,9 @@ module TelegramBot
       return unless result
 
       Rails.cache.write(ANALYSIS_CACHE_KEY, Time.now.utc, expires_in: 25.hours)
+      rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
+      TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
     end
 
     def positions_brief
