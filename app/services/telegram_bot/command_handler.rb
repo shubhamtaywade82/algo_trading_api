@@ -58,6 +58,7 @@ module TelegramBot
       typing_ping
 
       holdings  = Dhanhq::API::Portfolio.holdings
+      return unless holdings
       balance   = Dhanhq::API::Funds.balance
       positions = Dhanhq::API::Portfolio.positions
 
