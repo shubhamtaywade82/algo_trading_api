@@ -23,7 +23,7 @@ module TelegramBot
     private
 
     def quick_portfolio_brief
-      TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
+      typing_ping
       holdings = Dhanhq::API::Portfolio.holdings
       result   = PortfolioInsights::Analyzer.call(
                    dhan_holdings: holdings,
@@ -34,7 +34,7 @@ module TelegramBot
 
     # 4️⃣ — NEW  market-analysis hook
     def run_market_analysis(symbol, exchange: :nse)
-      TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
+      typing_ping
 
       Market::AnalysisService.call(symbol, exchange: exchange)
       # if analysis.present?
@@ -55,7 +55,7 @@ module TelegramBot
       #   return
       # end
 
-      TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
+      typing_ping
 
       holdings  = Dhanhq::API::Portfolio.holdings
       balance   = Dhanhq::API::Funds.balance
@@ -74,7 +74,7 @@ module TelegramBot
     end
 
     def positions_brief
-      TelegramNotifier.send_chat_action(chat_id: @cid, action: 'typing')
+      typing_ping
       positions = Dhanhq::API::Portfolio.positions
 
       PositionInsights::Analyzer.call(

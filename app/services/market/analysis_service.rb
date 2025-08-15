@@ -55,10 +55,13 @@ module Market
       # prompt = build_prompt(md)
       prompt = PromptBuilder.build_prompt(md) # , context: 'Prefer 0.35–0.55 delta; if IV percentile > 70, avoid fresh straddles.')
       Rails.logger.debug prompt
+      push_info(md)
+
       answer = ask_openai(prompt)
+      typing_ping
       # answer = prompt
 
-      push_telegram(answer, md)
+      TelegramNotifier.send_message(answer)
 
       nil if answer # optional return for console / tests
     rescue StandardError => e
@@ -459,7 +462,8 @@ module Market
     # ------------------------------------------------------------
     # 4️⃣  Telegram
     # ------------------------------------------------------------
-    def push_telegram(text, md)
+
+    def push_info(md)
       options_text = format_options_chain(md[:options])
 
       message = <<~TG
@@ -472,7 +476,6 @@ module Market
         #{options_text}
       TG
       TelegramNotifier.send_message(message)
-      TelegramNotifier.send_message(text)
     end
 
     # ------------------------------------------------------------

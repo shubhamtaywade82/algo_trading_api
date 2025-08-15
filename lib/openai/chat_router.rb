@@ -24,8 +24,9 @@ module Openai
         ]
       }
       params[:max_tokens] = max_tokens if max_tokens
-
+      TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
       resp = Client.instance.chat(parameters: params)
+      TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
       resp.dig('choices', 0, 'message', 'content').to_s.strip
     end
 
