@@ -56,7 +56,7 @@ module Market
       prompt = PromptBuilder.build_prompt(md) # , context: 'Prefer 0.35–0.55 delta; if IV percentile > 70, avoid fresh straddles.')
       Rails.logger.debug prompt
       push_info(md)
-
+      pp prompt
       answer = ask_openai(prompt)
       typing_ping
       # answer = prompt
