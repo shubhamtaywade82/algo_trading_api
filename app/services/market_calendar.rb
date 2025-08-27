@@ -1,7 +1,8 @@
 module MarketCalendar
   MARKET_HOLIDAYS = [
     # Add static or API-fetched holiday dates here
-    Date.new(2025, 8, 15)
+    Date.new(2025, 8, 15),
+    Date.new(2025, 8, 27)
     # ...
   ].freeze
 
