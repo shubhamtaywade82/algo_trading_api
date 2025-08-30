@@ -28,32 +28,28 @@ module Market
         cc    = ohlc[:close]  || '–'
         cv    = ohlc[:volume] || '–'
 
-        # LTP (explicit line like old prompt; fall back to close)
-        ltp = md[:ltp] || cc
+        ltp    = md[:ltp]     || cc
+        atr    = md[:atr]     || '–'
+        rsi    = md[:rsi]    || '–'
 
-        # Indicators (kept)
-        atr = md[:atr] || '–'
-        rsi = md[:rsi] || '–'
+        boll   = md[:boll]   || {}
+        bu     = fmt1(boll[:upper])
+        bm     = fmt1(boll[:middle])
+        bl     = fmt1(boll[:lower])
 
-        boll = md[:boll] || {}
-        bu   = fmt1(boll[:upper])
-        bm   = fmt1(boll[:middle])
-        bl   = fmt1(boll[:lower])
-
-        macd = md[:macd] || {}
-        m_l  = macd[:macd]   || '–'
+        macd = md[:macd]   || {}
+        m_l  = macd[:macd] || '–'
         m_s  = macd[:signal] || '–'
-        m_h  = macd[:hist]   || '–'
+        m_h  = macd[:hist] || '–'
 
-        st_sig = md[:super] || 'neutral'
-
-        hi20 = md[:hi20] || '–'
-        lo20 = md[:lo20] || '–'
-        lu   = md[:liq_up] ? 'yes' : 'no'
-        ld   = md[:liq_dn] ? 'yes' : 'no'
+        st_sig = md[:super]  || 'neutral'
+        hi20 = md[:hi20]   || '–'
+        lo20   = md[:lo20]   || '–'
+        lu     = md[:liq_up] ? 'yes' : 'no'
+        ld     = md[:liq_dn] ? 'yes' : 'no'
 
         expiry = md[:expiry] || 'N/A'
-        chain  = format_options_chain(md[:options])
+        chain = format_options_chain(md[:options])
 
         # Analysis context (optional)
         extra = context.to_s.strip
@@ -90,11 +86,11 @@ module Market
           #{extra_block}=== ANALYSIS REQUIREMENTS ===
           **TASK — #{analysis_context_for(md[:session])}**
 
-          1) Directional probabilities from the current price (today’s close vs now):
+          1) Directional probabilities from the current price (today's close vs now):
              • Strong upside (>0.5%) → CALL buying candidate
              • Strong downside (>0.5%) → PUT buying candidate
              • High-vol breakout (>1% either way) → straddle/strangle candidate
-             • Explicitly state: “Close likely higher / lower / flat” with rationale.
+             • Explicitly state: "Close likely higher / lower / flat" with rationale.
              a) Intraday bias: State explicit bias: Bullish / Bearish / Range-bound (one word).
              b) Closing outcome buckets (today) with **price ranges**:
               • Significant upside (≥ +0.5%):   __%  | Close: ₹LOW–₹HIGH
@@ -107,7 +103,7 @@ module Market
              • Prefer delta ≈ 0.35–0.55 for directional buys unless IV regime suggests otherwise
              • Use expiry **#{expiry}** for all options unless stated otherwise.
              a) OI & IV trends: Comment on changes vs prior session/week: rising/flat/falling OI, IV expansion/compression, and implications for strategy selection.
-             b) Fundamentals & flows (if known): Briefly note macro cues (central bank, global futures, major news). If unknown, say “No material fundamental cues observed.”
+             b) Fundamentals & flows (if known): Briefly note macro cues (central bank, global futures, major news). If unknown, say "No material fundamental cues observed."
 
           3) Execution plan & risk:
              • Entry triggers, stop-loss (% of premium), T1 & T2 targets
@@ -145,7 +141,6 @@ module Market
 
       # Make the session wording explicit
       def analysis_context_for(session)
-        pp session
         case session
         when :pre_open   then 'Pre-market Preparation (for the open)'
         when :post_close then 'Post-market Analysis (for tomorrow)'
