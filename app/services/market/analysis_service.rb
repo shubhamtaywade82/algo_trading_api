@@ -256,7 +256,7 @@ module Market
 
     def session_state
       now = Time.zone.now
-
+      weekday = now.wday # 0 = Sunday, 6 = Saturday
   
       # Check if it's weekend (Saturday or Sunday)
       if weekday == 0 || weekday == 6
