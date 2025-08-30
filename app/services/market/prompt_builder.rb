@@ -145,6 +145,7 @@ module Market
 
       # Make the session wording explicit
       def analysis_context_for(session)
+        pp session
         case session
         when :pre_open   then 'Pre-market Preparation (for the open)'
         when :post_close then 'Post-market Analysis (for tomorrow)'
