@@ -15,6 +15,7 @@ module TelegramBot
       when '/nifty_analysis' then run_market_analysis('NIFTY')
       when '/sensex_analysis' then run_market_analysis('SENSEX', exchange: :bse)
       when '/bank_nifty_analysis' then run_market_analysis('BANKNIFTY')
+      when '/stocks_screener' then run_stocks_screener
       else TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid)
       end
     end
@@ -71,6 +72,25 @@ module TelegramBot
       return unless result
 
       Rails.cache.write(ANALYSIS_CACHE_KEY, Time.now.utc, expires_in: 25.hours)
+    end
+
+    def run_stocks_screener
+      typing_ping
+      # Adjust universe/frame/limits from chat text later if you want.
+      Screeners::StocksScreener.call(
+        universe: :nifty100,
+        session: :live,
+        frame: '15m',
+        lookback: 20,
+        limit: 20,
+        min_price: 80,
+        min_avg_vol: 75_000,
+        optionable: true,
+        push_to_telegram: true
+      )
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ StocksScreener – #{e.class}: #{e.message}"
+      TelegramNotifier.send_message("🚨 Screener error – #{e.message}", chat_id: @cid)
     end
 
     def positions_brief
