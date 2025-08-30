@@ -18,7 +18,7 @@
 module Market
   class AnalysisService < ApplicationService
     TELEGRAM_TAG   = '📈 Analyse'
-    DEFAULT_CANDLE = '5m'
+    DEFAULT_CANDLE = '15m'
 
     # ─────────────────────────────────────────────────────────────
     # constructor (only *symbol* is strictly required)
