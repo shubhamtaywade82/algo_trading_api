@@ -8,6 +8,7 @@ module Market
           case md[:session]
           when :pre_open   then '⏰ *Pre-open* session'
           when :post_close then '🔒 *Post-close* session'
+          when :weekend    then '📅 *Weekend* (markets closed)'
           else                  '🟢 *Live* session'
           end
 
@@ -147,6 +148,7 @@ module Market
         case session
         when :pre_open   then 'Pre-market Preparation (for the open)'
         when :post_close then 'Post-market Analysis (for tomorrow)'
+        when :weekend    then 'Weekend Analysis (for Monday opening)'
         else 'Live Intraday Analysis (right now)'
         end
       end
