@@ -472,11 +472,15 @@ module Market
 
     def push_info(md)
       options_text = format_options_chain(md[:options])
+     
+        
+      # Add weekend info if applicable
+      weekend_note = md[:session] == :weekend ? " (Weekend - Markets Closed)" : ""
 
       message = <<~TG
         #{TELEGRAM_TAG} – *#{md[:symbol]}*
         LTP  : ₹#{md[:ltp].round(2)}
-        Time : #{md[:ts].strftime('%H:%M:%S')}
+        Time : #{md[:ts].strftime('%H:%M:%S')}#{weekend_note}
         Frame: #{@candle}
         Exp  : #{md[:expiry]}
         ───────────────────────────
