@@ -11,6 +11,8 @@ class Instrument < ApplicationRecord
   has_many :alerts, dependent: :destroy
   has_many :levels, dependent: :destroy
   has_many :quotes, dependent: :destroy
+  has_many :watchlist_items, dependent: :delete_all
+  has_many :watchlists, through: :watchlist_items
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivatives, allow_destroy: true

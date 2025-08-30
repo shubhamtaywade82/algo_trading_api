@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
+ActiveRecord::Schema[8.0].define(version: 2025_08_15_114136) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -306,6 +306,38 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
     t.index ["instrument_id"], name: "index_swing_picks_on_instrument_id"
   end
 
+  create_table "watchlist_items", force: :cascade do |t|
+    t.bigint "watchlist_id", null: false
+    t.bigint "instrument_id", null: false
+    t.integer "rank", default: 0, null: false
+    t.string "bucket", default: "intraday", null: false
+    t.boolean "has_derivatives", default: false, null: false
+    t.boolean "has_options", default: false, null: false
+    t.boolean "has_futures", default: false, null: false
+    t.datetime "last_scored_at"
+    t.jsonb "metrics", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["bucket"], name: "index_watchlist_items_on_bucket"
+    t.index ["instrument_id"], name: "index_watchlist_items_on_instrument_id"
+    t.index ["watchlist_id", "instrument_id"], name: "idx_watchlist_items_uni", unique: true
+    t.index ["watchlist_id", "rank"], name: "index_watchlist_items_on_watchlist_id_and_rank"
+    t.index ["watchlist_id"], name: "index_watchlist_items_on_watchlist_id"
+  end
+
+  create_table "watchlists", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "kind", null: false
+    t.string "timeframe", null: false
+    t.boolean "active", default: true, null: false
+    t.text "description"
+    t.jsonb "meta", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["kind", "timeframe"], name: "index_watchlists_on_kind_and_timeframe"
+    t.index ["name"], name: "index_watchlists_on_name", unique: true
+  end
+
   add_foreign_key "alerts", "instruments"
   add_foreign_key "derivatives", "instruments"
   add_foreign_key "levels", "instruments"
@@ -314,4 +346,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
   add_foreign_key "positions", "instruments"
   add_foreign_key "quotes", "instruments"
   add_foreign_key "swing_picks", "instruments"
+  add_foreign_key "watchlist_items", "instruments"
+  add_foreign_key "watchlist_items", "watchlists"
 end
