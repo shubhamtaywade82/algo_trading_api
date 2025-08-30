@@ -256,6 +256,13 @@ module Market
 
     def session_state
       now = Time.zone.now
+
+  
+      # Check if it's weekend (Saturday or Sunday)
+      if weekday == 0 || weekday == 6
+        return :weekend
+      end
+
       case @exchange.to_sym
       when :nse, :bse
         return :pre_open   if now <  now.change(hour: 9, min: 15)
