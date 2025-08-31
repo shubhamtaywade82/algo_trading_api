@@ -91,7 +91,10 @@ module AlertProcessors
       log :info, "Momentum   : #{result[:momentum]}"
       log :info, "Proceed? => #{result[:proceed]}"
 
-      return skip!(result[:reason] || :analyzer_rejected) unless result[:proceed]
+      unless result[:proceed]
+        skip_reason = build_detailed_skip_reason(result)
+        return skip!(skip_reason)
+      end
 
       log_result_summary(result)
       selected = result[:selected]
@@ -560,6 +563,70 @@ module AlertProcessors
       log :warn,
           "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{PriceMath.round_tick(per_lot_cost)}, " \
           "Available: ₹#{PriceMath.round_tick(available_balance)}, Shortfall: ₹#{PriceMath.round_tick(shortfall)}. No order placed."
+    end
+
+    def build_detailed_skip_reason(result)
+      reasons = result[:reasons] || [result[:reason]]
+      validation_details = result[:validation_details] || {}
+
+      # Build the main reason
+      main_reason = reasons.join('; ')
+
+      # Add detailed context
+      details = []
+
+      # IV Rank details
+      if validation_details[:iv_rank]
+        iv_info = validation_details[:iv_rank]
+        details << "IV Rank: #{iv_info[:current_rank]&.round(3)} (Range: #{iv_info[:min_rank]}-#{iv_info[:max_rank]})"
+      end
+
+      # Theta Risk details
+      if validation_details[:theta_risk]
+        theta_info = validation_details[:theta_risk]
+        details << "Theta Risk: #{theta_info[:current_time]} (Expiry: #{theta_info[:expiry_date]}, Hours left: #{theta_info[:hours_left]})"
+      end
+
+      # ADX details
+      if validation_details[:adx]
+        adx_info = validation_details[:adx]
+        details << "ADX: #{adx_info[:current_value]&.round(2)} (Min: #{adx_info[:min_value]})"
+      end
+
+      # Trend/Momentum details
+      if validation_details[:trend_momentum]
+        tm_info = validation_details[:trend_momentum]
+        details << "Trend: #{tm_info[:trend][:current_trend]} (Signal: #{tm_info[:trend][:signal_type]})" if tm_info[:trend]
+        details << "Momentum: #{tm_info[:momentum][:current_momentum]} (Signal: #{tm_info[:momentum][:signal_type]})" if tm_info[:momentum]
+        if tm_info[:trend_mismatch]
+          details << "Trend Mismatch: #{tm_info[:trend_mismatch][:signal_type]} vs #{tm_info[:trend_mismatch][:current_trend]}"
+        end
+      end
+
+      # Strike Selection details
+      if validation_details[:strike_selection]
+        ss_info = validation_details[:strike_selection]
+        details << "Strikes: #{ss_info[:filtered_count]}/#{ss_info[:total_strikes]} passed filters"
+        if ss_info[:filters_applied]&.any?
+          filter_details = ss_info[:filters_applied].map do |filter|
+            if filter.is_a?(Hash)
+              "#{filter[:strike_price]} (#{filter[:reasons].join(', ')})"
+            else
+              filter
+            end
+          end.join('; ')
+          details << "Filter Details: #{filter_details}"
+        end
+      end
+
+      # Combine all information
+      full_reason = main_reason
+      full_reason += " | Details: #{details.join(' | ')}" if details.any?
+
+      # Log the detailed reason for debugging
+      log :warn, "Signal skipped - #{full_reason}"
+
+      full_reason
     end
   end
 end

@@ -31,13 +31,15 @@ module Option
       result = {
         proceed: true, # optimistic default
         reason: nil,
+        reasons: [], # Multiple reasons for comprehensive feedback
         signal_type: signal_type,
         trend: nil,
         momentum: nil,
         adx: nil,
         selected: nil,
         ranked: [],
-        ta_snapshot: ta ? ta.to_h : {}
+        ta_snapshot: ta ? ta.to_h : {},
+        validation_details: {} # Detailed validation information
       }
 
       # ------------------------------------------------------------------
@@ -51,12 +53,14 @@ module Option
       # ------------------------------------------------------------------
       # 1️⃣  Sanity checks that are always required
       # ------------------------------------------------------------------
-      if iv_rank_outside_range?
+      validation_checks = perform_validation_checks(signal_type, strategy_type)
+
+      if validation_checks[:failed].any?
         result[:proceed] = false
-        result[:reason] = 'IV rank outside range'
-      elsif discourage_late_entry_due_to_theta?
-        result[:proceed] = false
-        result[:reason] = 'Late entry, theta risk'
+        result[:reasons] = validation_checks[:failed]
+        result[:reason] = validation_checks[:failed].join('; ') # Backward compatibility
+        result[:validation_details] = validation_checks[:details]
+        return result
       end
 
       # ------------------------------------------------------------------
@@ -67,12 +71,14 @@ module Option
       result[:adx]      = ta&.adx
       adx_ok            = ta ? ta.adx.to_f >= MIN_ADX_VALUE : true
 
-      if result[:proceed] && # only test if still live
-         !(trend_confirms?(result[:trend], signal_type) &&
-           adx_ok &&
-           result[:momentum] != :flat)
+      # Check trend confirmation and momentum
+      trend_momentum_check = check_trend_momentum(result[:trend], result[:momentum], adx_ok, signal_type)
+      unless trend_momentum_check[:passed]
         result[:proceed] = false
-        result[:reason] = "trend/momentum filter (adx #{ta&.adx}) < #{MIN_ADX_VALUE} #{result[:trend]} #{result[:momentum]} #{adx_ok}"
+        result[:reasons] = trend_momentum_check[:reasons]
+        result[:reason] = trend_momentum_check[:reasons].join('; ')
+        result[:validation_details][:trend_momentum] = trend_momentum_check[:details]
+        return result
       end
 
       # ------------------------------------------------------------------
@@ -83,7 +89,9 @@ module Option
 
         if filtered.empty?
           result[:proceed] = false
+          result[:reasons] = ['No tradable strikes found']
           result[:reason] = 'No tradable strikes found'
+          result[:validation_details][:strike_selection] = get_strike_filter_summary(signal_type)
         else
           m_boost = result[:momentum] == :strong ? 1.15 : 1.0
           ranked  = filtered.map do |opt|
@@ -94,6 +102,14 @@ module Option
 
           result[:ranked]   = ranked.first(TOP_RANKED_LIMIT)
           result[:selected] = result[:ranked].first
+
+          result[:validation_details][:strike_selection] = {
+            total_strikes: @option_chain[:oc].keys.size,
+            filtered_count: filtered.size,
+            ranked_count: result[:ranked].size,
+            top_score: result[:selected]&.dig(:score)&.round(2),
+            filters_applied: get_strike_filter_summary(signal_type)
+          }
         end
       end
 
@@ -344,6 +360,139 @@ module Option
       return nil if strikes.empty?
 
       strikes.min_by { |s| (s - @underlying_spot).abs }
+    end
+
+    def perform_validation_checks(signal_type, strategy_type)
+      checks = {
+        failed: [],
+        details: {}
+      }
+
+      # 1️⃣  IV Rank Check
+      if iv_rank_outside_range?
+        checks[:failed] << 'IV rank outside range'
+        checks[:details][:iv_rank] = {
+          current_rank: @iv_rank,
+          min_rank: IV_RANK_MIN,
+          max_rank: IV_RANK_MAX
+        }
+      end
+
+      # 2️⃣  Theta Risk Check
+      if discourage_late_entry_due_to_theta?
+        checks[:failed] << 'Late entry, theta risk'
+        checks[:details][:theta_risk] = {
+          current_time: Time.zone.now.strftime('%H:%M'),
+          expiry_date: @expiry.strftime('%Y-%m-%d'),
+          hours_left: (@expiry - Time.zone.today).to_i,
+          theta_avoid_hour: THETA_AVOID_HOUR
+        }
+      end
+
+      # 3️⃣  ADX Check
+      adx_ok = ta ? ta.adx.to_f >= MIN_ADX_VALUE : true
+      unless adx_ok
+        checks[:failed] << "ADX below minimum value (#{ta&.adx})"
+        checks[:details][:adx] = {
+          current_value: ta&.adx,
+          min_value: MIN_ADX_VALUE
+        }
+      end
+
+      # 4️⃣  Trend Confirmation Check
+      trend = ta ? ta.bias.to_sym : intraday_trend
+      momentum = ta ? ta.momentum.to_sym : :flat
+      trend_momentum_check = check_trend_momentum(trend, momentum, adx_ok, signal_type)
+      unless trend_momentum_check[:passed]
+        checks[:failed] << trend_momentum_check[:reasons].join('; ')
+        checks[:details][:trend_momentum] = trend_momentum_check[:details]
+      end
+
+      checks
+    end
+
+    def check_trend_momentum(trend, momentum, adx_ok, signal_type)
+      reasons = []
+      details = {}
+
+      if trend == :neutral
+        reasons << 'Trend is neutral'
+        details[:trend] = {
+          current_trend: trend,
+          signal_type: signal_type
+        }
+      end
+
+      if signal_type == :ce && trend == :bearish
+        reasons << 'Call signal, but trend is bearish'
+        details[:trend_mismatch] = {
+          signal_type: signal_type,
+          current_trend: trend
+        }
+      end
+
+      if signal_type == :pe && trend == :bullish
+        reasons << 'Put signal, but trend is bullish'
+        details[:trend_mismatch] = {
+          signal_type: signal_type,
+          current_trend: trend
+        }
+      end
+
+      if momentum == :flat
+        reasons << 'Momentum is flat'
+        details[:momentum] = {
+          current_momentum: momentum,
+          signal_type: signal_type
+        }
+      end
+
+      if adx_ok == false
+        reasons << "ADX below minimum value (#{ta&.adx})"
+        details[:adx] = {
+          current_value: ta&.adx,
+          min_value: MIN_ADX_VALUE
+        }
+      end
+
+      {
+        passed: reasons.empty?,
+        reasons: reasons,
+        details: details
+      }
+    end
+
+    def get_strike_filter_summary(signal_type)
+      side = signal_type.to_sym
+      strike_filters = {
+        total_strikes: @option_chain[:oc].keys.size,
+        filtered_count: 0,
+        filters_applied: []
+      }
+
+      filtered_strikes = gather_filtered_strikes(signal_type)
+      strike_filters[:filtered_count] = filtered_strikes.size
+
+      if filtered_strikes.empty?
+        strike_filters[:filters_applied] << 'No strikes passed all filters'
+      else
+        filtered_strikes.each do |opt|
+          reasons = []
+          reasons << 'IV zero' if opt[:iv].to_f.zero?
+          reasons << 'Price zero' if opt[:last_price].to_f.zero?
+          reasons << 'Delta low' if opt[:greeks][:delta].to_f < min_delta_now
+          reasons << 'Outside ATM range' unless within_atm_range?(opt[:strike_price])
+
+          next unless reasons.any?
+
+          strike_filters[:filters_applied] << {
+            strike_price: opt[:strike_price],
+            reasons: reasons
+          }
+        end
+      end
+
+      strike_filters
     end
   end
 end
