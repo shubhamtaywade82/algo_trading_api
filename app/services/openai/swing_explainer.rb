@@ -21,11 +21,11 @@ module Openai
     def self.explain(symbol, price:, rsi:, ema:, high20:, low20:, setup_type:)
       explanation = <<~PROMPT
         Symbol: #{symbol}
-        Price: ₹#{price.round(2)}
-        EMA(200): #{ema.round(2)}
-        RSI(14): #{rsi.round(1)}
-        20-Day High: #{high20.round(2)}
-        20-Day Low: #{low20.round(2)}
+        Price: ₹#{PriceMath.round_tick(price)}
+        EMA(200): #{PriceMath.round_tick(ema)}
+        ATR: #{PriceMath.round_tick(atr)}
+        20-Day High: #{PriceMath.round_tick(high20)}
+        20-Day Low: #{PriceMath.round_tick(low20)}
         Setup Type: #{setup_type.capitalize}
 
         Provide a short explanation in simple words on why this #{setup_type} setup is significant for swing trading. Mention how the current price, EMA, RSI and Donchian levels support the trade idea.

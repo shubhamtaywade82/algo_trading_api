@@ -79,12 +79,12 @@ module AlertProcessors
       lots = (max_investment / per_lot_cost).floor
       if lots.zero? && per_lot_cost <= available_balance
         lots = 1
-        log :info, "💡 Not enough margin for 30% allocation, but can buy 1 lot. Per lot cost: ₹#{per_lot_cost.round(2)}."
+        log :info, "💡 Not enough margin for 30% allocation, but can buy 1 lot. Per lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}."
       elsif lots.zero?
-        log :warn, "🚫 Insufficient margin. Required: ₹#{per_lot_cost.round(2)}. No order placed."
+        log :warn, "🚫 Insufficient margin. Required: ₹#{PriceMath.round_tick(per_lot_cost)}. No order placed."
         return 0
       else
-        log :info, "✅ Allocating #{lots} lot(s). Per lot cost: ₹#{per_lot_cost.round(2)}."
+        log :info, "✅ Allocating #{lots} lot(s). Per lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}."
       end
 
       lots # * lot_size

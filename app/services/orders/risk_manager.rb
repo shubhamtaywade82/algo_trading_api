@@ -86,12 +86,12 @@ module Orders
 
     def emergency_exit(net_pnl)
       reset_danger_count
-      notify("🛑 Emergency exit: #{@pos['tradingSymbol']} Net ₹#{net_pnl.round(2)}")
+      notify("🛑 Emergency exit: #{@pos['tradingSymbol']} Net ₹#{PriceMath.round_tick(net_pnl)}")
       exit!(:emergency_stop_loss, 'MARKET')
     end
 
     def take_profit_exit(net_pnl)
-      notify("✅ Take profit hit: #{@pos['tradingSymbol']} Net ₹#{net_pnl.round(2)}")
+      notify("✅ Take profit hit: #{@pos['tradingSymbol']} Net ₹#{PriceMath.round_tick(net_pnl)}")
       exit!(:take_profit, 'MARKET')
     end
 
@@ -194,7 +194,7 @@ module Orders
       drawdown = @max_pct - @a[:pnl_pct]
       return { exit: false, adjust: false } unless drawdown >= trail_buffer_pct
 
-      new_trigger = (@a[:ltp] * (1 - (trail_buffer_pct / 100.0))).round(2)
+      new_trigger = PriceMath.round_tick(@a[:ltp] * (1 - (trail_buffer_pct / 100.0)))
       notify("🔁 Trailing SL adjust → new trigger ₹#{new_trigger}")
       {
         exit: false,

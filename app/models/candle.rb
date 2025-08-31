@@ -14,10 +14,10 @@ class Candle
   # @param volume   [Numeric]
   def initialize(ts:, open:, high:, low:, close:, volume:)
     @timestamp = ts.is_a?(Time) ? ts : Time.zone.parse(ts.to_s)
-    @open      = open.to_f.round(2)
-    @high      = high.to_f.round(2)
-    @low       = low.to_f.round(2)
-    @close     = close.to_f.round(2)
+    @open      = PriceMath.round_tick(open.to_f)
+    @high      = PriceMath.round_tick(high.to_f)
+    @low       = PriceMath.round_tick(low.to_f)
+    @close     = PriceMath.round_tick(close.to_f)
     @volume    = volume.to_i
   end
 

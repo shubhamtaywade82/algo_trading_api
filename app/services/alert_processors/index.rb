@@ -277,9 +277,9 @@ module AlertProcessors
       end
 
       {
-        stop_loss: (entry_price * (1 - sl_pct)).round(2),
-        target: (entry_price * (1 + tp_pct)).round(2),
-        trail_jump: (entry_price * trail_pct).round(2)
+        stop_loss: PriceMath.round_tick(entry_price * (1 - sl_pct)),
+        target: PriceMath.round_tick(entry_price * (1 + tp_pct)),
+        trail_jump: PriceMath.round_tick(entry_price * trail_pct)
       }
     end
 
@@ -397,13 +397,13 @@ module AlertProcessors
       if lots.zero? && per_lot_cost <= available_balance
         lots = 1
         log :info,
-            "💡 Not enough margin for 30% allocation, but can buy 1 lot. (#{strike_info}) Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
+            "💡 Not enough margin for 30% allocation, but can buy 1 lot. (#{strike_info}) Required: ₹#{PriceMath.round_tick(per_lot_cost)}, Available: ₹#{PriceMath.round_tick(available_balance)}."
       elsif lots.zero?
         # log_insufficient_margin(strike_info, per_lot_cost, available_balance)
         return 0
       else
         log :info,
-            "✅ Allocating #{lots} lot(s) (~#{lots * lot_size} qty). (#{strike_info}) Per lot cost: ₹#{per_lot_cost.round(2)}, Total: ₹#{(lots * per_lot_cost).round(2)}."
+            "✅ Allocating #{lots} lot(s) (~#{lots * lot_size} qty). (#{strike_info}) Per lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}, Total: ₹#{PriceMath.round_tick(lots * per_lot_cost)}."
       end
 
       lots * lot_size
@@ -550,7 +550,7 @@ module AlertProcessors
         false
       else
         log :info,
-            "✅ Can afford at least 1 lot. (#{strike_info}) Required: ₹#{per_lot_cost.round(2)}, Available: ₹#{available_balance.round(2)}."
+            "✅ Can afford at least 1 lot. (#{strike_info}) Required: ₹#{PriceMath.round_tick(per_lot_cost)}, Available: ₹#{PriceMath.round_tick(available_balance)}."
         true
       end
     end
@@ -558,8 +558,8 @@ module AlertProcessors
     def log_insufficient_margin(strike_info, per_lot_cost, available_balance)
       shortfall = per_lot_cost - available_balance
       log :warn,
-          "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{per_lot_cost.round(2)}, " \
-          "Available: ₹#{available_balance.round(2)}, Shortfall: ₹#{shortfall.round(2)}. No order placed."
+          "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{PriceMath.round_tick(per_lot_cost)}, " \
+          "Available: ₹#{PriceMath.round_tick(available_balance)}, Shortfall: ₹#{PriceMath.round_tick(shortfall)}. No order placed."
     end
   end
 end

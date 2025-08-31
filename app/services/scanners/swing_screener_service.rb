@@ -73,7 +73,7 @@ module Scanners
         next unless @notify
 
         notify(
-          "📈 *#{setup_type.upcase}* setup detected for *#{instrument.symbol_name}* (₹#{price.round(2)})\n\n🧠 _#{explanation}_",
+          "📈 *#{setup_type.upcase}* setup detected for *#{instrument.symbol_name}* (₹#{PriceMath.round_tick(price)})\n\n🧠 _#{explanation}_",
           tag: 'SWING_PICK'
         )
       rescue StandardError => e

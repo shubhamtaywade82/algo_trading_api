@@ -6,6 +6,7 @@ module Option
     IV_RANK_MAX       = 0.80
     BASE_ATM_RANGE_PCT = 0.01 # fallback minimum range
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
+    MIN_ADX_VALUE = 18
 
     TOP_RANKED_LIMIT = 10
 
@@ -64,14 +65,14 @@ module Option
       result[:trend]    = ta ? ta.bias.to_sym      : intraday_trend
       result[:momentum] = ta ? ta.momentum.to_sym  : :flat
       result[:adx]      = ta&.adx
-      adx_ok            = ta ? ta.adx.to_f >= 25 : true
+      adx_ok            = ta ? ta.adx.to_f >= MIN_ADX_VALUE : true
 
       if result[:proceed] && # only test if still live
          !(trend_confirms?(result[:trend], signal_type) &&
            adx_ok &&
            result[:momentum] != :flat)
         result[:proceed] = false
-        result[:reason] = 'trend/momentum filter'
+        result[:reason] = "trend/momentum filter (adx #{ta&.adx}) < #{MIN_ADX_VALUE} #{result[:trend]} #{result[:momentum]} #{adx_ok}"
       end
 
       # ------------------------------------------------------------------

@@ -17,7 +17,7 @@ module Orders
     end
 
     def call
-      entry_price = @pos['costPrice'].to_f
+      entry_price = PriceMath.round_tick(@pos['costPrice'].to_f)
       quantity    = @pos['netQty'].abs
       long        = @pos['netQty'].to_i.positive?
       instrument_type = detect_instrument_type(@pos)
@@ -26,14 +26,14 @@ module Orders
 
       side        = long ? 1 : -1
       pnl         = (ltp - entry_price) * quantity * side
-      pnl_pct     = (pnl / (entry_price * quantity) * 100).round(2)
+      pnl_pct     = PriceMath.round_tick((pnl / (entry_price * quantity) * 100))
 
       {
         entry_price: entry_price,
         ltp: ltp,
         exit_price: ltp,
         quantity: quantity,
-        pnl: pnl.round(2),
+        pnl: PriceMath.round_tick(pnl),
         pnl_pct: pnl_pct,
         instrument_type: instrument_type,
         order_type: default_order_type(instrument_type, quantity),
@@ -47,7 +47,11 @@ module Orders
     private
 
     def fetch_ltp
-      MarketCache.read_ltp(@pos['exchangeSegment'], @pos['securityId'])&.round(2) || fallback_ltp&.round(2)
+      MarketCache.read_ltp(@pos['exchangeSegment'], @pos['securityId'])&.then do |ltp|
+        PriceMath.round_tick(ltp)
+      end || fallback_ltp&.then do |ltp|
+               PriceMath.round_tick(ltp)
+             end
     end
 
     def fallback_ltp

@@ -14,6 +14,6 @@ class Quote < ApplicationRecord
 
   # Optional: method to format the quote for display
   def formatted_quote
-    "#{instrument.symbol_name} - LTP: #{ltp.round(2)}, Volume: #{volume}, Time: #{tick_time.strftime('%H:%M:%S')}"
+    "#{instrument.symbol_name} - LTP: #{PriceMath.round_tick(ltp)}, Volume: #{volume}, Time: #{tick_time.strftime('%H:%M:%S')}"
   end
 end

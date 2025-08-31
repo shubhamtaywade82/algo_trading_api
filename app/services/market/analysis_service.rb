@@ -83,10 +83,10 @@ module Market
           ltp: series.closes.last,
           session: session_state,
           ohlc: {
-            open: session_state == :live ? series.opens.last.round(2) : series.opens.second_to_last.round(2),
-            high: session_state == :live ? series.highs.last.round(2) : series.highs.second_to_last.round(2),
-            low: session_state == :live ? series.lows.last.round(2) : series.lows.second_to_last.round(2),
-            close: session_state == :live ? series.closes.last.round(2) : series.closes.second_to_last.round(2),
+            open: session_state == :live ? PriceMath.round_tick(series.opens.last) : PriceMath.round_tick(series.opens.second_to_last),
+            high: session_state == :live ? PriceMath.round_tick(series.highs.last) : PriceMath.round_tick(series.highs.second_to_last),
+            low: session_state == :live ? PriceMath.round_tick(series.lows.last) : PriceMath.round_tick(series.lows.second_to_last),
+            close: session_state == :live ? PriceMath.round_tick(series.closes.last) : PriceMath.round_tick(series.closes.second_to_last),
             volume: series.candles.last.volume
           },
           prev_day: prev_day,
@@ -130,10 +130,10 @@ module Market
 
         bar = bars
         {
-          open: bar['open'].last.to_f.round(2),
-          high: bar['high'].last.to_f.round(2),
-          low: bar['low'].last.to_f.round(2),
-          close: bar['close'].last.to_f.round(2)
+          open: PriceMath.round_tick(bar['open'].last.to_f),
+          high: PriceMath.round_tick(bar['high'].last.to_f),
+          low: PriceMath.round_tick(bar['low'].last.to_f),
+          close: PriceMath.round_tick(bar['close'].last.to_f)
         }
       end
     end
@@ -162,7 +162,7 @@ module Market
 
       message = <<~TG
         #{TELEGRAM_TAG} – *#{md[:symbol]}*
-        LTP  : ₹#{md[:ltp].round(2)}
+        LTP  : ₹#{PriceMath.round_tick(md[:ltp])}
         Time : #{md[:ts].strftime('%H:%M:%S')}#{weekend_note}
         Frame: #{@candle}
         Exp  : #{md[:expiry]}

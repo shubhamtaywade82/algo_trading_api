@@ -159,7 +159,9 @@ module Dhan
 
         sid = packet[:security_id]
         key = "#{segment_key}_#{sid}"
-        new_ltp = packet[:ltp].round(2)
+        # Update LTP in cache
+        new_ltp = PriceMath.round_tick(packet[:ltp])
+        MarketCache.write_ltp(segment_key, sid, new_ltp)
 
         prev_ltp = @ltp_cache[key]
         return if prev_ltp.to_i == new_ltp.to_i

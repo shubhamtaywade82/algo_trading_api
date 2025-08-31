@@ -36,8 +36,8 @@ module Charges
     end
 
     def call
-      entry = @a[:entry_price].to_f
-      ltp   = @a[:ltp].to_f
+      entry = PriceMath.round_tick(@a[:entry_price].to_f)
+      ltp   = PriceMath.round_tick(@a[:ltp].to_f)
       qty   = @a[:quantity].to_i
 
       # Turnover logic
@@ -124,7 +124,7 @@ module Charges
 
       total = brokerage + transaction_charges + sebi_fees + stt + stamp_duty + ipft + gst
 
-      total.round(2)
+      PriceMath.round_tick(total)
     end
 
     private

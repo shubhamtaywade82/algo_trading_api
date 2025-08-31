@@ -87,17 +87,17 @@ module AlertProcessors
         quantity: calculate_quantity!
       }
 
-      case order_type
-      when 'MARKET'
-        # 👉 true market order – nothing to add
-      when 'LIMIT'
-        payload[:price] = ltp.round(2)
-      when 'STOP_LOSS', 'STOP_LOSS_MARKET'
+      # Set price based on order type
+      if order_type == 'STOP_LOSS_MARKET'
         trigger = derived_stop_price(txn_side)
-        payload[:triggerPrice] = trigger.round(2)
-        payload[:price]        = (order_type == 'STOP_LOSS_MARKET' ? 0 : ltp.round(2))
+        payload[:triggerPrice] = PriceMath.round_tick(trigger)
+        payload[:price]        = 0 # Market order
+      elsif order_type == 'STOP_LOSS'
+        trigger = derived_stop_price(txn_side)
+        payload[:triggerPrice] = PriceMath.round_tick(trigger)
+        payload[:price]        = PriceMath.round_tick(ltp)
       else
-        raise "Unknown order_type #{order_type}"
+        payload[:price] = PriceMath.round_tick(ltp)
       end
 
       payload
@@ -220,7 +220,7 @@ module AlertProcessors
       base_trigger = stop_price_from_metadata
       return base_trigger if base_trigger.positive?
 
-      margin = (ltp * 0.05).round(2)
+      margin = PriceMath.round_tick(ltp * 0.05)
       case txn_side
       when 'BUY'  then (ltp - margin)   # long stop 5 % below entry
       when 'SELL' then (ltp + margin)   # short stop 5 % above entry

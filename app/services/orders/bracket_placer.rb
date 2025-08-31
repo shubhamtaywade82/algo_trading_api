@@ -6,14 +6,14 @@ module Orders
       Positions::ActiveCache.all_positions.each do |pos|
         next if bracket_order_exists?(pos)
 
-        entry_price = pos['costPrice'].to_f
+        entry_price = PriceMath.round_tick(pos['costPrice'].to_f)
         instrument_type = detect_instrument_type(pos)
 
         sl_pct = instrument_type == :option ? 25.0 : 10.0
         tp_pct = instrument_type == :option ? 50.0 : 20.0
 
-        sl_val = (entry_price * sl_pct / 100.0).round(2)
-        tp_val = (entry_price * tp_pct / 100.0).round(2)
+        sl_val = PriceMath.round_tick(entry_price * sl_pct / 100.0)
+        tp_val = PriceMath.round_tick(entry_price * tp_pct / 100.0)
 
         payload = {
           securityId: pos['securityId'],

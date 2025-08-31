@@ -42,9 +42,9 @@ module Market
         m_s  = macd[:signal] || '–'
         m_h  = macd[:hist] || '–'
 
-        st_sig = md[:super]  || 'neutral'
-        hi20 = md[:hi20]   || '–'
-        lo20   = md[:lo20]   || '–'
+        st_sig = md[:super] || 'neutral'
+        hi20 = md[:hi20] || '–'
+        lo20   = md[:lo20] || '–'
         lu     = md[:liq_up] ? 'yes' : 'no'
         ld     = md[:liq_dn] ? 'yes' : 'no'
 
