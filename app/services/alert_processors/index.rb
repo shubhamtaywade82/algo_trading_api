@@ -607,6 +607,13 @@ module AlertProcessors
       if validation_details[:strike_selection]
         ss_info = validation_details[:strike_selection]
         details << "Strikes: #{ss_info[:filtered_count]}/#{ss_info[:total_strikes]} passed filters"
+
+        # Add strike guidance if available
+        if ss_info[:strike_guidance] && ss_info[:strike_guidance][:recommended_strikes]&.any?
+          guidance = ss_info[:strike_guidance]
+          details << "Recommended: #{guidance[:recommended_strikes].join(', ')} (#{guidance[:explanation]})"
+        end
+
         if ss_info[:filters_applied]&.any?
           filter_details = ss_info[:filters_applied].map do |filter|
             if filter.is_a?(Hash)

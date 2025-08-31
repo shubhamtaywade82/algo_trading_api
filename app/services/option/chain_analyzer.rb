@@ -6,13 +6,13 @@ module Option
     IV_RANK_MAX       = 0.80
     BASE_ATM_RANGE_PCT = 0.01 # fallback minimum range
     THETA_AVOID_HOUR = 14.5 # 2:30 PM as float
-    MIN_ADX_VALUE = 18
+    MIN_ADX_VALUE = Rails.env.production? ? 20 : 10
 
     TOP_RANKED_LIMIT = 10
 
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank, :ta
 
-    def initialize(option_chain, expiry:, underlying_spot:, iv_rank:, historical_data: [])
+    def initialize(option_chain, expiry:, underlying_spot:, iv_rank:, historical_data: [], strike_step: nil)
       @option_chain     = option_chain.with_indifferent_access
       @expiry           = Date.parse(expiry.to_s)
       @underlying_spot  = underlying_spot.to_f
@@ -20,6 +20,7 @@ module Option
       @historical_data  = historical_data || []
       @ta = Indicators::HolyGrail.call(candles: historical_data) if historical_data.present?
 
+      @strike_step = strike_step || infer_strike_step
       Rails.logger.debug { "Analyzing Options for #{expiry}" }
       raise ArgumentError, 'Option Chain is missing or empty!' if @option_chain[:oc].blank?
     end
@@ -108,7 +109,8 @@ module Option
             filtered_count: filtered.size,
             ranked_count: result[:ranked].size,
             top_score: result[:selected]&.dig(:score)&.round(2),
-            filters_applied: get_strike_filter_summary(signal_type)
+            filters_applied: get_strike_filter_summary(signal_type),
+            strike_guidance: get_strike_selection_guidance(signal_type)
           }
         end
       end
@@ -130,6 +132,41 @@ module Option
     alias trend current_trend
 
     private
+
+    def oc_strikes
+      @oc_strikes ||= @option_chain[:oc].keys.map(&:to_f).sort
+    end
+
+    # Try to infer the strike step from the chain; fallback to common index steps.
+    def infer_strike_step
+      diffs = oc_strikes.each_cons(2).map { |a, b| (b - a).abs }.reject(&:zero?)
+      step  = diffs.group_by(&:round).max_by { |_k, v| v.size }&.first&.to_f
+      return step if step&.positive?
+
+      # Fallback heuristics (index defaults)
+      # If you can pass instrument context, prefer that. For now, use 50 as safe default for NIFTY-like.
+      50.0
+    end
+
+    def nearest_grid(strike)
+      oc_strikes.min_by { |s| (s - strike).abs } # ensure we return an existing strike
+      # (We could also snap to @strike_step multiples around ATM, then pick closest present in oc_strikes)
+    end
+
+    def snap_to_grid(strike)
+      # Snap to nearest multiple of @strike_step around the ATM, then clamp to an existing strike in oc
+      return nil if oc_strikes.empty?
+
+      atm = determine_atm_strike
+      return oc_strikes.first unless atm
+
+      # compute offset multiples by step, then clamp to existing strikes
+      delta  = strike - atm
+      steps  = (delta / @strike_step.to_f).round
+      target = atm + (steps * @strike_step.to_f)
+      # pick closest existing strike to the target
+      oc_strikes.min_by { |s| (s - target).abs }
+    end
 
     def iv_rank_outside_range?
       @iv_rank < IV_RANK_MIN || @iv_rank > IV_RANK_MAX
@@ -168,6 +205,23 @@ module Option
       0.25
     end
 
+    def min_delta_for(strike_price, atm_strike)
+      base =
+        if Time.zone.now.hour >= 14
+          0.45
+        elsif Time.zone.now.hour >= 13
+          0.35
+        elsif Time.zone.now.hour >= 11
+          0.30
+        else
+          0.25
+        end
+
+      steps_away = ((strike_price - atm_strike).abs / @strike_step.to_f).round
+      # Relax by 0.05 per step away (cap at a sensible floor 0.20)
+      [base - (0.05 * steps_away), 0.20].max
+    end
+
     # Dynamic ATM range based on volatility
     def atm_range_pct
       case iv_rank
@@ -180,6 +234,103 @@ module Option
     def within_atm_range?(strike)
       pct = atm_range_pct
       strike.between?(@underlying_spot * (1 - pct), @underlying_spot * (1 + pct))
+    end
+
+    # Enhanced ATM range logic to ensure only ATM, near ATM, or slightly OTM strikes
+    def within_enhanced_atm_range?(strike, signal_type)
+      atm_strike = determine_atm_strike
+      return false unless atm_strike
+
+      # Calculate distance from ATM strike
+      distance_from_atm = (strike - atm_strike).abs
+
+      # Define acceptable ranges based on signal type and market conditions
+      base_range = atm_range_pct * @underlying_spot
+
+      # For calls (CE): prefer strikes at or above ATM (slightly OTM is fine, but never ITM)
+      if signal_type == :ce
+        # Allow strikes from ATM up to slightly above ATM (slightly OTM)
+        # Never allow strikes below ATM (which would be ITM)
+        strike >= atm_strike && strike <= (atm_strike + base_range)
+      # For puts (PE): prefer strikes at or below ATM (slightly OTM is fine, but never ITM)
+      elsif signal_type == :pe
+        # Allow strikes from ATM down to slightly below ATM (slightly OTM)
+        # Never allow strikes above ATM (which would be ITM)
+        strike <= atm_strike && strike >= (atm_strike - base_range)
+      else
+        # Fallback to original logic for unknown signal types
+        within_atm_range?(strike)
+      end
+    end
+
+    # Get optimal strike selection guidance for current market conditions
+    def get_strike_selection_guidance(signal_type)
+      atm_strike = determine_atm_strike
+      return {} unless atm_strike
+
+      current_spot = @underlying_spot
+
+      recs =
+        if signal_type == :ce
+          # ATM and OTM upwards (never ITM)
+          [atm_strike,
+           snap_to_grid(atm_strike + @strike_step),
+           snap_to_grid(atm_strike + (2 * @strike_step))]
+        elsif signal_type == :pe
+          # ATM and OTM downwards (never ITM)
+          [atm_strike,
+           snap_to_grid(atm_strike - @strike_step),
+           snap_to_grid(atm_strike - (2 * @strike_step))]
+        else
+          [atm_strike]
+        end
+
+      recs = recs.compact.uniq.select { |s| oc_strikes.include?(s) }
+
+      {
+        current_spot: current_spot,
+        atm_strike: atm_strike,
+        strike_step: @strike_step, # 👈 expose for logs
+        recommended_strikes: recs,
+        explanation: if signal_type == :ce
+                       'CE strikes should be ATM or slightly OTM (never ITM)'
+                     else
+                       'PE strikes should be ATM or slightly OTM (never ITM)'
+                     end
+      }
+    end
+
+    def gather_filtered_strikes(signal_type)
+      side = signal_type.to_sym
+      atm_strike = determine_atm_strike
+      return [] unless atm_strike
+
+      strikes = @option_chain[:oc].filter_map do |strike_str, data|
+        option = data[side]
+        next unless option
+
+        # Skip strikes with no valid IV or price
+        next if option['implied_volatility'].to_f.zero? || option['last_price'].to_f.zero?
+
+        strike_price = strike_str.to_f
+        delta = option.dig('greeks', 'delta').to_f.abs
+
+        # distance-aware delta floor
+        min_delta = min_delta_for(strike_price, atm_strike)
+        next if delta < min_delta
+
+        # Skip deep ITM/OTM
+        next if deep_itm_strike?(strike_price, signal_type)
+        next if deep_otm_strike?(strike_price, signal_type)
+
+        # Enhanced ATM range (keeps grid-awareness)
+        next unless within_enhanced_atm_range?(strike_price, signal_type)
+
+        build_strike_data(strike_price, option, data['volume'])
+      end
+
+      # Prefer proximity to ATM (still sorted by closeness first)
+      strikes.sort_by { |s| (s[:strike_price] - atm_strike).abs }
     end
 
     def build_strike_data(strike_price, option, volume)
@@ -203,6 +354,22 @@ module Option
         volume_change: volume.to_i - option['previous_volume'].to_i,
         bid_ask_spread: (option['top_ask_price'].to_f - option['top_bid_price'].to_f).abs
       }
+    end
+
+    def debug_filter_reason(strike_price, option, signal_type, atm_strike)
+      reasons = []
+      reasons << 'iv=0'    if option['implied_volatility'].to_f.zero?
+      reasons << 'price=0' if option['last_price'].to_f.zero?
+
+      delta = option.dig('greeks', 'delta').to_f.abs
+      min_d = min_delta_for(strike_price, atm_strike)
+      reasons << "delta<#{min_d.round(2)}(#{delta.round(2)})" if delta < min_d
+
+      reasons << 'deep_ITM' if deep_itm_strike?(strike_price, signal_type)
+      reasons << 'deep_OTM' if deep_otm_strike?(strike_price, signal_type)
+      reasons << 'outside_enhanced_ATM' unless within_enhanced_atm_range?(strike_price, signal_type)
+
+      reasons
     end
 
     def score_for(opt, strategy, signal_type, signal_strength)
@@ -238,10 +405,40 @@ module Option
       efficiency = price_chg.zero? ? 0.0 : price_chg / last_price
       efficiency_score = efficiency * 30 # weight tuning factor
 
+      # ATM preference score - heavily favor strikes close to ATM
+      atm_strike = determine_atm_strike
+      atm_preference_score = 0
+      if atm_strike
+        distance_from_atm = (opt[:strike_price] - atm_strike).abs
+        atm_range = atm_range_pct * @underlying_spot
+
+        # Perfect ATM gets maximum score
+        atm_preference_score = if distance_from_atm <= (atm_range * 0.1)
+                                 100
+                               # Near ATM gets high score
+                               elsif distance_from_atm <= (atm_range * 0.3)
+                                 80
+                               # Slightly away from ATM gets medium score
+                               elsif distance_from_atm <= (atm_range * 0.6)
+                                 50
+                               # Further from ATM gets low score
+                               elsif distance_from_atm <= (atm_range * 1.0)
+                                 20
+                               else
+                                 0
+                               end
+
+        # Additional penalty for ITM strikes
+        if itm_strike?(opt[:strike_price], signal_type)
+          atm_preference_score *= 0.7 # 30% penalty for ITM
+        end
+      end
+
       total = (liquidity_score * lw) +
               (momentum_score * mw) +
               (greeks_score * theta_weight) +
-              efficiency_score
+              efficiency_score +
+              atm_preference_score
 
       # Adjust for local IV skew
       z = local_iv_zscore(opt[:iv], opt[:strike_price])
@@ -299,10 +496,10 @@ module Option
     end
 
     def collect_side_ivs(side)
-      @option_chain[:oc].values.map do |data|
+      @option_chain[:oc].values.filter_map do |data|
         iv = data.dig(side.to_s, 'implied_volatility')
-        iv&.to_f if iv && iv.to_f > 0
-      end.compact
+        iv&.to_f if iv&.to_f&.positive?
+      end
     end
 
     def historical_volatility
@@ -356,10 +553,48 @@ module Option
     end
 
     def determine_atm_strike
-      strikes = @option_chain[:oc].keys.map(&:to_f)
-      return nil if strikes.empty?
+      return nil if oc_strikes.empty?
 
-      strikes.min_by { |s| (s - @underlying_spot).abs }
+      spot = (@option_chain[:last_price] || @underlying_spot).to_f
+      oc_strikes.min_by { |s| (s - spot).abs }
+    end
+
+    def itm_strike?(strike_price, signal_type)
+      atm_strike = determine_atm_strike
+      return false unless atm_strike
+
+      case signal_type
+      when :ce
+        # For calls: strike < ATM is ITM
+        strike_price < atm_strike
+      when :pe
+        # For puts: strike > ATM is ITM
+        strike_price > atm_strike
+      else
+        false
+      end
+    end
+
+    def deep_itm_strike?(strike_price, signal_type)
+      atm_strike = determine_atm_strike
+      return false unless atm_strike
+
+      if signal_type == :ce
+        strike_price > atm_strike * 1.2 # Deep ITM for calls
+      elsif signal_type == :pe
+        strike_price < atm_strike * 0.8 # Deep ITM for puts
+      end
+    end
+
+    def deep_otm_strike?(strike_price, signal_type)
+      atm_strike = determine_atm_strike
+      return false unless atm_strike
+
+      if signal_type == :ce
+        strike_price < atm_strike * 0.8 # Deep OTM for calls
+      elsif signal_type == :pe
+        strike_price > atm_strike * 1.2 # Deep OTM for puts
+      end
     end
 
     def perform_validation_checks(signal_type, strategy_type)
@@ -464,30 +699,63 @@ module Option
 
     def get_strike_filter_summary(signal_type)
       side = signal_type.to_sym
+      atm_strike = determine_atm_strike
       strike_filters = {
         total_strikes: @option_chain[:oc].keys.size,
         filtered_count: 0,
+        atm_strike: atm_strike,
         filters_applied: []
       }
+
+      return strike_filters unless atm_strike
 
       filtered_strikes = gather_filtered_strikes(signal_type)
       strike_filters[:filtered_count] = filtered_strikes.size
 
       if filtered_strikes.empty?
         strike_filters[:filters_applied] << 'No strikes passed all filters'
-      else
-        filtered_strikes.each do |opt|
+
+        # Analyze why strikes were filtered out
+        @option_chain[:oc].each do |strike_str, data|
+          option = data[side]
+          next unless option
+
+          strike_price = strike_str.to_f
           reasons = []
-          reasons << 'IV zero' if opt[:iv].to_f.zero?
-          reasons << 'Price zero' if opt[:last_price].to_f.zero?
-          reasons << 'Delta low' if opt[:greeks][:delta].to_f < min_delta_now
-          reasons << 'Outside ATM range' unless within_atm_range?(opt[:strike_price])
+
+          # Check each filter
+          reasons << 'IV zero' if option['implied_volatility'].to_f.zero?
+          reasons << 'Price zero' if option['last_price'].to_f.zero?
+          reasons << 'Delta low' if option.dig('greeks', 'delta').to_f.abs < min_delta_now
+          reasons << 'Deep ITM' if deep_itm_strike?(strike_price, signal_type)
+          reasons << 'Deep OTM' if deep_otm_strike?(strike_price, signal_type)
+          reasons << 'Outside enhanced ATM range' unless within_enhanced_atm_range?(strike_price, signal_type)
 
           next unless reasons.any?
 
           strike_filters[:filters_applied] << {
+            strike_price: strike_price,
+            reasons: reasons,
+            distance_from_atm: (strike_price - atm_strike).abs,
+            delta: option.dig('greeks', 'delta').to_f.abs,
+            iv: option['implied_volatility'].to_f,
+            price: option['last_price'].to_f
+          }
+        end
+      else
+        # Show which strikes passed and their characteristics
+        filtered_strikes.each do |opt|
+          distance_from_atm = (opt[:strike_price] - atm_strike).abs
+          atm_range = atm_range_pct * @underlying_spot
+
+          strike_filters[:filters_applied] << {
             strike_price: opt[:strike_price],
-            reasons: reasons
+            reasons: ['PASSED'],
+            distance_from_atm: distance_from_atm,
+            atm_range_multiple: distance_from_atm / atm_range,
+            delta: opt[:greeks][:delta].abs,
+            iv: opt[:iv],
+            price: opt[:last_price]
           }
         end
       end
