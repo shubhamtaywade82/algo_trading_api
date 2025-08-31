@@ -39,12 +39,18 @@ module TelegramBot
     def run_market_analysis(symbol, exchange: :nse)
       typing_ping
 
-      Market::AnalysisService.call(symbol, exchange: exchange)
-      # if analysis.present?
-      #   TelegramNotifier.send_message("📊 *#{symbol} Analysis completed.*", chat_id: @cid)
-      # else
-      #   TelegramNotifier.send_message("⚠️ Couldn’t complete analysis for #{symbol}.", chat_id: @cid)
-      # end
+      # Instead of calling the service directly, enqueue a job
+      MarketAnalysisJob.perform_later(@cid, symbol, exchange: exchange)
+
+      # Immediately return — don’t block here
+      TelegramNotifier.send_message("📊 Analysis started for #{symbol}. You'll get a detailed report shortly.", chat_id: @cid)
+
+      # Market::AnalysisService.call(symbol, exchange: exchange)
+      # # if analysis.present?
+      # #   TelegramNotifier.send_message("📊 *#{symbol} Analysis completed.*", chat_id: @cid)
+      # # else
+      # #   TelegramNotifier.send_message("⚠️ Couldn’t complete analysis for #{symbol}.", chat_id: @cid)
+      # # end
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
       TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
@@ -60,8 +66,12 @@ module TelegramBot
 
       typing_ping
 
-      holdings  = Dhanhq::API::Portfolio.holdings
-      return TelegramNotifier.send_message("⚠️ Full analysis already generated today.\nUse /portfolio for a quick view.", chat_id: @cid) unless holdings
+      holdings = Dhanhq::API::Portfolio.holdings
+      unless holdings
+        return TelegramNotifier.send_message("⚠️ Full analysis already generated today.\nUse /portfolio for a quick view.",
+                                             chat_id: @cid)
+      end
+
       balance   = Dhanhq::API::Funds.balance
       positions = Dhanhq::API::Portfolio.positions
 

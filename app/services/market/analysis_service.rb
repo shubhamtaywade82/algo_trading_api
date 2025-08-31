@@ -47,8 +47,10 @@ module Market
       answer = ask_openai(prompt)
       typing_ping
 
-      TelegramNotifier.send_message(answer)
-      nil if answer
+      Rails.logger.debug answer.length
+      # TelegramNotifier.send_message(answer)
+      # nil if answer
+      answer
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
       nil
