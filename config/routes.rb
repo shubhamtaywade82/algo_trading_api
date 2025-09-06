@@ -16,8 +16,6 @@ Rails.application.routes.draw do
   end
 
   get '/funds', to: 'funds#index'
-  get '/orders', to: 'orders#index'
-  get '/orders/trades', to: 'orders#trades'
   get '/portfolio/holdings', to: 'portfolios#holdings'
   get '/portfolio/positions', to: 'portfolios#positions'
   get '/statements/ledger', to: 'statements#ledger'
