@@ -310,7 +310,7 @@ module AlertProcessors
       end
 
       rr = rrules_for(live) || rrules_for(strike[:last_price])
-      pp rr, live
+      log :debug, { rrules: rr, live_price: live }.to_json
       {
         transactionType: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY
         exchangeSegment: derivative.exchange_segment,
