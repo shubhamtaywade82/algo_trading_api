@@ -3,6 +3,7 @@
 require 'faye/websocket'
 require 'eventmachine'
 require 'json'
+require 'set'
 
 module Dhan
   module Ws
@@ -28,11 +29,11 @@ module Dhan
       def self.run
         Positions::ActiveCache.refresh!
         EM.run do
-          pp "[WS] Connecting to #{FEED_URL}"
+          Rails.logger.info "[WS] Connecting to #{FEED_URL}"
           ws = Faye::WebSocket::Client.new(FEED_URL)
 
           ws.on(:open) do
-            pp '[WS] ▶ Connected'
+            Rails.logger.info '[WS] ▶ Connected'
             subscribe(ws)
 
             EM.add_periodic_timer(Positions::ActiveCache::REFRESH_SEC) do
@@ -46,13 +47,13 @@ module Dhan
           end
 
           ws.on(:close) do |event|
-            pp "[WS] ✖ Disconnected (#{event.code}): #{event.reason}"
+            Rails.logger.warn "[WS] ✖ Disconnected (#{event.code}): #{event.reason}"
             EM.stop
             sleep 1
             run
           end
           ws.on(:error) do |event|
-            pp "[WS] ⚠ Error: #{event.message}"
+            Rails.logger.error "[WS] ⚠ Error: #{event.message}"
           end
         end
       end
@@ -102,7 +103,7 @@ module Dhan
           }
 
           ws.send(payload.to_json)
-          pp "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
+          Rails.logger.info "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
         end
       end
 
@@ -119,9 +120,9 @@ module Dhan
         when 4
           QuoteHandler.call(packet)
         when 50
-          pp "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
+          Rails.logger.warn "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
         else
-          pp "[WS] Ignored packet type: #{packet[:feed_response_code]}"
+          Rails.logger.debug "[WS] Ignored packet type: #{packet[:feed_response_code]}"
         end
       rescue StandardError => e
         Rails.logger.error "[WS] ❌ Parse/Dispatch Error: #{e.class} - #{e.message}"
@@ -177,7 +178,7 @@ module Dhan
 
         name = instrument&.symbol_name || key
 
-        pp "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
+        Rails.logger.debug "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
       end
     end
   end
