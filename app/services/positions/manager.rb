@@ -7,8 +7,8 @@ module Positions
   # - Falls back to DhanHQ API if cache is empty.
   # - Skips execution during EOD hours.
   class Manager < ApplicationService
-    EOD_HOUR = 23
-    EOD_MIN  = 15
+    EOD_HOUR = 15
+    EOD_MIN  = 25
 
     # Main entry point to trigger exit logic
     #
