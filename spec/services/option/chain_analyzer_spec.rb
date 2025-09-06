@@ -95,4 +95,59 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
       expect(result).to eq(proceed: false, reason: 'Late entry, theta risk')
     end
   end
+
+  describe 'deep strike classification' do
+    let(:option_chain) { { oc: { 100 => {} }, last_price: 100 } }
+    let(:expiry) { Date.today.to_s }
+    let(:spot) { 100.0 }
+    let(:iv_rank) { 0.5 }
+
+    before do
+      allow(analyzer).to receive(:determine_atm_strike).and_return(100)
+    end
+
+    describe '#deep_itm_strike?' do
+      context 'for calls' do
+        it 'returns true when below 80% of ATM' do
+          expect(analyzer.send(:deep_itm_strike?, 79, :ce)).to be(true)
+        end
+
+        it 'returns false at 80% boundary' do
+          expect(analyzer.send(:deep_itm_strike?, 80, :ce)).to be(false)
+        end
+      end
+
+      context 'for puts' do
+        it 'returns true when above 120% of ATM' do
+          expect(analyzer.send(:deep_itm_strike?, 121, :pe)).to be(true)
+        end
+
+        it 'returns false at 120% boundary' do
+          expect(analyzer.send(:deep_itm_strike?, 120, :pe)).to be(false)
+        end
+      end
+    end
+
+    describe '#deep_otm_strike?' do
+      context 'for calls' do
+        it 'returns true when above 120% of ATM' do
+          expect(analyzer.send(:deep_otm_strike?, 121, :ce)).to be(true)
+        end
+
+        it 'returns false at 120% boundary' do
+          expect(analyzer.send(:deep_otm_strike?, 120, :ce)).to be(false)
+        end
+      end
+
+      context 'for puts' do
+        it 'returns true when below 80% of ATM' do
+          expect(analyzer.send(:deep_otm_strike?, 79, :pe)).to be(true)
+        end
+
+        it 'returns false at 80% boundary' do
+          expect(analyzer.send(:deep_otm_strike?, 80, :pe)).to be(false)
+        end
+      end
+    end
+  end
 end
