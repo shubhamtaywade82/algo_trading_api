@@ -580,9 +580,9 @@ module Option
       return false unless atm_strike
 
       if signal_type == :ce
-        strike_price > atm_strike * 1.2 # Deep ITM for calls
+        strike_price < atm_strike * 0.8 # Deep ITM for calls
       elsif signal_type == :pe
-        strike_price < atm_strike * 0.8 # Deep ITM for puts
+        strike_price > atm_strike * 1.2 # Deep ITM for puts
       end
     end
 
@@ -591,9 +591,9 @@ module Option
       return false unless atm_strike
 
       if signal_type == :ce
-        strike_price < atm_strike * 0.8 # Deep OTM for calls
+        strike_price > atm_strike * 1.2 # Deep OTM for calls
       elsif signal_type == :pe
-        strike_price > atm_strike * 1.2 # Deep OTM for puts
+        strike_price < atm_strike * 0.8 # Deep OTM for puts
       end
     end
 
