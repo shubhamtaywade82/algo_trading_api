@@ -14,8 +14,7 @@ module Openai
                   max_tokens: nil,
                   force: false)
       mdl = resolve_model(model, force, "#{system} #{user_prompt}")
-
-      pp mdl
+      Rails.logger.debug { { model: mdl }.to_json }
       params = {
         model: mdl,
         messages: [

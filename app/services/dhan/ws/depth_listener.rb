@@ -30,7 +30,7 @@ module Dhan
             EM.stop
             run
           end
-          ws.on(:error) { |e| puts "[Depth] ⚠ Error: #{e.message}" }
+          ws.on(:error) { |e| Rails.logger.error { "[Depth] ⚠ Error: #{e.message}" } }
         end
       end
 

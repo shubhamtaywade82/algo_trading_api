@@ -34,12 +34,12 @@ namespace :exit_debug do
     decision = Orders::RiskManager.call(pos, analysis)
 
     puts '✅ Position:'
-    pp pos
+    Rails.logger.debug { pos.inspect }
 
     puts '📈 Analysis:'
-    pp analysis
+    Rails.logger.debug { analysis.inspect }
 
     puts '📌 Decision:'
-    pp decision
+    Rails.logger.debug { decision.inspect }
   end
 end
