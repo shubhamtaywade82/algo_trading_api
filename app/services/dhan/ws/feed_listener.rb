@@ -34,6 +34,11 @@ module Dhan
           ws.on(:open) do
             pp '[WS] ▶ Connected'
             subscribe(ws)
+
+            EM.add_periodic_timer(Positions::ActiveCache::REFRESH_SEC) do
+              Positions::ActiveCache.refresh!
+              subscribe(ws)
+            end
           end
 
           ws.on(:message) do |event|
