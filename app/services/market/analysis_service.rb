@@ -227,8 +227,8 @@ module Market
 
         blocks << <<~STR.strip
           ► #{label} (#{strike})
-            CALL: LTP ₹#{ce_ltp.round(2) || '–'}  IV #{ce_iv.round(2) || '–'}%  OI #{ce_oi.round(2) || '–'}  Δ #{ce_delta.round(2) || '–'}  Γ #{ce_gamma.round(2) || '–'}  ν #{ce_vega.round(2) || '–'}  θ #{ce_theta.round(2) || '–'}
-            PUT : LTP ₹#{pe_ltp.round(2) || '–'}  IV #{pe_iv.round(2) || '–'}%  OI #{pe_oi.round(2) || '–'}  Δ #{pe_delta.round(2) || '–'}  Γ #{pe_gamma.round(2) || '–'}  ν #{pe_vega.round(2) || '–'}  θ #{pe_theta.round(2) || '–'}
+            CALL: LTP ₹#{fmt2(ce_ltp)}  IV #{fmt2(ce_iv)}%  OI #{fmt2(ce_oi)}  Δ #{fmt2(ce_delta)}  Γ #{fmt2(ce_gamma)}  ν #{fmt2(ce_vega)}  θ #{fmt2(ce_theta)}
+            PUT : LTP ₹#{fmt2(pe_ltp)}  IV #{fmt2(pe_iv)}%  OI #{fmt2(pe_oi)}  Δ #{fmt2(pe_delta)}  Γ #{fmt2(pe_gamma)}  ν #{fmt2(pe_vega)}  θ #{fmt2(pe_theta)}
         STR
       end
 
@@ -250,6 +250,10 @@ module Market
     def log_missing
       Rails.logger.error "[AnalysisService] ⚠️ Instrument not found: #{@symbol}"
       nil
+    end
+
+    def fmt2(x)
+      x.nil? ? '–' : x.to_f.round(2)
     end
 
     def dig_any(h, *path)
