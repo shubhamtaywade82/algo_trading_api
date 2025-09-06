@@ -3,9 +3,11 @@
 namespace :jobs do
   desc 'Schedule periodic jobs for OrderManager and PositionManager'
   task schedule: :environment do
-    OrderManagerJob.set(queue: 'order_manager', wait: 5.minutes).perform_later
-    PositionManagerJob.set(queue: 'position_manager', wait: 10.minutes).perform_later
+    # NOTE: OrderManagerJob and PositionManagerJob classes do not exist
+    # Use the service classes directly instead:
+    # - Orders::Manager for order management
+    # - Positions::Manager for position management
 
-    puts 'Jobs have been scheduled.'
+    puts 'No jobs to schedule - use service classes directly instead.'
   end
 end
