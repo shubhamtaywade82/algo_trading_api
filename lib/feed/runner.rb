@@ -46,9 +46,16 @@ module Feed
     end
 
     def self.market_open?
-      current_time = Time.current
-      current_time.hour.between?(9, 22) ||
-        (current_time.hour == 16 && current_time.min <= 10) # Allow 10min grace
+      now = Time.current
+      buffer = 10.minutes
+
+      nse_start = now.change(hour: 9, min: 15)
+      nse_end = now.change(hour: 15, min: 30) + buffer
+
+      mcx_start = now.change(hour: 9)
+      mcx_end = now.change(hour: 23, min: 30) + buffer
+
+      (nse_start..nse_end).cover?(now) || (mcx_start..mcx_end).cover?(now)
     end
   end
 end
