@@ -36,7 +36,6 @@ module Positions
 
           position['ltp'] = estimate_ltp(position)
           analysis = Orders::Analyzer.call(position)
-          pp analysis # Debugging line, can be removed later
           Orders::Manager.call(position, analysis)
         end
       end
