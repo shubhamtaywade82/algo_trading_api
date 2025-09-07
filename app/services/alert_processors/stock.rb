@@ -30,12 +30,23 @@ module AlertProcessors
     EDIS_POLL_INTERVAL = 5.seconds
     EDIS_TIMEOUT       = 45.seconds
 
+    # ──────────────────────────────────────────────────────────────────
+    # Capital-aware deployment policy
+    # ──────────────────────────────────────────────────────────────────
+    CAPITAL_BANDS = [
+      { upto: 75_000, alloc_pct: 0.30, risk_per_trade_pct: 0.050, daily_max_loss_pct: 0.050 }, # small a/c (≈ ₹50k)
+      { upto: 150_000,  alloc_pct: 0.25, risk_per_trade_pct: 0.035, daily_max_loss_pct: 0.060 }, # ≈ ₹1L
+      { upto: 300_000,  alloc_pct: 0.20, risk_per_trade_pct: 0.030, daily_max_loss_pct: 0.060 }, # ≈ ₹2–3L
+      { upto: Float::INFINITY, alloc_pct: 0.20, risk_per_trade_pct: 0.025, daily_max_loss_pct: 0.050 }
+    ].freeze
+
     # ------------------------------------------------------------------------
     #  Entry‑point (called from controller / worker)
     # ------------------------------------------------------------------------
     def call
       with_tag do
         return skip! unless signal_guard?
+        return skip! unless daily_loss_guard_ok?
 
         order = build_order_payload
         ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
@@ -113,17 +124,79 @@ module AlertProcessors
       end
     end
 
+    # -- Capital-aware deployment policy --------------------------------------
+    def deployment_policy(balance = available_balance.to_f)
+      band = CAPITAL_BANDS.find { |b| balance <= b[:upto] } || CAPITAL_BANDS.last
+      # Allow env overrides (optional)
+      alloc = ENV['ALLOC_PCT']&.to_f || band[:alloc_pct]
+      r_pt  = ENV['RISK_PER_TRADE_PCT']&.to_f || band[:risk_per_trade_pct]
+      d_ml  = ENV['DAILY_MAX_LOSS_PCT']&.to_f || band[:daily_max_loss_pct]
+
+      { alloc_pct: alloc, risk_per_trade_pct: r_pt, daily_max_loss_pct: d_ml }
+    end
+
+    # Daily loss guard - prevents new entries when daily loss exceeds band limit
+    def daily_loss_guard_ok?
+      policy = deployment_policy
+      max_loss = available_balance.to_f * policy[:daily_max_loss_pct]
+      loss_today = daily_loss_today
+      return true if loss_today.to_f.abs < max_loss.abs
+
+      logger.warn("[Stock ##{alert.id}] ⛔️ Daily loss guard hit: #{PriceMath.round_tick(loss_today)} >= max #{PriceMath.round_tick(max_loss)}")
+      false
+    end
+
+    # Calculate today's realized loss from positions
+    def daily_loss_today
+      Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
+        positions = Dhanhq::API::Portfolio.positions
+        positions.sum do |pos|
+          realized_pnl = pos['realizedProfit'].to_f
+          realized_pnl.negative? ? realized_pnl : 0
+        end
+      end
+    end
+
     # ------------------------------------------------------------------------
     #  Sizing helpers
     # ------------------------------------------------------------------------
     def calculate_quantity!
       return current_qty.abs if closing_trade?
 
-      risk_qty = (available_balance * RISK_PER_TRADE / ltp).floor
-      cash_cap = (available_balance * FUNDS_UTILIZATION * leverage_factor / ltp).floor
-      qty      = [risk_qty, cash_cap].min
-      qty      = [qty, min_lot_by_price].max
-      raise 'buying‑power insufficient for minimum lot' if qty.zero?
+      balance = available_balance.to_f
+      policy = deployment_policy(balance)
+
+      # Capital-aware sizing for stocks
+      alloc_cap = balance * policy[:alloc_pct]
+      risk_cap = balance * policy[:risk_per_trade_pct]
+
+      # Stock-specific risk calculation (using stop loss %)
+      sl_pct = 0.04 # 4% stop loss for stocks (from risk manager)
+      per_share_risk = ltp * sl_pct
+
+      # Calculate quantities based on constraints
+      alloc_qty = (alloc_cap / ltp).floor
+      risk_qty = per_share_risk.positive? ? (risk_cap / per_share_risk).floor : 0
+      afford_qty = (balance / ltp).floor
+
+      # Take minimum of all constraints
+      qty = [alloc_qty, risk_qty, afford_qty].min
+      qty = [qty, min_lot_by_price].max
+
+      if qty.zero?
+        logger.warn("[Stock ##{alert.id}] 🚫 Sizing failed: alloc_cap=₹#{PriceMath.round_tick(alloc_cap)}, " \
+                    "risk_cap=₹#{PriceMath.round_tick(risk_cap)}, per_share_risk=₹#{PriceMath.round_tick(per_share_risk)}")
+        raise 'buying‑power insufficient for minimum lot'
+      end
+
+      total_cost = qty * ltp
+      total_risk = qty * per_share_risk
+
+      logger.info("[Stock ##{alert.id}] ✅ Sizing decided: #{qty} shares. " \
+                  "Alloc cap: ₹#{PriceMath.round_tick(alloc_cap)}, Risk cap: ₹#{PriceMath.round_tick(risk_cap)}. " \
+                  "Per-share cost: ₹#{PriceMath.round_tick(ltp)}, Per-share risk: ₹#{PriceMath.round_tick(per_share_risk)}. " \
+                  "Total cost: ₹#{PriceMath.round_tick(total_cost)}, Total risk: ₹#{PriceMath.round_tick(total_risk)}. " \
+                  "(SL%≈#{(sl_pct * 100).round(1)}%)")
 
       qty
     end

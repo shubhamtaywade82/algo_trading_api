@@ -155,7 +155,6 @@ RSpec.describe AlertProcessors::Index, type: :service do
       end
 
       it 'performs dry-run instead of placing real order', vcr: { cassette_name: 'dhan/option_expiry_list' } do
-
         processor.call
 
         expect(alert.reload.status).to eq('processed')
@@ -202,5 +201,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
         expect(alert.reload.status).to eq('skipped')
       end
     end
+  end
+end
   end
 end

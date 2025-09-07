@@ -54,7 +54,7 @@ module AlertProcessors
         next unless m[:cp].starts_with?(dir.to_s.upcase[0]) # C or P
         next unless to_date(expiry) == parse_expiry(row.display_name)
 
-        m[:strike].to_f == strike[:strike_price].to_f
+        (m[:strike].to_f - strike[:strike_price].to_f).abs < 0.01
       end
     end
 
@@ -70,24 +70,67 @@ module AlertProcessors
     end
 
     def calculate_quantity(strike, lot_size)
-      price = strike[:last_price].to_f
-      per_lot_cost = price * lot_size
+      lot_size = lot_size.to_i
+      price    = strike[:last_price].to_f
+      strike_info = "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]}"
 
-      # Here you can keep the same affordability logic:
-      max_investment = (available_balance * 0.3)
-
-      lots = (max_investment / per_lot_cost).floor
-      if lots.zero? && per_lot_cost <= available_balance
-        lots = 1
-        log :info, "💡 Not enough margin for 30% allocation, but can buy 1 lot. Per lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}."
-      elsif lots.zero?
-        log :warn, "🚫 Insufficient margin. Required: ₹#{PriceMath.round_tick(per_lot_cost)}. No order placed."
+      if lot_size.zero? || price <= 0
+        log :error, "❗ Invalid sizing inputs (lot=#{lot_size}, price=#{price}) for #{instrument.id} (#{strike_info})"
         return 0
-      else
-        log :info, "✅ Allocating #{lots} lot(s). Per lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}."
       end
 
-      lots # * lot_size
+      balance     = available_balance.to_f
+      policy      = deployment_policy(balance)
+      alloc_cap   = (balance * policy[:alloc_pct]) # ₹ you may deploy in this trade
+      per_lot_cost  = price * lot_size
+
+      # If you can't afford a lot at all, bail early
+      if per_lot_cost > balance
+        log :warn,
+            "🚫 Insufficient margin. Required: ₹#{PriceMath.round_tick(per_lot_cost)}, Available: ₹#{PriceMath.round_tick(balance)}. No order placed."
+        return 0
+      end
+
+      # 1) Allocation constraint: how many lots fit inside alloc_cap?
+      max_lots_by_alloc = (alloc_cap / per_lot_cost).floor
+
+      # 2) Risk constraint: cap lots so that (lots * per_lot_risk) <= risk_per_trade_cap
+      #    For commodities, use a conservative 5% stop loss
+      sl_pct         = 0.05 # 5% stop loss for commodities
+      per_lot_risk   = per_lot_cost * sl_pct
+      risk_cap       = balance * policy[:risk_per_trade_pct]
+      max_lots_by_risk = per_lot_risk.positive? ? (risk_cap / per_lot_risk).floor : 0
+
+      # 3) Affordability constraint: you must at least afford 1 lot
+      max_lots_by_afford = (balance / per_lot_cost).floor
+
+      # The final lots are bounded by all three constraints.
+      lots = [max_lots_by_alloc, max_lots_by_risk, max_lots_by_afford].min
+
+      # Graceful 1-lot allowance if alloc-bound is 0 but you still can afford & risk allows
+      if lots.zero? && per_lot_cost <= balance && per_lot_risk <= risk_cap
+        lots = 1
+        log :info, "💡 Alloc-band too tight for >0 lots, allowing 1 lot given affordability & risk OK. (#{strike_info})"
+      end
+
+      if lots.zero?
+        msg = "No size fits constraints. alloc_cap=₹#{PriceMath.round_tick(alloc_cap)}, " \
+              "risk_cap=₹#{PriceMath.round_tick(risk_cap)}, per_lot_cost=₹#{PriceMath.round_tick(per_lot_cost)}, " \
+              "per_lot_risk=₹#{PriceMath.round_tick(per_lot_risk)}"
+        log :warn, "🚫 Sizing → #{msg}"
+        return 0
+      end
+
+      total_cost = lots * per_lot_cost
+      total_risk = lots * per_lot_risk
+
+      log :info, "✅ Sizing decided: #{lots} lot(s) (qty ~ #{lots * lot_size}). " \
+                 "Alloc cap: ₹#{PriceMath.round_tick(alloc_cap)}, Risk cap: ₹#{PriceMath.round_tick(risk_cap)}. " \
+                 "Per-lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}, Per-lot risk: ₹#{PriceMath.round_tick(per_lot_risk)}. " \
+                 "Total cost: ₹#{PriceMath.round_tick(total_cost)}, Total risk: ₹#{PriceMath.round_tick(total_risk)}. " \
+                 "(SL%≈#{(sl_pct * 100).round(1)}%)"
+
+      lots * lot_size
     end
 
     def build_order_payload(strike, derivative)

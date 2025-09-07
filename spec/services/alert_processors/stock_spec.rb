@@ -123,8 +123,13 @@ RSpec.describe AlertProcessors::Stock, type: :service do
   end
 
   describe '#calculate_quantity!' do
-    it 'returns min-lot (100) when risk-cap < min-lot' do
-      expect(processor.calculate_quantity!).to eq 100 # 20 risk-cap, 100 min-lot
+    it 'returns capital-aware quantity based on allocation and risk constraints' do
+      # With 100K balance and 100 LTP:
+      # Allocation: 100K * 0.25 = 25K, 25K / 100 = 250 shares
+      # Risk: 100K * 0.035 = 3.5K, 100 * 0.04 = 4 risk/share, 3.5K / 4 = 875 shares
+      # Affordability: 100K / 100 = 1000 shares
+      # Min of [250, 875, 1000] = 250 shares
+      expect(processor.calculate_quantity!).to eq 250
     end
 
     it 'returns absolute current qty for exit orders' do

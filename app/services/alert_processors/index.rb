@@ -32,6 +32,17 @@ module AlertProcessors
     DEFAULT_TRAIL_JUMP_PCT = 0.03      # trail every 5 % move in price
     USE_SUPER_ORDER        = ENV.fetch('USE_SUPER_ORDER', 'true') == 'true'
 
+    # ──────────────────────────────────────────────────────────────────
+    # Capital-aware deployment policy
+    # ──────────────────────────────────────────────────────────────────
+    # Bands are inclusive upper-bounds. Tweak as you like.
+    CAPITAL_BANDS = [
+      { upto: 75_000, alloc_pct: 0.30, risk_per_trade_pct: 0.050, daily_max_loss_pct: 0.050 }, # small a/c (≈ ₹50k)
+      { upto: 150_000,  alloc_pct: 0.25, risk_per_trade_pct: 0.035, daily_max_loss_pct: 0.060 }, # ≈ ₹1L
+      { upto: 300_000,  alloc_pct: 0.20, risk_per_trade_pct: 0.030, daily_max_loss_pct: 0.060 }, # ≈ ₹2–3L
+      { upto: Float::INFINITY, alloc_pct: 0.20, risk_per_trade_pct: 0.025, daily_max_loss_pct: 0.050 }
+    ].freeze
+
     # Entry-point that the Sidekiq job / controller calls
     # ----------------------------------------------------------------
     def call
@@ -134,6 +145,8 @@ module AlertProcessors
 
     # -- Validation helpers ---------------------------------------------------
     def pre_trade_validation
+      return false unless daily_loss_guard_ok?
+
       case alert[:signal_type]
       when 'long_entry'
         # close_opposite!(:pe)  # Close any PE before entering CE
@@ -382,32 +395,112 @@ module AlertProcessors
       MSG
     end
 
+    # -- Capital-aware deployment policy --------------------------------------
+    def deployment_policy(balance = available_balance.to_f)
+      band = CAPITAL_BANDS.find { |b| balance <= b[:upto] } || CAPITAL_BANDS.last
+      # Allow env overrides (optional)
+      alloc = ENV['ALLOC_PCT']&.to_f || band[:alloc_pct]
+      r_pt  = ENV['RISK_PER_TRADE_PCT']&.to_f || band[:risk_per_trade_pct]
+      d_ml  = ENV['DAILY_MAX_LOSS_PCT']&.to_f || band[:daily_max_loss_pct]
+
+      { alloc_pct: alloc, risk_per_trade_pct: r_pt, daily_max_loss_pct: d_ml }
+    end
+
+    # Get effective SL% used for risk math. Prefer ATR-adaptive; fallback to default.
+    def effective_sl_pct(entry_price = nil)
+      rr = rrules_for(entry_price || 100) # entry price not strictly needed for pct
+      # Convert price targets back to % if needed, else just return defaults when ATR missing.
+      if rr && (entry_price && entry_price.to_f.positive?)
+        sl_pct = 1.0 - (rr[:stop_loss].to_f / entry_price.to_f)
+        return sl_pct.clamp(0.02, 0.35) if sl_pct.finite? && sl_pct.positive?
+      end
+      DEFAULT_STOP_LOSS_PCT # 0.15 by default
+    end
+
+    # Daily loss guard - prevents new entries when daily loss exceeds band limit
+    def daily_loss_guard_ok?
+      policy = deployment_policy
+      max_loss = available_balance.to_f * policy[:daily_max_loss_pct]
+      loss_today = daily_loss_today
+      # Both loss_today and max_loss are negative, so we compare absolute values
+      return true if loss_today.to_f.abs < max_loss.abs
+
+      log :warn, "⛔️ Daily loss guard hit: #{PriceMath.round_tick(loss_today)} >= max #{PriceMath.round_tick(max_loss)}"
+      false
+    end
+
+    # Calculate today's realized loss from positions
+    def daily_loss_today
+      Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
+        positions = Dhanhq::API::Portfolio.positions
+        positions.sum do |pos|
+          realized_pnl = pos['realizedProfit'].to_f
+          realized_pnl.negative? ? realized_pnl : 0
+        end
+      end
+    end
+
     # -- Sizing ---------------------------------------------------------------
     def calculate_quantity(strike, lot_size)
       lot_size = lot_size.to_i
-      price = strike[:last_price].to_f
+      price    = strike[:last_price].to_f
       strike_info = "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]}"
 
-      if lot_size.zero?
-        log :error, "❗ Invalid lot size (0) for instrument: #{instrument.id} (#{strike_info})"
+      if lot_size.zero? || price <= 0
+        log :error, "❗ Invalid sizing inputs (lot=#{lot_size}, price=#{price}) for #{instrument.id} (#{strike_info})"
         return 0
       end
 
-      max_investment = (available_balance * 0.3)
-      per_lot_cost = price * lot_size
-      lots = (max_investment / per_lot_cost).floor
+      balance     = available_balance.to_f
+      policy      = deployment_policy(balance)
+      alloc_cap   = (balance * policy[:alloc_pct]) # ₹ you may deploy in this trade
+      per_lot_cost  = price * lot_size
 
-      if lots.zero? && per_lot_cost <= available_balance
+      # If you can't afford a lot at all, bail early
+      if per_lot_cost > balance
+        log_insufficient_margin(strike_info, per_lot_cost, balance)
+        return 0
+      end
+
+      # 1) Allocation constraint: how many lots fit inside alloc_cap?
+      max_lots_by_alloc = (alloc_cap / per_lot_cost).floor
+
+      # 2) Risk constraint: cap lots so that (lots * per_lot_risk) <= risk_per_trade_cap
+      #    per_lot_risk ≈ premium * lot_size * SL%
+      #    Use ATR-adaptive SL% if available.
+      sl_pct         = effective_sl_pct(price)
+      per_lot_risk   = per_lot_cost * sl_pct
+      risk_cap       = balance * policy[:risk_per_trade_pct]
+      max_lots_by_risk = per_lot_risk.positive? ? (risk_cap / per_lot_risk).floor : 0
+
+      # 3) Affordability constraint: you must at least afford 1 lot
+      max_lots_by_afford = (balance / per_lot_cost).floor
+
+      # The final lots are bounded by all three constraints.
+      lots = [max_lots_by_alloc, max_lots_by_risk, max_lots_by_afford].min
+
+      # Graceful 1-lot allowance if alloc-bound is 0 but you still can afford & risk allows
+      if lots.zero? && per_lot_cost <= balance && per_lot_risk <= risk_cap
         lots = 1
-        log :info,
-            "💡 Not enough margin for 30% allocation, but can buy 1 lot. (#{strike_info}) Required: ₹#{PriceMath.round_tick(per_lot_cost)}, Available: ₹#{PriceMath.round_tick(available_balance)}."
-      elsif lots.zero?
-        # log_insufficient_margin(strike_info, per_lot_cost, available_balance)
-        return 0
-      else
-        log :info,
-            "✅ Allocating #{lots} lot(s) (~#{lots * lot_size} qty). (#{strike_info}) Per lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}, Total: ₹#{PriceMath.round_tick(lots * per_lot_cost)}."
+        log :info, "💡 Alloc-band too tight for >0 lots, allowing 1 lot given affordability & risk OK. (#{strike_info})"
       end
+
+      if lots.zero?
+        msg = "No size fits constraints. alloc_cap=₹#{PriceMath.round_tick(alloc_cap)}, " \
+              "risk_cap=₹#{PriceMath.round_tick(risk_cap)}, per_lot_cost=₹#{PriceMath.round_tick(per_lot_cost)}, " \
+              "per_lot_risk=₹#{PriceMath.round_tick(per_lot_risk)}"
+        log :warn, "🚫 Sizing → #{msg}"
+        return 0
+      end
+
+      total_cost = lots * per_lot_cost
+      total_risk = lots * per_lot_risk
+
+      log :info, "✅ Sizing decided: #{lots} lot(s) (qty ~ #{lots * lot_size}). " \
+                 "Alloc cap: ₹#{PriceMath.round_tick(alloc_cap)}, Risk cap: ₹#{PriceMath.round_tick(risk_cap)}. " \
+                 "Per-lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}, Per-lot risk: ₹#{PriceMath.round_tick(per_lot_risk)}. " \
+                 "Total cost: ₹#{PriceMath.round_tick(total_cost)}, Total risk: ₹#{PriceMath.round_tick(total_risk)}. " \
+                 "(SL%≈#{(sl_pct * 100).round(1)}%)"
 
       lots * lot_size
     end
