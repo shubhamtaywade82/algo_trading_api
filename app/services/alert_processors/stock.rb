@@ -96,6 +96,8 @@ module AlertProcessors
         trigger = derived_stop_price(txn_side)
         payload[:triggerPrice] = PriceMath.round_tick(trigger)
         payload[:price]        = PriceMath.round_tick(ltp)
+      elsif order_type == 'MARKET'
+        # MARKET orders don't need a price
       else
         payload[:price] = PriceMath.round_tick(ltp)
       end

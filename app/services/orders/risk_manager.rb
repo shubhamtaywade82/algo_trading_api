@@ -14,6 +14,11 @@ module Orders
     TREND_AGAINST_MAX = 3
     BREAK_EVEN_THRESHOLD_PCT = 10.0 # require at least +10% peak gain for BE rule
 
+    # Danger Zone constants
+    DANGER_ZONE_MIN = -2000.0
+    DANGER_ZONE_MAX = -1000.0
+    DANGER_ZONE_BARS = 5
+
     # Spot LTP cache keys for NIFTY and BANKNIFTY indices
     SPOT_INDEX_MAP = {
       'NIFTY' => { segment: 0, id: 13 }, # IDX_I = 0
@@ -53,9 +58,9 @@ module Orders
       # ② Take Profit
       return take_profit_exit(net_pnl) if net_pnl >= take_profit_threshold
 
-      # # ③ Danger Zone Exit
-      # result = check_danger_zone(net_pnl)
-      # return result if result
+      # ③ Danger Zone Exit
+      result = check_danger_zone(net_pnl)
+      return result if result
 
       # ④ Trend Reversal Exit (options only)
       if option_position?
@@ -100,22 +105,22 @@ module Orders
       exit!(:stop_loss, 'MARKET')
     end
 
-    # def check_danger_zone(net_pnl)
-    #   return nil if net_pnl <= EMERGENCY_LOSS
+    def check_danger_zone(net_pnl)
+      return nil if net_pnl <= EMERGENCY_LOSS
 
-    #   if net_pnl.between?(DANGER_ZONE_MIN, DANGER_ZONE_MAX)
-    #     @danger_count += 1
-    #     store_danger_count(@danger_count)
-    #   else
-    #     reset_danger_count
-    #   end
+      if net_pnl.between?(DANGER_ZONE_MIN, DANGER_ZONE_MAX)
+        @danger_count += 1
+        store_danger_count(@danger_count)
+      else
+        reset_danger_count
+      end
 
-    #   return unless @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
+      return unless @danger_count >= DANGER_ZONE_BARS || net_pnl <= DANGER_ZONE_MIN
 
-    #   reset_danger_count
-    #   notify("⚠️ Danger zone exit: #{@pos['tradingSymbol']}")
-    #   exit!(:danger_zone, 'LIMIT')
-    # end
+      reset_danger_count
+      notify("⚠️ Danger zone exit: #{@pos['tradingSymbol']}")
+      exit!(:danger_zone, 'LIMIT')
+    end
 
     def check_trend_reversal
       trend = trend_for_position

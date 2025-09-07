@@ -8,7 +8,7 @@ module Positions
   # - Skips execution during EOD hours.
   class Manager < ApplicationService
     EOD_HOUR = 15
-    EOD_MIN  = 25
+    EOD_MIN  = 15
 
     # Main entry point to trigger exit logic
     #

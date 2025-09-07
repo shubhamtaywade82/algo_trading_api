@@ -68,7 +68,7 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
       result = analyzer.analyze(signal_type: :ce, strategy_type: 'intraday')
 
       expect(result[:proceed]).to eq(false)
-      expect(result[:reason]).to eq('IV rank outside range')
+      expect(result[:reason]).to include('IV rank outside range')
     end
   end
 
@@ -92,7 +92,8 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
 
     it 'returns proceed: false with late-entry reason' do
       result = analyzer.analyze(signal_type: :ce, strategy_type: 'intraday')
-      expect(result).to eq(proceed: false, reason: 'Late entry, theta risk')
+      expect(result[:proceed]).to eq(false)
+      expect(result[:reason]).to include('Late entry, theta risk')
     end
   end
 

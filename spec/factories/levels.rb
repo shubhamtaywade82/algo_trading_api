@@ -2,7 +2,7 @@
 
 FactoryBot.define do
   factory :level do
-    instrument { nil }
+    association :instrument
     high { '9.99' }
     low { '9.99' }
     open { '9.99' }

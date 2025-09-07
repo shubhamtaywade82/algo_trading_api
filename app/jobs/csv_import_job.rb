@@ -6,6 +6,7 @@ class CsvImportJob < ApplicationJob
   require 'open-uri'
 
   def perform(*_args)
+    file_url = ENV.fetch('CSV_FILE_URL', nil)
     file_path = download_file(file_url)
     InstrumentsImporter.import(file_path)
     cleanup_file(file_path)

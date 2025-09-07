@@ -74,13 +74,7 @@ The module provides the following methods:
 14. **`app/services/dhan/ws/feed_listener.rb`**
     - LTP cache updates - **This is actual price data from DhanHQ**
 
-15. **`app/services/scanners/swing_screener_service.rb`**
-    - Price display in notifications - **This is actual price data**
-
-16. **`app/services/openai/swing_explainer.rb`**
-    - Price, EMA, ATR, high/low display - **This is actual price data**
-
-17. **`app/services/portfolio_insights/institutional_analyzer.rb`**
+15. **`app/services/portfolio_insights/institutional_analyzer.rb`**
     - **Price validation - KEPT as .to_f (not a DhanHQ API value)**
 
 18. **`app/controllers/options_controller.rb`**

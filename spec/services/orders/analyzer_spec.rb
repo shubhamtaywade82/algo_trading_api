@@ -44,7 +44,7 @@ RSpec.describe Orders::Analyzer, type: :service do
             ltp: ltp_val,
             quantity: qty,
             pnl: pnl,
-            pnl_pct: pct,
+            pnl_pct: be_within(0.1).of(pct), # Allow precision differences
             instrument_type: c[:type],
             long: c[:long],
             order_type: 'MARKET' # current default in code

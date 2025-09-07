@@ -28,16 +28,15 @@ RSpec.describe Positions::Manager, type: :service do
     # Stub Orders::Analyzer and Orders::Manager for simplicity—remove if you want their real side effects
     allow(Orders::Analyzer).to receive(:call).and_return({ dummy: :data })
     allow(Orders::Manager).to receive(:call)
+    # Ensure cache is empty so it falls back to DhanHQ API
+    allow(Positions::ActiveCache).to receive(:all).and_return({})
+    # Mock time to be during market hours (before 15:15)
+    allow(Time).to receive(:current).and_return(Time.zone.local(2024, 1, 1, 14, 0))
   end
 
   # Helper to stub Dhanhq positions API (adjust URL to real endpoint if needed)
   def stub_dhan_positions(positions)
-    stub_request(:get, 'https://api.dhan.co/positions')
-      .to_return(
-        status: 200,
-        body: positions.to_json,
-        headers: { 'Content-Type' => 'application/json' }
-      )
+    allow(Dhanhq::API::Portfolio).to receive(:positions).and_return(positions)
   end
 
   context 'with mixed valid/invalid positions' do
@@ -47,8 +46,21 @@ RSpec.describe Positions::Manager, type: :service do
     end
 
     it 'calls Orders::Manager only for valid positions' do
-      expect(Orders::Analyzer).to receive(:call).with(valid_position).and_return({ dummy: :data })
-      expect(Orders::Manager).to receive(:call).with(valid_position, { dummy: :data })
+      # Use hash_including to match the position with ltp field added
+      expect(Orders::Analyzer).to receive(:call).with(hash_including(
+        'netQty' => 75,
+        'buyAvg' => 100,
+        'securityId' => 'OPT1',
+        'ltp' => 120.0
+      )).and_return({ dummy: :data })
+
+      expect(Orders::Manager).to receive(:call).with(hash_including(
+        'netQty' => 75,
+        'buyAvg' => 100,
+        'securityId' => 'OPT1',
+        'ltp' => 120.0
+      ), { dummy: :data })
+
       expect(Orders::Manager).not_to receive(:call).with(invalid_position, anything)
       described_class.call
     end
