@@ -191,6 +191,22 @@ RISK_PER_TRADE_PCT=0.03
 DAILY_MAX_LOSS_PCT=0.05
 ```
 
+### Adaptive Supertrend
+
+Toggle between the classic `Indicators::Supertrend` and the machine-learning
+powered `Indicators::AdaptiveSupertrend` using environment flags:
+
+```bash
+USE_ADAPTIVE_ST=true       # set to false to fallback to classic Supertrend
+ADAPTIVE_ST_TRAINING=50    # warm-up window before signals are valid
+ADAPTIVE_ST_CLUSTERS=3     # number of volatility clusters
+ADAPTIVE_ST_ALPHA=0.1      # performance tracking learning rate
+```
+
+For short series (`< training_period + period`) the adaptive indicator returns
+`nil` values until enough data has accumulated, so callers should handle `nil`
+gracefully.
+
 ### Capital Bands Customization
 Edit the `CAPITAL_BANDS` constant in alert processors to customize:
 ```ruby
