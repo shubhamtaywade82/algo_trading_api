@@ -102,3 +102,6 @@ gem 'ruby-openai', require: 'openai'
 gem 'technical-analysis'
 
 gem 'ruby-technical-analysis'
+
+# Matrix operations for technical indicators
+gem 'matrix'
