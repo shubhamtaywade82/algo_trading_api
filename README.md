@@ -191,6 +191,24 @@ RISK_PER_TRADE_PCT=0.03
 DAILY_MAX_LOSS_PCT=0.05
 ```
 
+### Adaptive Supertrend
+
+Toggle between the classic `Indicators::Supertrend` and the machine-learning
+powered `Indicators::AdaptiveSupertrend` using `AppSetting` keys:
+
+```
+AppSetting['use_adaptive_st']      = true   # set to false to fallback to classic Supertrend
+AppSetting['adaptive_st_training'] = 50     # warm-up window before signals are valid
+AppSetting['adaptive_st_clusters'] = 3      # number of volatility clusters
+AppSetting['adaptive_st_alpha']    = 0.1    # performance tracking learning rate
+AppSetting['supertrend_period']    = 10     # ATR look-back period
+AppSetting['supertrend_multiplier']= 2.0    # ATR multiplier
+```
+
+For short series (`< training_period + period`) the adaptive indicator returns
+`nil` values until enough data has accumulated, so callers should handle `nil`
+gracefully.
+
 ### Capital Bands Customization
 Edit the `CAPITAL_BANDS` constant in alert processors to customize:
 ```ruby
