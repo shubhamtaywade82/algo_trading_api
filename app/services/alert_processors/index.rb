@@ -36,12 +36,16 @@ module AlertProcessors
     # Capital-aware deployment policy
     # ──────────────────────────────────────────────────────────────────
     # Bands are inclusive upper-bounds. Tweak as you like.
-    CAPITAL_BANDS = [
-      { upto: 75_000, alloc_pct: 0.30, risk_per_trade_pct: 0.050, daily_max_loss_pct: 0.050 }, # small a/c (≈ ₹50k)
-      { upto: 150_000,  alloc_pct: 0.25, risk_per_trade_pct: 0.035, daily_max_loss_pct: 0.060 }, # ≈ ₹1L
-      { upto: 300_000,  alloc_pct: 0.20, risk_per_trade_pct: 0.030, daily_max_loss_pct: 0.060 }, # ≈ ₹2–3L
-      { upto: Float::INFINITY, alloc_pct: 0.20, risk_per_trade_pct: 0.025, daily_max_loss_pct: 0.050 }
-    ].freeze
+    CAPITAL_BANDS = AppSetting
+                      .fetch_array('capital_bands_index',
+                                   default: [
+                                     { 'upto' => 75_000,  'alloc_pct' => 0.30, 'risk_per_trade_pct' => 0.050, 'daily_max_loss_pct' => 0.050 },
+                                     { 'upto' => 150_000, 'alloc_pct' => 0.25, 'risk_per_trade_pct' => 0.035, 'daily_max_loss_pct' => 0.060 },
+                                     { 'upto' => 300_000, 'alloc_pct' => 0.20, 'risk_per_trade_pct' => 0.030, 'daily_max_loss_pct' => 0.060 },
+                                     { 'upto' => nil,     'alloc_pct' => 0.20, 'risk_per_trade_pct' => 0.025, 'daily_max_loss_pct' => 0.050 }
+                                   ])
+                      .map { |b| b['upto'] = Float::INFINITY if b['upto'].nil?; b.symbolize_keys }
+                      .freeze
 
     # Entry-point that the Sidekiq job / controller calls
     # ----------------------------------------------------------------
