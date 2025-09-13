@@ -6,8 +6,8 @@ require 'open-uri'
 class InstrumentsImporter
   CSV_URL = 'https://images.dhan.co/api-data/api-scrip-master-detailed.csv'
 
-  VALID_EXCHANGES = %w[NSE BSE MCX].freeze
-  VALID_INSTRUMENTS = %w[OPTIDX FUTIDX OPTSTK FUTSTK FUTCUR OPTCUR FUTCOM OPTFUT EQUITY INDEX].freeze
+  VALID_EXCHANGES   = AppSetting.fetch_array('valid_exchanges',   default: %w[NSE BSE MCX]).freeze
+  VALID_INSTRUMENTS = AppSetting.fetch_array('valid_instruments', default: %w[OPTIDX FUTIDX OPTSTK FUTSTK FUTCUR OPTCUR FUTCOM OPTFUT EQUITY INDEX]).freeze
   BATCH_SIZE = 500
 
   def self.import(file_path = nil)

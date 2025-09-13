@@ -147,3 +147,5 @@ STRATEGIES_DATA.each do |strategy_data|
 end
 
 Rails.logger.debug { "Seeded #{STRATEGIES_DATA.size} strategies successfully." }
+
+require_relative 'seeds/hard_coded_values'
