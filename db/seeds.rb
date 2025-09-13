@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+# Seed application configuration values
+load Rails.root.join('db/seeds/app_settings.rb')
+
 # Strategies Data
 STRATEGIES_DATA = [
   {

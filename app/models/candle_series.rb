@@ -174,11 +174,17 @@ class CandleSeries
   # Trend utilities (Supertrend, Bollinger, Donchian…)
   # ---------------------------------------------------------------------------
   def supertrend_signal
-    trend_line = Indicators::Supertrend.new(series: self).call
+    period = AppSetting.fetch_int('supertrend_period', default: 10)
+    multiplier = AppSetting.fetch_float('supertrend_multiplier', default: 2.0)
+    trend_line = (
+      @supertrend_line ||= Indicators.build_supertrend(series: self, period: period, multiplier: multiplier)
+    )
     return nil if trend_line.empty?
 
-    latest_close = closes.last
     latest_trend = trend_line.last
+    return nil if latest_trend.nil?
+
+    latest_close = closes.last
 
     return :bullish if latest_close > latest_trend
 
