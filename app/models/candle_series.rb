@@ -171,14 +171,15 @@ class CandleSeries
   end
 
   # ---------------------------------------------------------------------------
-  # Trend utilities (Supertrend, Bollinger, Donchian…)
+  # Trend utilities (Adaptive Supertrend, Bollinger, Donchian…)
   # ---------------------------------------------------------------------------
   def supertrend_signal
-    trend_line = Indicators::Supertrend.new(series: self).call
-    return nil if trend_line.empty?
+    indicator   = Indicators::AdaptiveSupertrend.new(series: self)
+    trend_line  = indicator.call
+    latest_trend = trend_line.last
+    return nil unless latest_trend
 
     latest_close = closes.last
-    latest_trend = trend_line.last
 
     return :bullish if latest_close > latest_trend
 
