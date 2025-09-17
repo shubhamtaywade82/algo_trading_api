@@ -23,7 +23,7 @@ bundle install
 
 # Optional data imports (comment if not needed)
 echo "📊 Importing instruments..."
-bundle exec rails import:instruments
+# bundle exec rails import:instruments
 # bundle exec rails import:mis_details
 
 # echo "🔄 Updating levels..."
