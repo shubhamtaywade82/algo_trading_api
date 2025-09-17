@@ -52,7 +52,7 @@ module TelegramBot
       #).call
   
       #if analysis.present?
-      TelegramNotifier.send_message("🎯 **#{symbol} Options Buying Setup**\n\n#{analysis}", chat_id: @cid)
+      TelegramNotifier.send_message("🎯 **#{symbol} Options Buying Setup**", chat_id: @cid)
       #else
       #  TelegramNotifier.send_message("⚠️ Couldn't generate options setup for #{symbol}.", chat_id: @cid)
       #end
