@@ -20,12 +20,13 @@ module Market
     TELEGRAM_TAG   = '📈 Analyse'
     DEFAULT_CANDLE = '15m'
 
-    def initialize(symbol, candle: DEFAULT_CANDLE, exchange: :nse, segment: :index, expiry: nil)
+    def initialize(symbol, candle: DEFAULT_CANDLE, exchange: :nse, segment: :index, expiry: nil, trade_type: :analysis)
       @symbol   = symbol.to_s.upcase
       @candle   = candle
       @segment  = segment
       @exchange = exchange
       @expiry_override = expiry
+      @trade_type = trade_type
     end
 
     class << self
@@ -41,7 +42,7 @@ module Market
       sleep(1.5)
       md[:vix] = india_vix.ltp
 
-      prompt = PromptBuilder.build_prompt(md)
+      prompt = PromptBuilder.build_prompt(md, trade_type: @trade_type)
       Rails.logger.debug prompt
       push_info(md)
       answer = ask_openai(prompt)
