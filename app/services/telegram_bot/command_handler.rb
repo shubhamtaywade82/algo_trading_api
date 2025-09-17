@@ -44,17 +44,18 @@ module TelegramBot
       typing_ping
   
       # Call with options_buying trade_type
-      analysis = Market::AnalysisService.new(
-         symbol, 
-         exchange: exchange, 
-         trade_type: :options_buying
-      ).call
+      MarketAnalysisJob.perform_later(@cid, symbol, exchange: exchange, trade_type: :options_buying)
+      #analysis = Market::AnalysisService.new(
+      #   symbol, 
+      #   exchange: exchange, 
+      #   trade_type: :options_buying
+      #).call
   
-      if analysis.present?
-        TelegramNotifier.send_message("🎯 **#{symbol} Options Buying Setup**\n\n#{analysis}", chat_id: @cid)
-      else
-        TelegramNotifier.send_message("⚠️ Couldn't generate options setup for #{symbol}.", chat_id: @cid)
-      end
+      #if analysis.present?
+      TelegramNotifier.send_message("🎯 **#{symbol} Options Buying Setup**\n\n#{analysis}", chat_id: @cid)
+      #else
+      #  TelegramNotifier.send_message("⚠️ Couldn't generate options setup for #{symbol}.", chat_id: @cid)
+      #end
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
       TelegramNotifier.send_message("🚨 Error generating options setup – #{e.message}", chat_id: @cid)
