@@ -145,7 +145,14 @@ module Market
       end
 
       def build_options_buying_prompt(md, context = nil)
-        session_label = format_session_label(md[:session])
+        #session_label = format_session_label(md[:session])
+        session_label =
+          case md[:session]
+          when :pre_open   then '⏰ *Pre-open* session'
+          when :post_close then '🔒 *Post-close* session'
+          when :weekend    then '📅 *Weekend* (markets closed)'
+          else                  '🟢 *Live* session'
+          end
         
         # Extract key data
         ltp = md[:ltp]
