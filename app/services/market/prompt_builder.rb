@@ -1,8 +1,18 @@
 module Market
   class PromptBuilder
     class << self
+
+      def build_prompt(md, context: nil, trade_type: :analysis)
+        case trade_type
+        when :options_buying
+          build_options_buying_prompt(md, context)
+        else
+          build_analysis_prompt(md, context) # Your existing method
+        end
+      end
+
       # Add optional `context:` and keep everything you already have
-      def build_prompt(md, context: nil)
+      def build_analysis_prompt(md, context)
         # Session label (kept)
         session_label =
           case md[:session]
@@ -133,6 +143,95 @@ module Market
         PROMPT
       end
 
+      def build_options_buying_prompt(md, context = nil)
+        session_label = format_session_label(md[:session])
+        
+        # Extract key data
+        ltp = md[:ltp]
+        symbol = md[:symbol]
+        expiry = md[:expiry] || 'N/A'
+        vix_value = md[:vix] || '–'
+        
+        # Format option chain for buying decisions
+        chain = format_options_for_buying(md[:options])
+        
+        # Analysis context
+        extra = context.to_s.strip
+        extra_block = extra.empty? ? '' : "\n=== ADDITIONAL CONTEXT ===\n#{extra}\n"
+
+        <<~PROMPT
+          Based on the following option-chain snapshot for #{symbol}, suggest an instant options buying trade. Use ATM or slightly ITM strikes guided by delta near ±0.50, evaluate IV, OI/volume shifts, and explain the rationale.
+
+          === MARKET DATA ===
+          #{session_label} – **#{symbol}**
+          Spot Price: ₹#{ltp}
+          India VIX: #{vix_value}%
+          Expiry: #{expiry}
+
+          #{format_technical_indicators(md)}
+
+          === OPTION CHAIN DATA ===
+          #{chain}
+          #{extra_block}
+
+          === TRADE SETUP REQUIRED ===
+          Provide:
+          1) **Trade Type**: Buy [CE/PE] [Strike] [Expiry]
+          2) **Entry**: ₹[price] (limit near best bid/ask), **Reason**: [delta≈0.5 ATM, OI/IV context]
+          3) **Stop Loss**: [20–30%] of premium or invalidation level; exact ₹ value
+          4) **Take Profit**: [50–100%] premium or at [underlying target zone]
+          5) **Position Sizing**: For ₹50,000 account with 3% risk = [lots] calculation
+          6) **Validity**: [day/IOC]; avoid illiquid spreads
+          7) **Key Levels**: Support/Resistance based on technical + option OI
+
+          **Analysis Focus:**
+          - Delta around 0.5 for ATM exposure and responsive premium
+          - Use OI/Change in OI to infer support/resistance and sentiment
+          - Consider IV levels - avoid buying during extreme IV unless expecting expansion
+          - Factor in theta decay, especially for weekly expiries
+          - Lot sizes: Nifty 50, Bank Nifty 15, Sensex 10
+
+          **Risk Management:**
+          - Account: ₹50,000 (adjust as needed)
+          - Risk per trade: 2-5% of capital
+          - Avoid positions >20% of account in single expiry
+          - Time-based exit if no move by 2:30 PM
+
+          Format clearly for immediate execution with specific entry/exit levels.
+        PROMPT
+      end
+
+      # Enhanced option chain formatting for buying decisions
+      def format_options_for_buying(options)
+        return 'No option-chain data available.' if options.blank?
+
+        blocks = []
+        
+        # Focus on tradeable strikes with good liquidity
+        {
+          itm_call: 'ITM CALL (Higher Delta)',
+          atm: 'ATM (Balanced Risk/Reward)', 
+          otm_call: 'OTM CALL (Lower Cost)',
+          itm_put: 'ITM PUT (Higher Delta)',
+          otm_put: 'OTM PUT (Lower Cost)'
+        }.each do |key, label|
+          opt = options[key]
+          next unless opt
+
+          strike = opt[:strike] || '?'
+          ce = opt[:call] || {}
+          pe = opt[:put] || {}
+
+          # Extract key metrics for buying decisions
+          ce_data = extract_option_metrics(opt, ce, 'ce')
+          pe_data = extract_option_metrics(opt, pe, 'pe')
+
+          blocks << format_strike_block(label, strike, ce_data, pe_data)
+        end
+
+        blocks.join("\n\n")
+      end
+   
       private
 
       def fmt1(x)
@@ -153,52 +252,55 @@ module Market
         end
       end
 
-      # Expanded to include OI, Gamma, Vega for both CE & PE and accept both shapes
-      def format_options_chain(options)
-        return 'No option-chain data available.' if options.blank?
-
-        blocks = []
-
+      def extract_option_metrics(opt, option_data, prefix)
         {
-          atm: 'ATM',
-          otm_call: 'OTM CALL',
-          itm_call: 'ITM CALL',
-          otm_put: 'OTM PUT',
-          itm_put: 'ITM PUT'
-        }.each do |key, label|
-          opt = options[key]
-          next unless opt
-
-          strike = opt[:strike] || '?'
-          ce     = opt[:call] || {}
-          pe     = opt[:put]  || {}
-
-          # Support flattened fields too:
-          ce_ltp   = opt[:ce_ltp] || ce['last_price'] || ce[:last_price]
-          ce_iv    = opt[:ce_iv]  || ce['implied_volatility'] || ce[:implied_volatility]
-          ce_oi    = opt[:ce_oi]  || ce['oi'] || ce[:oi]
-          ce_delta = opt[:ce_delta] || dig_any(ce, 'greeks', 'delta')
-          ce_theta = opt[:ce_theta] || dig_any(ce, 'greeks', 'theta')
-          ce_gamma = opt[:ce_gamma] || dig_any(ce, 'greeks', 'gamma')
-          ce_vega  = opt[:ce_vega]  || dig_any(ce, 'greeks', 'vega')
-
-          pe_ltp   = opt[:pe_ltp] || pe['last_price'] || pe[:last_price]
-          pe_iv    = opt[:pe_iv]  || pe['implied_volatility'] || pe[:implied_volatility]
-          pe_oi    = opt[:pe_oi]  || pe['oi'] || pe[:oi]
-          pe_delta = opt[:pe_delta] || dig_any(pe, 'greeks', 'delta')
-          pe_theta = opt[:pe_theta] || dig_any(pe, 'greeks', 'theta')
-          pe_gamma = opt[:pe_gamma] || dig_any(pe, 'greeks', 'gamma')
-          pe_vega  = opt[:pe_vega]  || dig_any(pe, 'greeks', 'vega')
-
-          blocks << <<~STR.strip
-            ► #{label} (#{strike})
-              CALL: LTP ₹#{fmt2(ce_ltp)}  IV #{fmt2(ce_iv)}%  OI #{fmt2(ce_oi)}  Δ #{fmt2(ce_delta)}  Γ #{fmt2(ce_gamma)}  ν #{fmt2(ce_vega)}  θ #{fmt2(ce_theta)}
-              PUT : LTP ₹#{fmt2(pe_ltp)}  IV #{fmt2(pe_iv)}%  OI #{fmt2(pe_oi)}  Δ #{fmt2(pe_delta)}  Γ #{fmt2(pe_gamma)}  ν #{fmt2(pe_vega)}  θ #{fmt2(pe_theta)}
-          STR
-        end
-
-        blocks.join("\n\n")
+          ltp: opt[:"#{prefix}_ltp"] || option_data['last_price'] || option_data[:last_price],
+          iv: opt[:"#{prefix}_iv"] || option_data['implied_volatility'] || option_data[:implied_volatility],
+          oi: opt[:"#{prefix}_oi"] || option_data['oi'] || option_data[:oi],
+          delta: opt[:"#{prefix}_delta"] || dig_any(option_data, 'greeks', 'delta'),
+          theta: opt[:"#{prefix}_theta"] || dig_any(option_data, 'greeks', 'theta'),
+          gamma: opt[:"#{prefix}_gamma"] || dig_any(option_data, 'greeks', 'gamma'),
+          vega: opt[:"#{prefix}_vega"] || dig_any(option_data, 'greeks', 'vega'),
+          bid: option_data['top_bid_price'] || option_data[:top_bid_price],
+          ask: option_data['top_ask_price'] || option_data[:top_ask_price],
+          volume: option_data['volume'] || option_data[:volume]
+        }
       end
+
+      def format_strike_block(label, strike, ce_data, pe_data)
+        <<~STR.strip
+          ► #{label} (#{strike})
+            CALL: ₹#{fmt2(ce_data[:ltp])} | Bid/Ask: #{fmt2(ce_data[:bid])}/#{fmt2(ce_data[:ask])} | IV: #{fmt2(ce_data[:iv])}% | Δ: #{fmt2(ce_data[:delta])} | OI: #{fmt_large(ce_data[:oi])} | Vol: #{fmt_large(ce_data[:volume])}
+            PUT:  ₹#{fmt2(pe_data[:ltp])} | Bid/Ask: #{fmt2(pe_data[:bid])}/#{fmt2(pe_data[:ask])} | IV: #{fmt2(pe_data[:iv])}% | Δ: #{fmt2(pe_data[:delta])} | OI: #{fmt_large(pe_data[:oi])} | Vol: #{fmt_large(pe_data[:volume])}
+            Greeks: Γ #{fmt2(ce_data[:gamma])}/#{fmt2(pe_data[:gamma])} | θ #{fmt2(ce_data[:theta])}/#{fmt2(pe_data[:theta])} | ν #{fmt2(ce_data[:vega])}/#{fmt2(pe_data[:vega])}
+        STR
+      end
+
+      def format_technical_indicators(md)
+        ohlc = md[:ohlc] || {}
+        
+        <<~INDICATORS
+          *Technical Snapshot*:
+          OHLC: O #{ohlc[:open]} H #{ohlc[:high]} L #{ohlc[:low]} C #{ohlc[:close]}
+          RSI: #{md[:rsi]} | ATR: #{md[:atr]} | Supertrend: #{md[:super]}
+          Support/Resistance: #{md[:lo20]} / #{md[:hi20]}
+          Bollinger: #{fmt1(md.dig(:boll, :lower))} - #{fmt1(md.dig(:boll, :upper))}
+        INDICATORS
+      end
+
+      def fmt_large(x)
+        return '–' if x.nil?
+        
+        num = x.to_f
+        return '–' if num.zero?
+        
+        case num
+        when 0..999 then num.to_i.to_s
+        when 1000..99999 then "#{(num/1000).round(1)}K"
+        when 100000..9999999 then "#{(num/100000).round(1)}L"
+        else "#{(num/10000000).round(1)}Cr"
+        end
+      end 
 
       def dig_any(h, *path)
         h.is_a?(Hash) ? h.dig(*path) : nil
