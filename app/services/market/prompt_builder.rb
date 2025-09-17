@@ -59,7 +59,8 @@ module Market
         ld     = md[:liq_dn] ? 'yes' : 'no'
 
         expiry = md[:expiry] || 'N/A'
-        chain = format_options_chain(md[:options])
+        # chain = format_options_chain(md[:options])
+        chain = format_options_for_buying(md[:options])
 
         # Analysis context (optional)
         extra = context.to_s.strip
