@@ -15,6 +15,10 @@ module TelegramBot
       when '/nifty_analysis' then run_market_analysis('NIFTY')
       when '/sensex_analysis' then run_market_analysis('SENSEX', exchange: :bse)
       when '/bank_nifty_analysis' then run_market_analysis('BANKNIFTY')
+      # Add these to your case statement in call method
+      when '/nifty_options' then run_options_buying_analysis('NIFTY')
+      when '/banknifty_options' then run_options_buying_analysis('BANKNIFTY')
+      when '/sensex_options' then run_options_buying_analysis('SENSEX', exchange: :bse)
       else TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid)
       end
     end
@@ -33,6 +37,27 @@ module TelegramBot
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
       TelegramNotifier.send_message("🚨 Error running analysis – #{e.message}", chat_id: @cid)
+    end
+
+    # Add to your TelegramBot::CommandHandler
+    def run_options_buying_analysis(symbol, exchange: :nse)
+      typing_ping
+  
+      # Call with options_buying trade_type
+      analysis = Market::AnalysisService.new(
+         symbol, 
+         exchange: exchange, 
+         trade_type: :options_buying
+      ).call
+  
+      if analysis.present?
+        TelegramNotifier.send_message("🎯 **#{symbol} Options Buying Setup**\n\n#{analysis}", chat_id: @cid)
+      else
+        TelegramNotifier.send_message("⚠️ Couldn't generate options setup for #{symbol}.", chat_id: @cid)
+      end
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
+      TelegramNotifier.send_message("🚨 Error generating options setup – #{e.message}", chat_id: @cid)
     end
 
     # 4️⃣ — NEW  market-analysis hook
