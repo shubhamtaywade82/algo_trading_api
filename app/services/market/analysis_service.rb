@@ -41,6 +41,7 @@ module Market
 
       sleep(1.5)
       md[:vix] = india_vix.ltp
+      md[:regime] = option_chain_regime_flags(md[:options], md[:vix])
 
       prompt = PromptBuilder.build_prompt(md, trade_type: @trade_type)
       Rails.logger.debug prompt
@@ -234,6 +235,23 @@ module Market
       end
 
       blocks.join("\n\n")
+    end
+
+    def option_chain_regime_flags(options, vix)
+      return {} if options.blank?
+      atm = options[:atm] || {}
+      ce_iv = (atm[:ce_iv] || atm.dig(:call, 'implied_volatility')).to_f
+      pe_iv = (atm[:pe_iv] || atm.dig(:put,  'implied_volatility')).to_f
+      iv_atm = [ce_iv, pe_iv].reject(&:zero?).sum / 2.0
+
+      {
+        iv_atm: iv_atm,
+        iv_high: iv_atm >= 18,           # tune thresholds per index
+        iv_low:  iv_atm <= 10,
+        vix: vix.to_f,
+        vix_high: vix.to_f >= 16,
+        vix_low:  vix.to_f <= 11
+      }
     end
 
     def nearest_expiry
