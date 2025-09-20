@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'json'
+
 class AppSetting < ApplicationRecord
   self.primary_key = :key
   validates :key, :value, presence: true
@@ -32,5 +34,16 @@ class AppSetting < ApplicationRecord
   def self.fetch_int(key, default:)
     k = key.to_s
     INTEGER.cast(self[k] || ENV[k.upcase] || default)
+  end
+
+  #  Array/JSON helper – parses JSON stored value or falls back to default
+  def self.fetch_array(key, default:)
+    k = key.to_s
+    raw = self[k] || ENV[k.upcase]
+    return default if raw.blank?
+
+    JSON.parse(raw)
+  rescue JSON::ParserError
+    default
   end
 end
