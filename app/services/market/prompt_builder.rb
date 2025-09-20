@@ -159,6 +159,9 @@ module Market
         symbol = md[:symbol]
         expiry = md[:expiry] || 'N/A'
         vix_value = md[:vix] || '–'
+        reg = md[:regime] || {}
+        regime_note = "IV@ATM: #{fmt1(reg[:iv_atm])}% | VIX: #{fmt1(reg[:vix])} (high? #{reg[:vix_high]} / low? #{reg[:vix_low]})"
+
         
         # Format option chain for buying decisions
         chain = format_options_for_buying(md[:options])
@@ -204,6 +207,17 @@ module Market
           - Risk per trade: 2-5% of capital
           - Avoid positions >20% of account in single expiry
           - Time-based exit if no move by 2:30 PM
+
+          === AVOID-BUYING CHECKS ===
+          If any of the below hold, output: "Decision Gate: AVOID – <reason>"
+          - IV regime likely to compress (IV high and falling or post-event) 
+          - VIX falling and price range-bound
+          - <48 hours to expiry without momentum; theta risk high
+          - Wide spreads or low OI/volume at chosen strike
+          - No clear directional edge on this timeframe
+          Otherwise output: "Decision Gate: BUY – <reason>"
+          
+          Decision Gate: BUY/AVOID – <one-line reason referencing IV/VIX/theta/liquidity>
 
           Format clearly for immediate execution with specific entry/exit levels.
         PROMPT
