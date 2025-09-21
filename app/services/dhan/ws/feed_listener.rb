@@ -20,11 +20,15 @@ module Dhan
       @segment_cache ||= {}
       @ltp_cache ||= {}
 
-      # Always subscribe to NIFTY + BANKNIFTY
-      INDEXES = [
-        { security_id: '13', exchange_segment: 'IDX_I' },
-        { security_id: '25', exchange_segment: 'IDX_I' }
-      ].freeze
+      # Always subscribe to key index instruments
+      INDEXES = AppSetting
+                  .fetch_array('feed_indexes',
+                               default: [
+                                 { 'security_id' => '13', 'exchange_segment' => 'IDX_I' },
+                                 { 'security_id' => '25', 'exchange_segment' => 'IDX_I' }
+                               ])
+                  .map { |h| h.symbolize_keys }
+                  .freeze
 
       def self.run
         Positions::ActiveCache.refresh!

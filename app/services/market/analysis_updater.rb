@@ -2,7 +2,8 @@ module Market
   class AnalysisUpdater < ApplicationService
     INTERVAL  = '5'.freeze # 5-minute candles
     PERIODS   = 50 # pull ~4 hours (enough for ATR14)
-    SYMBOLS   = %w[NIFTY BANKNIFTY SENSEX].freeze
+    SYMBOLS   = AppSetting.fetch_array('analysis_symbols',
+                                       default: %w[NIFTY BANKNIFTY SENSEX]).freeze
 
     # ------------------------------------------------------------------
     # 🗓  Trading-day helpers

@@ -1,14 +1,12 @@
 module MarketCalendar
-  MARKET_HOLIDAYS = [
-    # Add static or API-fetched holiday dates here
-    Date.new(2025, 8, 15),
-    Date.new(2025, 8, 27)
-    # ...
-  ].freeze
+  def self.market_holidays
+    @market_holidays ||= AppSetting.fetch_array('market_holidays', default: [])
+                                     .map { |d| Date.parse(d) }
+  end
 
   def self.trading_day?(date)
     weekday = date.on_weekday?
-    !MARKET_HOLIDAYS.include?(date) && weekday
+    !market_holidays.include?(date) && weekday
   end
 
   def self.last_trading_day(from: Time.zone.today)
