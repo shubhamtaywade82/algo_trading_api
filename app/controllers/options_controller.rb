@@ -19,25 +19,21 @@ class OptionsController < ApplicationController
     last_price = instrument.ltp || option_chain[:last_price]
 
     iv_rank = calculate_iv_rank(option_chain)
+    strategy_type = params[:strategy_type].presence || 'intraday'
+    historical_data = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: strategy_type)
 
     chain_analyzer = Option::ChainAnalyzer.new(
       option_chain,
       expiry: expiry_date,
       underlying_spot: last_price,
       iv_rank: iv_rank,
-      historical_data: Dhanhq::API::Historical.daily(
-        securityId: instrument.security_id,
-        exchangeSegment: instrument.exchange_segment,
-        instrument: instrument.instrument_type,
-        fromDate: 45.days.ago.to_date.to_s,
-        toDate: Date.yesterday.to_s
-      )
+      historical_data: historical_data
     )
 
     signal_type = params[:instrument_type].to_s.downcase.to_sym # :ce or :pe
 
     result = chain_analyzer.analyze(
-      strategy_type: params[:strategy_type] || 'intraday',
+      strategy_type: strategy_type,
       signal_type: signal_type
     )
 
@@ -61,26 +57,20 @@ class OptionsController < ApplicationController
   end
 
   def strategy_params
-    params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference,
-                                   :target_profit, :max_loss, :strategy_type, :instrument_type)
+    permitted = params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk,
+                                               :option_preference, :target_profit, :max_loss, :strategy_type,
+                                               :instrument_type, :instrument_typs)
+
+    if permitted[:instrument_type].blank? && permitted[:instrument_typs].present?
+      permitted[:instrument_type] = permitted.delete(:instrument_typs)
+    else
+      permitted.delete(:instrument_typs)
+    end
+
+    permitted
   end
 
   def calculate_iv_rank(option_chain)
-    atm_strike = option_chain[:last_price].to_f
-    atm_key = format('%.6f', atm_strike)
-
-    ce_iv = option_chain.dig(:oc, atm_key, 'ce', 'implied_volatility').to_f
-    pe_iv = option_chain.dig(:oc, atm_key, 'pe', 'implied_volatility').to_f
-    current_iv = [ce_iv, pe_iv].compact.sum / 2.0
-
-    all_ivs = option_chain[:oc].values.flat_map do |row|
-      [row.dig('ce', 'implied_volatility'), row.dig('pe', 'implied_volatility')]
-    end.compact.map(&:to_f)
-
-    return 0.5 if all_ivs.empty? || all_ivs.uniq.size == 1
-
-    min_iv = all_ivs.min
-    max_iv = all_ivs.max
-    ((current_iv - min_iv) / (max_iv - min_iv)).clamp(0.0, 1.0).round(2)
+    Option::ChainAnalyzer.estimate_iv_rank(option_chain)
   end
 end

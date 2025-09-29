@@ -183,20 +183,7 @@ module AlertProcessors
     end
 
     def iv_rank_for(chain)
-      atm = determine_atm_strike(chain)
-      return 0.5 unless atm
-
-      atm_key = format('%.6f', atm)
-      ce_iv   = chain[:oc].dig(atm_key, 'ce', 'implied_volatility').to_f
-      pe_iv   = chain[:oc].dig(atm_key, 'pe', 'implied_volatility').to_f
-      current = [ce_iv, pe_iv].select(&:positive?).sum / 2.0
-
-      ivs = chain[:oc].values.flat_map do |row|
-        %w[ce pe].map { |k| row.dig(k, 'implied_volatility').to_f }
-      end.reject(&:zero?)
-      return 0.5 if ivs.empty? || ivs.max == ivs.min
-
-      ((current - ivs.min) / (ivs.max - ivs.min)).clamp(0, 1).round(2)
+      Option::ChainAnalyzer.estimate_iv_rank(chain)
     end
 
     def option_ltp(derivative)
@@ -217,35 +204,7 @@ module AlertProcessors
     end
 
     def historical_data
-      return intraday_candles if alert[:strategy_type] == 'intraday'
-
-      daily_candles
-    end
-
-    def daily_candles
-      Dhanhq::API::Historical.daily(
-        securityId: instrument.security_id,
-        exchangeSegment: instrument.exchange_segment,
-        instrument: instrument.instrument_type,
-        fromDate: 45.days.ago.to_date,
-        toDate: Date.yesterday
-      )
-    rescue StandardError
-      []
-    end
-
-    def intraday_candles
-      Dhanhq::API::Historical.intraday(
-        securityId: instrument.security_id,
-        exchangeSegment: instrument.exchange_segment,
-        instrument: instrument.instrument_type,
-        interval: '5',
-        fromDate: 5.days.ago.to_date.iso8601, # 👈 string not Date
-        toDate: Time.zone.today.iso8601 # 👈
-      )
-    rescue StandardError => e
-      log :error, "intraday-fetch error – #{e.message}"
-      []
+      Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: alert[:strategy_type])
     end
 
     def determine_atm_strike(chain)

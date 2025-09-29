@@ -12,13 +12,50 @@ module Option
 
     attr_reader :option_chain, :expiry, :underlying_spot, :historical_data, :iv_rank, :ta
 
+    def self.estimate_iv_rank(option_chain)
+      return 0.5 unless option_chain.respond_to?(:[]) && option_chain.present?
+
+      chain = option_chain.with_indifferent_access
+      oc     = chain[:oc]
+      return 0.5 unless oc.present?
+
+      spot    = chain[:last_price].to_f
+      strikes = oc.keys.map(&:to_f)
+      return 0.5 if strikes.empty?
+
+      atm      = strikes.min_by { |s| (s - spot).abs }
+      atm_key  = format('%.6f', atm)
+      fetch_iv = ->(side) { oc.dig(atm_key, side, 'implied_volatility').to_f }
+
+      ce_iv = fetch_iv.call('ce')
+      pe_iv = fetch_iv.call('pe')
+      candidate_ivs = [ce_iv, pe_iv].reject(&:zero?)
+      current_iv = if candidate_ivs.any?
+                     candidate_ivs.sum / candidate_ivs.size
+                   else
+                     0.0
+                   end
+
+      all_ivs = oc.values.flat_map do |row|
+        %w[ce pe].map { |side| row.dig(side, 'implied_volatility').to_f }
+      end.reject(&:zero?)
+
+      return 0.5 if all_ivs.size < 2 || all_ivs.max == all_ivs.min
+
+      current_iv = all_ivs.sum / all_ivs.size if current_iv.zero?
+
+      ((current_iv - all_ivs.min) / (all_ivs.max - all_ivs.min)).clamp(0.0, 1.0).round(2)
+    rescue StandardError
+      0.5
+    end
+
     def initialize(option_chain, expiry:, underlying_spot:, iv_rank:, historical_data: [], strike_step: nil)
       @option_chain     = option_chain.with_indifferent_access
       @expiry           = Date.parse(expiry.to_s)
       @underlying_spot  = underlying_spot.to_f
       @iv_rank          = iv_rank.to_f
       @historical_data  = historical_data || []
-      @ta = Indicators::HolyGrail.call(candles: historical_data) if historical_data.present?
+      @ta = build_ta_snapshot
 
       @strike_step = strike_step || infer_strike_step
       Rails.logger.debug { "Analyzing Options for #{expiry}" }
@@ -132,6 +169,26 @@ module Option
     alias trend current_trend
 
     private
+
+    def build_ta_snapshot
+      return nil unless @historical_data.present?
+
+      closes = Array(@historical_data['close']).compact
+      if closes.size < Indicators::HolyGrail::EMA_SLOW
+        Rails.logger.debug do
+          "[ChainAnalyzer] Skipping HolyGrail TA – need ≥ #{Indicators::HolyGrail::EMA_SLOW} candles, got #{closes.size}"
+        end
+        return nil
+      end
+
+      Indicators::HolyGrail.call(candles: @historical_data)
+    rescue ArgumentError => e
+      Rails.logger.debug { "[ChainAnalyzer] HolyGrail TA unavailable – #{e.message}" }
+      nil
+    rescue StandardError => e
+      Rails.logger.warn { "[ChainAnalyzer] HolyGrail TA failed – #{e.message}" }
+      nil
+    end
 
     def oc_strikes
       @oc_strikes ||= @option_chain[:oc].keys.map(&:to_f).sort

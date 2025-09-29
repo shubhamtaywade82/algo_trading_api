@@ -13,21 +13,28 @@ module Option
 
       # 3) Fetch real-time option chain for that expiry
       option_chain = instrument.fetch_option_chain(expiry)
+      last_price = instrument.ltp || option_chain[:last_price]
 
-      # 4) Optionally fetch short historical data (daily bars for the last ~5 days)
-      historical_data = fetch_historical_data(instrument)
+      # 4) Optionally fetch short historical data (daily or intraday based on strategy)
+      iv_rank = Option::ChainAnalyzer.estimate_iv_rank(option_chain)
+      signal_type = resolve_signal_type(params)
+      strategy_type = params[:strategy_type].presence || 'intraday'
+      historical_data = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: strategy_type)
 
       # 5) Instantiate the new Option::ChainAnalyzer with advanced logic
       chain_analyzer = Option::ChainAnalyzer.new(
         option_chain,
         expiry: expiry,
-        underlying_spot: instrument.ltp || option_chain[:last_price], # pass the real-time spot
+        underlying_spot: last_price, # pass the real-time spot
+        iv_rank: iv_rank,
         historical_data: historical_data # pass short daily bars
       )
 
       # 6) Run the analyzer to get advanced insights
-      analysis = chain_analyzer.analyze(strategy_type: params[:strategy_type],
-                                        instrument_type: params[:instrument_type])
+      analysis = chain_analyzer.analyze(
+        signal_type: signal_type,
+        strategy_type: strategy_type
+      )
       # => {
       #      atm_strike: 22550,
       #      best_ce_strike: {...},
@@ -38,24 +45,21 @@ module Option
       #    }
 
       # 7) Instantiate the StrategySuggester with the chain data + user params
-      suggester = StrategySuggester.new(option_chain, params)
+      suggester = StrategySuggester.new(option_chain, last_price, params)
 
       # 8) Suggester uses “analysis” (plus any user’s input like :outlook, :risk, etc.)
       #    to produce an array of strategies. We return the final suggestions.
       suggester.suggest(analysis: analysis)
     end
 
-    def self.fetch_historical_data(instrument)
-      # Basic daily data for the last 5 days, ignoring weekends
-      Dhanhq::API::Historical.daily(
-        securityId: instrument.security_id,
-        exchangeSegment: instrument.exchange_segment,
-        instrument: instrument.instrument_type,
-        fromDate: 45.days.ago.to_date.to_s,
-        toDate: Date.yesterday.to_s
-      )
-    rescue StandardError
-      []
+    def self.resolve_signal_type(params)
+      raw = params[:signal_type].presence || params[:instrument_type].presence
+      return :ce unless raw
+
+      normalized = raw.to_s.downcase
+      return :pe if normalized.include?('pe') || normalized.include?('put')
+
+      :ce
     end
   end
 end

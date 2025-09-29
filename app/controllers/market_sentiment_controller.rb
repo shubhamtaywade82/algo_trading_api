@@ -20,8 +20,10 @@ class MarketSentimentController < ApplicationController
     # 4) Fetch the option chain
     option_chain = instrument.fetch_option_chain(expiry)
 
-    # 5) Optionally fetch short historical data for chain analysis
-    historical_data = params[:strategy_type] == 'intraday' ? fetch_intraday_candles(instrument) : fetch_short_historical_data(instrument)
+    iv_rank = Option::ChainAnalyzer.estimate_iv_rank(option_chain)
+    signal_type = resolve_signal_type
+    strategy_type = resolve_strategy_type
+    historical_data = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: strategy_type)
 
     last_price = instrument.ltp || option_chain[:last_price]
     # 6) Instantiate the new advanced ChainAnalyzer
@@ -29,10 +31,11 @@ class MarketSentimentController < ApplicationController
       option_chain,
       expiry: expiry,
       underlying_spot: last_price,
+      iv_rank: iv_rank,
       historical_data: historical_data
     )
-    analysis_result = chain_analyzer.analyze(strategy_type: params[:strategy_type],
-                                             instrument_type: params[:instrument_type])
+    analysis_result = chain_analyzer.analyze(signal_type: signal_type,
+                                             strategy_type: strategy_type)
 
     # 7) Use the StrategySuggester to generate potential multi-leg strategies
     #    (We can pass user criteria, e.g. :outlook, :risk, etc., if we want.)
@@ -50,30 +53,18 @@ class MarketSentimentController < ApplicationController
 
   private
 
-  # Example: fetch 5 days of daily candles
-  def fetch_short_historical_data(instrument)
-    Dhanhq::API::Historical.daily(
-      securityId: instrument.security_id,
-      exchangeSegment: instrument.exchange_segment,
-      instrument: instrument.instrument_type,
-      fromDate: 45.days.ago.to_date.to_s,
-      toDate: Date.yesterday.to_s
-    )
-  rescue StandardError
-    []
+
+  def resolve_signal_type
+    raw = params[:signal_type].presence || params[:instrument_type].presence
+    return :ce unless raw
+
+    normalized = raw.to_s.downcase
+    return :pe if normalized.include?('pe') || normalized.include?('put')
+
+    :ce
   end
 
-  def fetch_intraday_candles(instrument)
-    Dhanhq::API::Historical.intraday(
-      securityId: instrument.security_id,
-      exchangeSegment: instrument.exchange_segment,
-      instrument: instrument.instrument_type,
-      interval: '5', # 5-min bars
-      fromDate: 5.days.ago.to_date.to_s,
-      toDate: Time.zone.today.to_s
-    )
-  rescue StandardError => e
-    Rails.logger.error("Failed to fetch intraday data => #{e.message}")
-    []
+  def resolve_strategy_type
+    params[:strategy_type].presence || 'intraday'
   end
 end

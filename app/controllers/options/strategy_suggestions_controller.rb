@@ -16,8 +16,16 @@ module Options
     private
 
     def strategy_params
-      params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk, :option_preference,
-                                     :target_profit, :max_loss, :strategy_type, :instrument_type)
+      permitted = params.require(:option).permit(:index_symbol, :expiry_date, :outlook, :volatility, :risk,
+                                                 :option_preference, :target_profit, :max_loss, :strategy_type,
+                                                 :instrument_type, :instrument_typs)
+      if permitted[:instrument_type].blank? && permitted[:instrument_typs].present?
+        permitted[:instrument_type] = permitted.delete(:instrument_typs)
+      else
+        permitted.delete(:instrument_typs)
+      end
+
+      permitted
     end
   end
 end

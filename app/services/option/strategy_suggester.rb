@@ -38,8 +38,9 @@ module Option
     # @return [Float] The current available balance in the trading account.
     def available_balance
       @available_balance ||= Dhanhq::API::Funds.balance['availabelBalance'].to_f
-    rescue StandardError
-      raise 'Failed to fetch available balance'
+    rescue StandardError => e
+      Rails.logger.warn { "[StrategySuggester] Funds balance unavailable – #{e.message}" }
+      @available_balance = Float::INFINITY
     end
 
     # The strategy is “affordable” if sum of the :max_loss across all legs <= available_balance
