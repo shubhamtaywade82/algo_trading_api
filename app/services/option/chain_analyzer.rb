@@ -356,6 +356,18 @@ module Option
       }
     end
 
+    def option_active?(option)
+      return false unless option.is_a?(Hash)
+
+      numeric_keys = %w[last_price implied_volatility oi volume previous_close_price previous_volume previous_oi]
+      has_numeric_values = numeric_keys.any? { |key| option[key].to_f.nonzero? }
+
+      greek_keys = %w[delta gamma theta vega]
+      has_greek_values = greek_keys.any? { |key| option.dig('greeks', key).to_f.nonzero? }
+
+      has_numeric_values || has_greek_values
+    end
+
     def debug_filter_reason(strike_price, option, signal_type, atm_strike)
       reasons = []
       reasons << 'iv=0'    if option['implied_volatility'].to_f.zero?
@@ -467,6 +479,15 @@ module Option
 
     def theta_weight
       Time.zone.now.hour >= 13 ? 4.0 : 3.0
+    end
+
+    def summary_distance_threshold(atm_strike)
+      return 0.0 unless atm_strike
+
+      base_window = atm_range_pct * @underlying_spot * 2 # allow slightly wider than trading window
+      step_window = (@strike_step.to_f * 3).abs
+
+      [base_window, step_window].max
     end
 
     def local_iv_zscore(strike_iv, strike)
@@ -716,19 +737,32 @@ module Option
         strike_filters[:filters_applied] << 'No strikes passed all filters'
 
         # Analyze why strikes were filtered out
+        summary_window = summary_distance_threshold(atm_strike)
+
         @option_chain[:oc].each do |strike_str, data|
           option = data[side]
           next unless option
+          next unless option_active?(option)
 
           strike_price = strike_str.to_f
+
+          # Skip far ITM/OTM candidates from the detailed summary – they add noise
+          next if deep_itm_strike?(strike_price, signal_type)
+          next if deep_otm_strike?(strike_price, signal_type)
+
+          distance_from_atm = (strike_price - atm_strike).abs
+          next if distance_from_atm > summary_window
+
           reasons = []
 
-          # Check each filter
-          reasons << 'IV zero' if option['implied_volatility'].to_f.zero?
-          reasons << 'Price zero' if option['last_price'].to_f.zero?
-          reasons << 'Delta low' if option.dig('greeks', 'delta').to_f.abs < min_delta_now
-          reasons << 'Deep ITM' if deep_itm_strike?(strike_price, signal_type)
-          reasons << 'Deep OTM' if deep_otm_strike?(strike_price, signal_type)
+          iv = option['implied_volatility'].to_f
+          price = option['last_price'].to_f
+          delta = option.dig('greeks', 'delta').to_f.abs
+          min_delta = min_delta_for(strike_price, atm_strike)
+
+          reasons << 'IV zero' if iv.zero?
+          reasons << 'Price zero' if price.zero?
+          reasons << "Delta low (< #{min_delta.round(2)})" if delta < min_delta
           reasons << 'Outside enhanced ATM range' unless within_enhanced_atm_range?(strike_price, signal_type)
 
           next unless reasons.any?
@@ -736,10 +770,11 @@ module Option
           strike_filters[:filters_applied] << {
             strike_price: strike_price,
             reasons: reasons,
-            distance_from_atm: (strike_price - atm_strike).abs,
-            delta: option.dig('greeks', 'delta').to_f.abs,
-            iv: option['implied_volatility'].to_f,
-            price: option['last_price'].to_f
+            distance_from_atm: distance_from_atm,
+            atm_range_multiple: summary_window.zero? ? 0 : distance_from_atm / summary_window,
+            delta: delta,
+            iv: iv,
+            price: price
           }
         end
       else

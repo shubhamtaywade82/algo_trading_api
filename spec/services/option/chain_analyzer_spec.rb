@@ -151,4 +151,105 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
       end
     end
   end
+
+  describe '#get_strike_filter_summary' do
+    let(:expiry) { Date.today.to_s }
+    let(:spot) { 20_000.0 }
+    let(:iv_rank) { 0.1 }
+    let(:strike_step) { 50 }
+    let(:atm_strike) { 20_000.0 }
+
+    let(:option_chain) do
+      {
+        last_price: spot,
+        oc: {
+          format('%.6f', atm_strike) => {
+            'ce' => {
+              'last_price' => 5.0,
+              'implied_volatility' => 0.18,
+              'oi' => 1_000,
+              'volume' => 200,
+              'previous_close_price' => 6.0,
+              'previous_volume' => 150,
+              'previous_oi' => 900,
+              'greeks' => {
+                'delta' => 0.1,
+                'gamma' => 0.02,
+                'theta' => -0.5,
+                'vega' => 0.8
+              }
+            }
+          },
+          format('%.6f', atm_strike + (strike_step * 40)) => {
+            'ce' => {
+              'last_price' => 1.0,
+              'implied_volatility' => 0.12,
+              'oi' => 500,
+              'volume' => 50,
+              'previous_close_price' => 1.1,
+              'previous_volume' => 40,
+              'previous_oi' => 450,
+              'greeks' => {
+                'delta' => 0.05,
+                'gamma' => 0.01,
+                'theta' => -0.2,
+                'vega' => 0.3
+              }
+            }
+          },
+          format('%.6f', atm_strike + (strike_step * 2)) => {
+            'ce' => {
+              'last_price' => 0,
+              'implied_volatility' => 0,
+              'oi' => 0,
+              'volume' => 0,
+              'previous_close_price' => 0,
+              'previous_volume' => 0,
+              'previous_oi' => 0,
+              'greeks' => {
+                'delta' => 0,
+                'gamma' => 0,
+                'theta' => 0,
+                'vega' => 0
+              }
+            }
+          }
+        }
+      }
+    end
+
+    subject(:analyzer) do
+      described_class.new(
+        option_chain,
+        expiry: expiry,
+        underlying_spot: spot,
+        iv_rank: iv_rank,
+        historical_data: [],
+        strike_step: strike_step
+      )
+    end
+
+    before do
+      allow(analyzer).to receive(:determine_atm_strike).and_return(atm_strike)
+      allow(analyzer).to receive(:gather_filtered_strikes).and_return([])
+      travel_to(Time.zone.local(2025, 1, 1, 11, 0, 0))
+    end
+
+    after do
+      travel_back
+    end
+
+    it 'skips inactive and deep strikes when building failure details' do
+      summary = analyzer.send(:get_strike_filter_summary, :ce)
+
+      detailed_entries = summary[:filters_applied].select { |entry| entry.is_a?(Hash) }
+
+      expect(detailed_entries.size).to eq(1)
+      expect(detailed_entries.first[:strike_price]).to eq(atm_strike)
+      expect(detailed_entries.first[:reasons]).to include(a_string_matching(/Delta low/))
+
+      reported_strikes = detailed_entries.map { |entry| entry[:strike_price] }
+      expect(reported_strikes).not_to include(atm_strike + (strike_step * 40))
+    end
+  end
 end
