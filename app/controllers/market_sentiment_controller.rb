@@ -20,32 +20,39 @@ class MarketSentimentController < ApplicationController
     # 4) Fetch the option chain
     option_chain = instrument.fetch_option_chain(expiry)
 
-    iv_rank = Option::ChainAnalyzer.estimate_iv_rank(option_chain)
-    signal_type = resolve_signal_type
     strategy_type = resolve_strategy_type
+    iv_rank = Option::ChainAnalyzer.estimate_iv_rank(option_chain)
     historical_data = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: strategy_type)
-
     last_price = instrument.ltp || option_chain[:last_price]
-    # 6) Instantiate the new advanced ChainAnalyzer
-    chain_analyzer = Option::ChainAnalyzer.new(
-      option_chain,
-      expiry: expiry,
-      underlying_spot: last_price,
-      iv_rank: iv_rank,
-      historical_data: historical_data
-    )
-    analysis_result = chain_analyzer.analyze(signal_type: signal_type,
-                                             strategy_type: strategy_type)
 
-    # 7) Use the StrategySuggester to generate potential multi-leg strategies
-    #    (We can pass user criteria, e.g. :outlook, :risk, etc., if we want.)
-    user_criteria = { analysis: analysis_result } # minimal. Or merge in user param filters, e.g. params[:outlook]
+    sentiment = Market::SentimentAnalysis.call(
+      option_chain: option_chain,
+      expiry: expiry,
+      spot: last_price,
+      iv_rank: iv_rank,
+      historical_data: historical_data,
+      strategy_type: strategy_type
+    )
+
+    preferred_analysis =
+      case sentiment[:preferred_signal]
+      when :ce then sentiment[:call_analysis]
+      when :pe then sentiment[:put_analysis]
+      end
+    preferred_analysis ||= sentiment[:call_analysis] if sentiment[:call_analysis]&.any?
+    preferred_analysis ||= sentiment[:put_analysis] if sentiment[:put_analysis]&.any?
+
+    user_criteria = { analysis: preferred_analysis }
     suggester     = Option::StrategySuggester.new(option_chain, last_price, params)
-    strategies    = suggester.suggest(user_criteria)
+    strategies    = preferred_analysis ? suggester.suggest(user_criteria) : []
 
     render json: {
-      analysis: analysis_result,           # chain analyzer result
-      strategy_suggestions: strategies     # array of possible strategy combos
+      sentiment: sentiment.slice(:bias, :preferred_signal, :confidence, :trend, :iv_rank, :strengths, :ta_snapshot),
+      analyses: {
+        call: sentiment[:call_analysis],
+        put: sentiment[:put_analysis]
+      },
+      strategy_suggestions: strategies
     }, status: :ok
   rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
@@ -53,16 +60,6 @@ class MarketSentimentController < ApplicationController
 
   private
 
-
-  def resolve_signal_type
-    raw = params[:signal_type].presence || params[:instrument_type].presence
-    return :ce unless raw
-
-    normalized = raw.to_s.downcase
-    return :pe if normalized.include?('pe') || normalized.include?('put')
-
-    :ce
-  end
 
   def resolve_strategy_type
     params[:strategy_type].presence || 'intraday'
