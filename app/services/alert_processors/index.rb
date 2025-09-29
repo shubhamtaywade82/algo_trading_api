@@ -139,7 +139,7 @@ module AlertProcessors
         ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
       else
         order = build_order_payload(strike, derivative) # ← legacy 1-leg
-        ENV['PLACE_ORDER'] == 'true' ? place_simple_order!(order) : dry_run(order)
+        ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
       end
     end
 
@@ -704,18 +704,23 @@ module AlertProcessors
         # Add strike guidance if available
         if ss_info[:strike_guidance] && ss_info[:strike_guidance][:recommended_strikes]&.any?
           guidance = ss_info[:strike_guidance]
-          details << "Recommended: #{guidance[:recommended_strikes].join(', ')} (#{guidance[:explanation]})"
+          recommended = truncate_list(guidance[:recommended_strikes])
+          details << "Recommended: #{recommended.join(', ')}#{ellipsis_suffix(guidance[:recommended_strikes], recommended)}"
+          details << "Explanation: #{guidance[:explanation]}" if guidance[:explanation].present?
         end
 
         if ss_info[:filters_applied]&.any?
-          filter_details = ss_info[:filters_applied].map do |filter|
+          filters = ss_info[:filters_applied]
+          formatted_filters = truncate_list(filters).map do |filter|
             if filter.is_a?(Hash)
-              "#{filter[:strike_price]} (#{filter[:reasons].join(', ')})"
+              reasons = Array(filter[:reasons]).join(', ')
+              "#{filter[:strike_price]} (#{reasons})"
             else
               filter
             end
-          end.join('; ')
-          details << "Filter Details: #{filter_details}"
+          end
+          suffix = ellipsis_suffix(filters, formatted_filters)
+          details << "Filter Details: #{formatted_filters.join('; ')}#{suffix}"
         end
       end
 
@@ -727,6 +732,18 @@ module AlertProcessors
       log :warn, "Signal skipped - #{full_reason}"
 
       full_reason
+    end
+
+    def truncate_list(list, limit = 8)
+      Array(list).first(limit)
+    end
+
+    def ellipsis_suffix(original, truncated)
+      original_count = Array(original).size
+      truncated_count = Array(truncated).size
+      return '' if original_count <= truncated_count
+
+      " …(+#{original_count - truncated_count} more)"
     end
   end
 end
