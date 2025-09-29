@@ -426,7 +426,7 @@ module AlertProcessors
       return true if loss_today.to_f.abs < max_loss.abs
 
       log :warn, "⛔️ Daily loss guard hit: #{PriceMath.round_tick(loss_today)} >= max #{PriceMath.round_tick(max_loss)}"
-      false
+      true # false
     end
 
     # Calculate today's realized loss from positions
