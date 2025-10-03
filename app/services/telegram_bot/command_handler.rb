@@ -2,9 +2,22 @@ module TelegramBot
   class CommandHandler < ApplicationService
     ANALYSIS_CACHE_KEY = 'portfolio:institutional:last_run'.freeze
 
+    SYMBOL_CONFIG = {
+      'nifty' => { symbol: 'NIFTY', exchange: :nse },
+      'banknifty' => { symbol: 'BANKNIFTY', exchange: :nse },
+      'sensex' => { symbol: 'SENSEX', exchange: :bse }
+    }.freeze
+
+    OPTION_CONFIG = {
+      'ce' => :ce,
+      'call' => :ce,
+      'pe' => :pe,
+      'put' => :pe
+    }.freeze
+
     def initialize(chat_id:, command:)
       @cid = chat_id
-      @cmd = command
+      @cmd = command.to_s.strip
     end
 
     def call
@@ -19,12 +32,53 @@ module TelegramBot
       when '/nifty_options' then run_options_buying_analysis('NIFTY')
       when '/banknifty_options' then run_options_buying_analysis('BANKNIFTY')
       when '/sensex_options' then run_options_buying_analysis('SENSEX', exchange: :bse)
-      else TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid)
+      else
+        handled = try_manual_signal!
+        TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid) unless handled
       end
     end
 
     # --------------------------------------------------------------
     private
+
+    def try_manual_signal!
+      parsed = parse_manual_signal(@cmd)
+      return false unless parsed
+
+      TelegramBot::ManualSignalTrigger.call(
+        chat_id: @cid,
+        symbol: parsed[:symbol],
+        option: parsed[:option],
+        exchange: parsed[:exchange]
+      )
+
+      true
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ Manual signal failed – #{e.class}: #{e.message}"
+      TelegramNotifier.send_message("🚨 Error triggering manual signal – #{e.message}", chat_id: @cid)
+      true
+    end
+
+    def parse_manual_signal(command)
+      normalized = command.to_s.strip.downcase
+      normalized = normalized.delete_prefix('/')
+      normalized = normalized.tr('_-', '  ')
+      parts = normalized.split(/\s+/)
+      return if parts.size < 2
+
+      symbol_key = parts[0]
+      option_key = parts[1]
+
+      symbol_config = SYMBOL_CONFIG[symbol_key]
+      option = OPTION_CONFIG[option_key]
+      return unless symbol_config && option
+
+      {
+        symbol: symbol_config[:symbol],
+        exchange: symbol_config[:exchange],
+        option: option
+      }
+    end
 
     def quick_portfolio_brief
       typing_ping
