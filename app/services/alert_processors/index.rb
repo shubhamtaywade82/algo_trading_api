@@ -113,6 +113,7 @@ module AlertProcessors
       return skip!(:no_viable_strikes) unless selected
 
       # Check affordability of selected first
+      fallback = nil
       strike = if strike_affordable?(selected, expiry, option)
                  log :info, "✅ Selected strike is affordable (≥1 lot): #{format_strike(selected)}"
                  selected
@@ -127,18 +128,36 @@ module AlertProcessors
                  end
                end
 
-      return skip!(:no_affordable_strike) unless strike
+      if strike
+        log :info, "🎯 Proceeding with strike: #{format_strike(strike)}"
+      else
+        log :warn,
+            "❌ No strike available after affordability checks. Selected=#{format_strike(selected)}, " \
+            "Fallback=#{format_strike(fallback)}"
+        return skip!(:no_affordable_strike)
+      end
 
       derivative = fetch_derivative(strike, expiry, option)
-      return skip!(:no_derivative) unless derivative
+      unless derivative
+        log :error,
+            "❌ Derivative missing for strike #{format_strike(strike)} (expiry=#{expiry}, option=#{option.to_s.upcase}). " \
+            "Consider re-importing instrument derivatives."
+        return skip!(:no_derivative)
+      end
+
+      quantity = calculate_quantity(strike, derivative.lot_size)
+      if quantity.zero?
+        log :warn, "🚫 Calculated quantity is 0 for #{format_strike(strike)}"
+        return skip!(:invalid_quantity)
+      end
 
       if USE_SUPER_ORDER
-        order = build_super_order_payload(strike, derivative)
+        order = build_super_order_payload(strike, derivative, quantity)
         return skip!(:ltp_unavailable) unless order
 
         ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
       else
-        order = build_order_payload(strike, derivative) # ← legacy 1-leg
+        order = build_order_payload(strike, derivative, quantity) # ← legacy 1-leg
         ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
       end
     end
@@ -224,11 +243,20 @@ module AlertProcessors
     end
 
     def fetch_derivative(strike, expiry, dir)
-      instrument.derivatives.find_by(
+      derivative = instrument.derivatives.find_by(
         strike_price: strike[:strike_price],
         expiry_date: expiry,
         option_type: dir.to_s.upcase
       )
+      if derivative
+        log :info,
+            "🧾 Derivative found → security_id=#{derivative.security_id}, lot=#{derivative.lot_size}, " \
+            "segment=#{derivative.exchange_segment}"
+      else
+        log :warn,
+            "⚠️ Derivative lookup failed for strike #{strike[:strike_price]} (expiry=#{expiry}, option=#{dir.to_s.upcase})."
+      end
+      derivative
     end
 
     # ------------------------------------------------------------------
@@ -259,7 +287,7 @@ module AlertProcessors
     end
 
     # -- Order building & execution ------------------------------------------
-    def build_order_payload(strike, derivative)
+    def build_order_payload(strike, derivative, quantity)
       {
         transactionType: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY / SELL
         orderType: alert[:order_type].to_s.upcase, # MARKET / LIMIT
@@ -267,14 +295,11 @@ module AlertProcessors
         validity: Dhanhq::Constants::DAY,
         securityId: derivative.security_id,
         exchangeSegment: derivative.exchange_segment,
-        quantity: calculate_quantity(strike, derivative.lot_size)
+        quantity: quantity
       }
     end
 
-    def build_super_order_payload(strike, derivative)
-      qty = calculate_quantity(strike, derivative.lot_size)
-      return if qty.zero?
-
+    def build_super_order_payload(strike, derivative, quantity)
       live = option_ltp(derivative)
       unless live
         log :error, "LTP fetch failed for #{derivative.security_id}"
@@ -289,7 +314,7 @@ module AlertProcessors
         productType: Dhanhq::Constants::MARGIN,
         orderType: alert[:order_type].to_s.upcase, # MARKET/LIMIT
         securityId: derivative.security_id,
-        quantity: qty,
+        quantity: quantity,
         # price: strike[:last_price].round(2), # entry
         targetPrice: rr[:target],
         stopLossPrice: rr[:stop_loss],
