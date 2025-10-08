@@ -212,7 +212,7 @@ module Market
           If any of the below hold, output: "Decision Gate: AVOID – <reason>"
           - IV regime likely to compress (IV high and falling or post-event) 
           - VIX falling and price range-bound
-          - <48 hours to expiry without momentum; theta risk high
+          - <48 hours to expiry without momentum; theta risk high (expiry-day scalps allowed if momentum confirmed)
           - Wide spreads or low OI/volume at chosen strike
           - No clear directional edge on this timeframe
           Otherwise output: "Decision Gate: BUY – <reason>"
