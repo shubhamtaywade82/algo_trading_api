@@ -138,15 +138,15 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
       context 'with ATR-adaptive stop loss' do
         before do
           allow(processor).to receive(:rrules_for).and_return({
-                                                                stop_loss: 127.5, # 15% below 150
-                                                                target: 180.0,
-                                                                trail_jump: 4.5
+                                                                stop_loss: 123.0, # 18% below 150
+                                                                target: 195.0,
+                                                                trail_jump: 9.0
                                                               })
         end
 
         it 'calculates SL% from ATR-based rules' do
           sl_pct = processor.send(:effective_sl_pct, 150.0)
-          expect(sl_pct).to be_within(0.001).of(0.15) # (150 - 127.5) / 150
+          expect(sl_pct).to be_within(0.001).of(0.18) # (150 - 123) / 150
         end
       end
 
@@ -157,7 +157,7 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
 
         it 'falls back to default SL%' do
           sl_pct = processor.send(:effective_sl_pct, 150.0)
-          expect(sl_pct).to eq(0.15) # DEFAULT_STOP_LOSS_PCT
+          expect(sl_pct).to eq(0.18) # DEFAULT_STOP_LOSS_PCT
         end
       end
     end
