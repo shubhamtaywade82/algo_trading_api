@@ -27,9 +27,9 @@ module AlertProcessors
     MIN_PREMIUM       = ENV.fetch('MIN_OPTION_PREMIUM', 5).to_f
 
     # ─── RR % from entry price
-    DEFAULT_STOP_LOSS_PCT  = 0.15      # 12 % for options
-    DEFAULT_TARGET_PCT     = 0.20      # RR = 1 : 2
-    DEFAULT_TRAIL_JUMP_PCT = 0.03      # trail every 5 % move in price
+    DEFAULT_STOP_LOSS_PCT  = 0.18      # widen SL by default (~18 %)
+    DEFAULT_TARGET_PCT     = 0.30      # aim for ~30 % (RR ≈ 1 : 1.7)
+    DEFAULT_TRAIL_JUMP_PCT = 0.06      # trail every ~6 % move in price
     USE_SUPER_ORDER        = ENV.fetch('USE_SUPER_ORDER', 'true') == 'true'
 
     # ──────────────────────────────────────────────────────────────────
@@ -270,9 +270,9 @@ module AlertProcessors
         # Empirical mapping for 0 Δ.4 near-ATM options:
         #   • option_move ≈ atr_pct × 4
         #   • we risk ½ of that move, aim for 1×, trail at ¼
-        sl_pct     = (atr_pct * 2).clamp(0.05, 0.18)   # 0.5 × exp move
-        tp_pct     = (atr_pct * 4).clamp(0.10, 0.40)   # 1.0 × exp move
-        trail_pct  = atr_pct.clamp(0.03, 0.12) # 0.25 × exp move
+        sl_pct     = (atr_pct * 2).clamp(DEFAULT_STOP_LOSS_PCT, 0.25)   # 0.5 × exp move
+        tp_pct     = (atr_pct * 4).clamp(DEFAULT_TARGET_PCT, 0.60)      # 1.0 × exp move
+        trail_pct  = atr_pct.clamp(DEFAULT_TRAIL_JUMP_PCT, 0.15)        # 0.25 × exp move
       else
         sl_pct = DEFAULT_STOP_LOSS_PCT
         tp_pct = DEFAULT_TARGET_PCT
@@ -398,7 +398,7 @@ module AlertProcessors
         sl_pct = 1.0 - (rr[:stop_loss].to_f / entry_price.to_f)
         return sl_pct.clamp(0.02, 0.35) if sl_pct.finite? && sl_pct.positive?
       end
-      DEFAULT_STOP_LOSS_PCT # 0.15 by default
+      DEFAULT_STOP_LOSS_PCT # 0.18 by default
     end
 
     # Daily loss guard - prevents new entries when daily loss exceeds band limit
