@@ -1,5 +1,9 @@
 # Enhancements
 
+## 🗓️ Latest Updates
+
+* Documented the Dhan postback webhook URL (`/webhooks/dhan_postback`) required while generating access tokens so order updates reach the app.
+
 ## 🔧 1. Add Real-Time WebSocket Integration
 
 **Goal**: Feed live LTP for all open positions and route them into exit logic in near real-time.
