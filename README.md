@@ -191,6 +191,16 @@ RISK_PER_TRADE_PCT=0.03
 DAILY_MAX_LOSS_PCT=0.05
 ```
 
+### Dhan Postback URL
+
+When generating the Dhan access token, point the **Postback URL** to the Rails webhook endpoint so order updates land in the app:
+
+```
+https://<your-public-host>/webhooks/dhan_postback
+```
+
+Use a publicly reachable HTTPS URL (for example, via ngrok while developing) because Dhan ignores `localhost` or `127.0.0.1` callbacks.
+
 ### Capital Bands Customization
 Edit the `CAPITAL_BANDS` constant in alert processors to customize:
 ```ruby
