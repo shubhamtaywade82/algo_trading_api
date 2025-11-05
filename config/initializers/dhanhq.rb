@@ -1,15 +1,6 @@
 # frozen_string_literal: true
 
-require 'dhanhq'
+require 'dhan_hq'
 
-Dhanhq.configure do |config|
-  config.client_id = ENV.fetch('DHAN_CLIENT_ID', nil)
-  config.access_token = ENV.fetch('DHAN_ACCESS_TOKEN', nil)
-
-  # Optional explicit sandbox for safety:
-  config.base_url = if Rails.env.test?
-                      Dhanhq::Constants::LIVE_BASE_URL
-                    else
-                      Dhanhq::Constants::LIVE_BASE_URL
-                    end
-end
+DhanHQ.configure_with_env
+DhanHQ.logger.level = (ENV['DHAN_LOG_LEVEL'] || 'INFO').upcase.then { |level| Logger.const_get(level) }

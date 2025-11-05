@@ -53,8 +53,18 @@ module AlertProcessors
       execute_trade_plan!
       alert.update!(status: :processed)
     rescue StandardError => e
-      alert.update!(status: :failed, error_message: e.message)
-      log :error, "#{e.class} – #{e.message}\n#{e.backtrace.first(8).join("\n")}"
+      # Handle market-closed errors by skipping instead of failing
+      if e.message.include?('Market is closed')
+        log :warn, "Market is closed – skipping alert: #{e.message}"
+        skip!(:market_closed)
+      # Handle LTP fetch failures gracefully
+      elsif e.message.include?('Failed to fetch LTP')
+        log :warn, "LTP unavailable – skipping alert: #{e.message}"
+        skip!(:ltp_unavailable)
+      else
+        alert.update!(status: :failed, error_message: e.message)
+        log :error, "#{e.class} – #{e.message}\n#{e.backtrace.first(8).join("\n")}"
+      end
     ensure
       log :info, '▲▲▲  END  ▲▲▲'
     end
@@ -141,7 +151,7 @@ module AlertProcessors
       unless derivative
         log :error,
             "❌ Derivative missing for strike #{format_strike(strike)} (expiry=#{expiry}, option=#{option.to_s.upcase}). " \
-            "Consider re-importing instrument derivatives."
+            'Consider re-importing instrument derivatives.'
         return skip!(:no_derivative)
       end
 
@@ -207,7 +217,22 @@ module AlertProcessors
 
     def option_ltp(derivative)
       # the Derivative model already wraps a Dhan quote call; fallback kept for safety
-      derivative.ltp || Dhanhq::API::Quote.ltp(derivative.security_id)
+      derivative.ltp || begin
+        payload = { derivative.exchange_segment => [derivative.security_id.to_i] }
+        response = DhanHQ::Models::MarketFeed.ltp(payload)
+
+        # Extract last_price from nested response structure
+        data = response[:data] || response['data'] || response
+        return nil unless data
+
+        segment_data = data[derivative.exchange_segment] || data[derivative.exchange_segment.to_sym]
+        return nil unless segment_data
+
+        security_data = segment_data[derivative.security_id.to_s] || segment_data[derivative.security_id.to_i]
+        return nil unless security_data
+
+        security_data[:last_price] || security_data['last_price']
+      end
     rescue StandardError
       nil
     end
@@ -289,12 +314,12 @@ module AlertProcessors
     # -- Order building & execution ------------------------------------------
     def build_order_payload(strike, derivative, quantity)
       {
-        transactionType: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY / SELL
-        orderType: alert[:order_type].to_s.upcase, # MARKET / LIMIT
-        productType: Dhanhq::Constants::MARGIN,
-        validity: Dhanhq::Constants::DAY,
-        securityId: derivative.security_id,
-        exchangeSegment: derivative.exchange_segment,
+        transaction_type: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY / SELL
+        order_type: alert[:order_type].to_s.upcase, # MARKET / LIMIT
+        product_type: 'MARGIN',
+        validity: 'DAY',
+        security_id: derivative.security_id,
+        exchange_segment: derivative.exchange_segment,
         quantity: quantity
       }
     end
@@ -309,48 +334,71 @@ module AlertProcessors
       rr = rrules_for(live) || rrules_for(strike[:last_price])
       pp rr, live
       {
-        transactionType: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY
-        exchangeSegment: derivative.exchange_segment,
-        productType: Dhanhq::Constants::MARGIN,
-        orderType: alert[:order_type].to_s.upcase, # MARKET/LIMIT
-        securityId: derivative.security_id,
+        transaction_type: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY
+        exchange_segment: derivative.exchange_segment,
+        product_type: 'MARGIN',
+        order_type: alert[:order_type].to_s.upcase, # MARKET/LIMIT
+        security_id: derivative.security_id,
         quantity: quantity,
-        # price: strike[:last_price].round(2), # entry
-        targetPrice: rr[:target],
-        stopLossPrice: rr[:stop_loss],
-        trailingJump: rr[:trail_jump]
+        price: live.to_f, # entry price
+        target_price: rr[:target],
+        stop_loss_price: rr[:stop_loss],
+        trailing_jump: rr[:trail_jump]
       }
     end
 
     def place_order!(params)
-      resp = Dhanhq::API::Orders.place(params)
-      log :info, "order placed  → #{resp}"
-      alert.update!(error_message: "orderId #{resp['orderId']}")
+      order = DhanHQ::Models::Order.new(params)
+      order.save
+      order_id = order.order_id || order.id
+      log :info, "order placed  → #{order_id}"
+      alert.update!(error_message: "orderId #{order_id}")
 
       notify(<<~MSG.strip, tag: 'ORDER')
         ✅ Order Placed – Alert ##{alert.id}
         • Symbol: #{instrument.symbol_name}
-        • Type: #{params[:transactionType]}
+        • Type: #{params[:transaction_type]}
         • Qty: #{params[:quantity]}
-        • Order ID: #{resp['orderId']}
+        • Order ID: #{order_id}
       MSG
+    rescue DhanHQ::OrderError => e
+      # Handle market-closed errors specially
+      if e.message.include?('Market is Closed')
+        log :warn, "Market is closed – skipping order placement: #{e.message}"
+        raise "Market is closed: #{e.message}"
+      else
+        # Re-raise other order errors
+        log :error, "Order placement failed: #{e.message}"
+        raise
+      end
     end
 
     def place_super_order!(params)
-      resp = Dhanhq::API::SuperOrders.place(params)
-      log :info, "super-order placed → #{resp}"
-      alert.update!(error_message: "SO #{resp['orderId']}")
+      order = DhanHQ::Models::SuperOrder.create(params)
+      order_id = order.order_id || order.id
+      log :info, "super-order placed → #{order_id}"
+      alert.update!(error_message: "SO #{order_id}")
 
       notify(<<~MSG.strip, tag: 'SUPER')
         🚀 Super-Order Placed – Alert ##{alert.id}
         • Symbol : #{instrument.symbol_name}
         • Qty    : #{params[:quantity]}
         • Entry  : ₹#{params[:price]}
-        • SL     : ₹#{params[:stopLossPrice]}
-        • TP     : ₹#{params[:targetPrice]}
-        • Trail  : ₹#{params[:trailingJump]}
-        • SO-ID  : #{resp['orderId']}
+        • SL     : ₹#{params[:stop_loss_price]}
+        • TP     : ₹#{params[:target_price]}
+        • Trail  : ₹#{params[:trailing_jump]}
+        • SO-ID  : #{order_id}
       MSG
+    rescue DhanHQ::OrderError => e
+      # Handle market-closed errors specially
+      if e.message.include?('Market is Closed')
+        log :warn, "Market is closed – skipping super-order placement: #{e.message}"
+        raise "Market is closed: #{e.message}"
+      else
+        # Re-raise other order errors
+        log :error, "Super-order placement failed: #{e.message}"
+        raise
+      end
     end
 
     # ────────────────────────────────────────────────────────────
@@ -416,10 +464,11 @@ module AlertProcessors
     # Calculate today's realized loss from positions
     def daily_loss_today
       Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
-        positions = Dhanhq::API::Portfolio.positions
+        positions = DhanHQ::Models::Position.all
         positions.sum do |pos|
-          realized_pnl = pos['realizedProfit'].to_f
-          realized_pnl.negative? ? realized_pnl : 0
+          pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
+          realized_pnl = pos_hash['realizedProfit'] || pos_hash[:realized_profit] || 0
+          realized_pnl.to_f.negative? ? realized_pnl.to_f : 0
         end
       end
     end
@@ -499,7 +548,12 @@ module AlertProcessors
     end
 
     def open_long_position?(sec_ids)
-      dhan_positions.any? { |p| p['positionType'] == 'LONG' && sec_ids.include?(p['securityId'].to_s) }
+      dhan_positions.any? do |p|
+        p_hash = p.is_a?(Hash) ? p : p.to_h
+        position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
+        security_id = p_hash['securityId'] || p_hash[:security_id] || p_hash['security_id']
+        position_type == 'LONG' && sec_ids.include?(security_id.to_s)
+      end
     end
 
     def ce_security_ids
@@ -513,20 +567,28 @@ module AlertProcessors
     # -- Exit helpers ---------------------------------------------------------
     def exit_position!(type)
       ids = type == :ce ? ce_security_ids : pe_security_ids
-      positions = dhan_positions.select { |p| p['positionType'] == 'LONG' && ids.include?(p['securityId'].to_s) }
+      positions = dhan_positions.select do |p|
+        p_hash = p.is_a?(Hash) ? p : p.to_h
+        position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
+        security_id = p_hash['securityId'] || p_hash[:security_id] || p_hash['security_id']
+        position_type == 'LONG' && ids.include?(security_id.to_s)
+      end
       return skip!("no #{type.upcase} position to exit") if positions.empty?
 
       positions.each do |pos|
-        Dhanhq::API::Orders.place(
-          transactionType: 'SELL',
-          orderType: 'MARKET',
-          productType: Dhanhq::Constants::MARGIN,
-          validity: Dhanhq::Constants::DAY,
-          securityId: pos['securityId'],
-          exchangeSegment: pos['exchangeSegment'],
-          quantity: pos['quantity']
+        pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
+        order = DhanHQ::Models::Order.new(
+          transaction_type: 'SELL',
+          order_type: 'MARKET',
+          product_type: 'MARGIN',
+          validity: 'DAY',
+          security_id: pos_hash['securityId'] || pos_hash[:security_id],
+          exchange_segment: pos_hash['exchangeSegment'] || pos_hash[:exchange_segment],
+          quantity: pos_hash['quantity'] || pos_hash[:quantity]
         )
-        log :info, "closed #{type.upcase} ⇒ #{pos.slice('securityId', 'quantity')}"
+        order.save
+        log :info,
+            "closed #{type.upcase} ⇒ security_id=#{pos_hash['securityId'] || pos_hash[:security_id]}, quantity=#{pos_hash['quantity'] || pos_hash[:quantity]}"
         notify("📤 Exited #{type.upcase} position(s) for Alert ##{alert.id}", tag: 'EXIT')
       end
       alert.update!(status: :processed, error_message: "exited #{type.upcase}")
@@ -536,20 +598,28 @@ module AlertProcessors
     # Immediately closes all open opposite-side positions
     def close_opposite!(type)
       ids = type == :ce ? ce_security_ids : pe_security_ids
-      positions = dhan_positions.select { |p| p['positionType'] == 'LONG' && ids.include?(p['securityId'].to_s) }
+      positions = dhan_positions.select do |p|
+        p_hash = p.is_a?(Hash) ? p : p.to_h
+        position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
+        security_id = p_hash['securityId'] || p_hash[:security_id] || p_hash['security_id']
+        position_type == 'LONG' && ids.include?(security_id.to_s)
+      end
       return if positions.empty?
 
       positions.each do |pos|
-        Dhanhq::API::Orders.place(
-          transactionType: 'SELL',
-          orderType: 'MARKET',
-          productType: Dhanhq::Constants::MARGIN,
-          validity: Dhanhq::Constants::DAY,
-          securityId: pos['securityId'],
-          exchangeSegment: pos['exchangeSegment'],
-          quantity: pos['quantity']
+        pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
+        order = DhanHQ::Models::Order.new(
+          transaction_type: 'SELL',
+          order_type: 'MARKET',
+          product_type: 'MARGIN',
+          validity: 'DAY',
+          security_id: pos_hash['securityId'] || pos_hash[:security_id],
+          exchange_segment: pos_hash['exchangeSegment'] || pos_hash[:exchange_segment],
+          quantity: pos_hash['quantity'] || pos_hash[:quantity]
         )
-        log :info, "Flipped & closed #{type.upcase} ⇒ #{pos.slice('securityId', 'quantity')}"
+        order.save
+        log :info,
+            "Flipped & closed #{type.upcase} ⇒ security_id=#{pos_hash['securityId'] || pos_hash[:security_id]}, quantity=#{pos_hash['quantity'] || pos_hash[:quantity]}"
         notify("↔️ Closed opposite #{type.upcase} position(s) before new entry (Alert ##{alert.id})", tag: 'FLIP')
       end
     end

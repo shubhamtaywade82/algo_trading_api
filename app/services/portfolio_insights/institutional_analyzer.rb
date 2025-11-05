@@ -28,7 +28,17 @@ module PortfolioInsights
                    client_id: nil, interactive: false)
       @raw_holdings  = Array(dhan_holdings).deep_dup
       @raw_positions = Array(dhan_positions).deep_dup
-      @cash_hash     = dhan_balance || {}
+      @cash_hash     = if dhan_balance
+                         if dhan_balance.is_a?(Hash)
+                           dhan_balance
+                         elsif dhan_balance.respond_to?(:attributes)
+                           dhan_balance.attributes
+                         else
+                           dhan_balance.to_h
+                         end
+                       else
+                         DhanHQ::Models::Funds.fetch.attributes
+                       end
       @cid           = client_id || infer_client_id
       @interactive   = interactive
     end
@@ -177,7 +187,8 @@ module PortfolioInsights
     # ---------- prompt --------------------------------------------------
     def build_prompt(snaps, tech)
       ₹ = ->(v) { "₹#{format('%.2f', v)}" }
-      cash_line = "Cash available: #{₹[@cash_hash[:availabelBalance].to_f]}" if @cash_hash.present?
+      cash_balance = @cash_hash[:available_balance] || @cash_hash['available_balance'] || @cash_hash[:availabel_balance] || @cash_hash['availabelBalance'] || 0
+      cash_line = "Cash available: #{₹[cash_balance.to_f]}" if @cash_hash.present? && cash_balance.to_f.positive?
 
       table = snaps.map do |s|
         t = tech[s[:symbol]] || {}
