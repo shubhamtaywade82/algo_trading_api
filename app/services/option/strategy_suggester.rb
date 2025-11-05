@@ -32,12 +32,15 @@ module Option
 
     private
 
-    # Fetches available balance from Dhanhq::API::Funds.
+    # Fetches available balance from DhanHQ::Models::Funds.
     # Raises an error if the API call fails.
     #
     # @return [Float] The current available balance in the trading account.
     def available_balance
-      @available_balance ||= Dhanhq::API::Funds.balance['availabelBalance'].to_f
+      @available_balance ||= begin
+        funds = DhanHQ::Models::Funds.fetch
+        funds.available_balance.to_f
+      end
     rescue StandardError => e
       Rails.logger.warn { "[StrategySuggester] Funds balance unavailable – #{e.message}" }
       @available_balance = Float::INFINITY

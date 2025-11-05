@@ -20,7 +20,7 @@ module Positions
       cache = Positions::ActiveCache.all
       if cache.blank?
         Rails.logger.warn('[Positions::Manager] Cache empty — fetching live positions from DhanHQ API')
-        position_list = Dhanhq::API::Portfolio.positions
+        position_list = DhanHQ::Models::Position.all.map(&:attributes)
         return log_and_skip('No active positions found via DhanHQ API') if position_list.blank?
 
         position_list.each do |position|

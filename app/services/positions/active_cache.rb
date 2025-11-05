@@ -11,12 +11,12 @@ module Positions
     #
     # @return [void]
     def self.refresh!
-      positions = Dhanhq::API::Portfolio.positions.reject { |p| p['netQty'].to_f.zero? }
+      positions = DhanHQ::Models::Position.all.map(&:attributes).reject { |p| (p['netQty'] || p[:net_qty]).to_f.zero? }
 
       # Normalize exchange segment as string key
       normalized = positions.index_by do |p|
-        security_id = p['securityId']
-        exchange_segment = reverse_convert_segment(p['exchangeSegment'])
+        security_id = p['securityId'] || p[:security_id]
+        exchange_segment = reverse_convert_segment(p['exchangeSegment'] || p[:exchange_segment])
 
         key_for(security_id, exchange_segment)
       end

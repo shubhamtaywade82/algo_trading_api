@@ -9,7 +9,7 @@ module PortfolioInsights
 
     def initialize(dhan_holdings:, dhan_balance: nil, interactive: false)
       @raw    = dhan_holdings.deep_dup
-      @cash   = dhan_balance || Dhanhq::API::Funds.balance[:availabelBalance]
+      @cash   = dhan_balance || DhanHQ::Models::Funds.fetch.available_balance.to_f
       @interactive = interactive
     end
 

@@ -7,7 +7,7 @@ module PositionInsights
 
     def initialize(dhan_positions:, cash_balance: nil, interactive: false)
       @raw_positions = dhan_positions.deep_dup
-      @cash = cash_balance || Dhanhq::API::Funds.balance[:availabelBalance]
+      @cash = cash_balance || DhanHQ::Models::Funds.fetch.available_balance.to_f
       @interactive = interactive
     end
 

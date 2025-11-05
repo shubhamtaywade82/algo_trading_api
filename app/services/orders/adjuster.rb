@@ -21,25 +21,18 @@ module Orders
         end
 
         # Prepare modification params as per Dhan API doc
-        modification_params = {
-          'dhanClientId' => order['dhanClientId'],
-          'orderId' => order['orderId'],
-          'orderType' => order['orderType'],
-          'legName' => order['legName'],
-          'quantity' => order['quantity'],
-          'price' => order['price'],
-          'disclosedQuantity' => order['disclosedQuantity'],
-          'triggerPrice' => @new_trigger,
-          'validity' => order['validity']
-        }.compact
+        order_obj = DhanHQ::Models::Order.find(order_id)
+        return fallback_exit unless order_obj
 
-        response = Dhanhq::API::Orders.modify(order_id, modification_params)
+        # Use order.modify method from new gem
+        order_obj.modify(trigger_price: @new_trigger)
+        order_status = order_obj.order_status || order_obj.status
 
-        if response['orderStatus'].to_s.upcase.in?(%w[PENDING TRANSIT])
+        if order_status.to_s.upcase.in?(%w[PENDING TRANSIT])
           notify("🔁 Adjusted SL to ₹#{@new_trigger} for #{@pos['tradingSymbol']}")
           Rails.logger.info("[Orders::Adjuster] SL updated to #{@new_trigger} for #{@pos['tradingSymbol']}")
         else
-          Rails.logger.error("[Orders::Adjuster] Modify failed: #{response['omsErrorDescription'] || response['message']}")
+          Rails.logger.error("[Orders::Adjuster] Modify failed: #{order_obj.errors.full_messages.join(', ')}")
           fallback_exit
         end
       else
@@ -54,22 +47,30 @@ module Orders
     private
 
     def find_active_order_id
-      open_orders = Dhanhq::API::Orders.list
+      open_orders = DhanHQ::Models::Order.all
 
       # Filter for open/active order status (typically 'PENDING', 'TRANSIT', 'PART_TRADED')
       active_statuses = %w[PENDING TRANSIT PART_TRADED]
+      security_id = @pos['securityId'] || @pos[:security_id]
       matching = open_orders.find do |o|
-        o['securityId'].to_s == @pos['securityId'].to_s &&
-          active_statuses.include?(o['orderStatus'])
+        o_hash = o.is_a?(Hash) ? o : o.to_h
+        o_security_id = o_hash['securityId'] || o_hash[:security_id] || o_hash['security_id']
+        o_status = o_hash['orderStatus'] || o_hash[:order_status] || o_hash['order_status']
+        o_security_id.to_s == security_id.to_s &&
+          active_statuses.include?(o_status.to_s)
       end
 
-      matching && matching['orderId']
+      return unless matching
+
+      matching.is_a?(Hash) ? (matching['orderId'] || matching[:order_id]) : (matching.order_id || matching.id)
     end
 
     def fetch_order_details(order_id)
-      # Ideally, there should be an Orders.find(order_id) call.
-      # Fallback: get from order list if details API isn't available.
-      Dhanhq::API::Orders.list.find { |o| o['orderId'] == order_id }
+      # Find order from all orders
+      order = DhanHQ::Models::Order.all.find do |o|
+        (o.is_a?(Hash) ? (o['orderId'] || o[:order_id]) : (o.order_id || o.id)).to_s == order_id.to_s
+      end
+      order.is_a?(Hash) ? order : order.to_h
     end
 
     def fallback_exit

@@ -14,9 +14,9 @@ module AlertProcessors
     }.freeze
 
     PRODUCT = {
-      'intraday' => Dhanhq::Constants::INTRA,
-      'swing' => Dhanhq::Constants::CNC,
-      'long_term' => Dhanhq::Constants::CNC
+      'intraday' => 'INTRADAY',
+      'swing' => 'CNC',
+      'long_term' => 'CNC'
     }.freeze
 
     LONG_ONLY      = %w[swing long_term].freeze
@@ -54,9 +54,19 @@ module AlertProcessors
         alert.update!(status: :processed)
       end
     rescue StandardError => e
-      alert.update!(status: :failed, error_message: e.message)
-      logger.error("[Stock ##{alert.id}] #{e.class} – #{e.message}\n" \
-                   "#{e.backtrace.first(6).join("\n")}")
+      # Handle market-closed errors by skipping instead of failing
+      if e.message.include?('Market is closed')
+        logger.warn("[Stock ##{alert.id}] Market is closed – skipping alert: #{e.message}")
+        skip!(:market_closed)
+      # Handle LTP fetch failures gracefully
+      elsif e.message.include?('Failed to fetch LTP')
+        logger.warn("[Stock ##{alert.id}] LTP unavailable – skipping alert: #{e.message}")
+        skip!(:ltp_unavailable)
+      else
+        alert.update!(status: :failed, error_message: e.message)
+        logger.error("[Stock ##{alert.id}] #{e.class} – #{e.message}\n" \
+                     "#{e.backtrace.first(6).join("\n")}")
+      end
     end
 
     # ------------------------------------------------------------------------
@@ -89,24 +99,24 @@ module AlertProcessors
       txn_side    = side_for(alert[:signal_type])
 
       payload = {
-        transactionType: txn_side,
-        orderType: order_type, # MARKET / LIMIT / SL / SLM
-        productType: PRODUCT.fetch(alert[:strategy_type]),
-        validity: Dhanhq::Constants::DAY,
-        exchangeSegment: instrument.exchange_segment,
-        securityId: instrument.security_id,
+        transaction_type: txn_side,
+        order_type: order_type, # MARKET / LIMIT / SL / SLM
+        product_type: PRODUCT.fetch(alert[:strategy_type]),
+        validity: 'DAY',
+        exchange_segment: instrument.exchange_segment,
+        security_id: instrument.security_id,
         quantity: calculate_quantity!
       }
 
       # Set price based on order type
       if order_type == 'STOP_LOSS_MARKET'
         trigger = derived_stop_price(txn_side)
-        payload[:triggerPrice] = PriceMath.round_tick(trigger)
-        payload[:price]        = 0 # Market order
+        payload[:trigger_price] = PriceMath.round_tick(trigger)
+        payload[:price] = 0 # Market order
       elsif order_type == 'STOP_LOSS'
         trigger = derived_stop_price(txn_side)
-        payload[:triggerPrice] = PriceMath.round_tick(trigger)
-        payload[:price]        = PriceMath.round_tick(ltp)
+        payload[:trigger_price] = PriceMath.round_tick(trigger)
+        payload[:price] = PriceMath.round_tick(ltp)
       elsif order_type == 'MARKET'
         # MARKET orders don't need a price
       else
@@ -149,10 +159,11 @@ module AlertProcessors
     # Calculate today's realized loss from positions
     def daily_loss_today
       Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
-        positions = Dhanhq::API::Portfolio.positions
+        positions = DhanHQ::Models::Position.all
         positions.sum do |pos|
-          realized_pnl = pos['realizedProfit'].to_f
-          realized_pnl.negative? ? realized_pnl : 0
+          pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
+          realized_pnl = pos_hash['realizedProfit'] || pos_hash[:realized_profit] || 0
+          realized_pnl.to_f.negative? ? realized_pnl.to_f : 0
         end
       end
     end
@@ -215,17 +226,29 @@ module AlertProcessors
              when 501..1_000  then 5
              else 1
              end
-      PRODUCT.fetch(alert[:strategy_type]) == Dhanhq::Constants::INTRA ? base * 2 : base
+      PRODUCT.fetch(alert[:strategy_type]) == 'INTRADAY' ? base * 2 : base
     end
 
     # ------------------------------------------------------------------------
     #  Execution helpers
     # ------------------------------------------------------------------------
     def place_order!(payload)
-      resp = Dhanhq::API::Orders.place(payload) # => {'orderId'=>…}
+      order = DhanHQ::Models::Order.new(payload)
+      order.save
+      order_id = order.order_id || order.id
       ensure_edis!(payload[:quantity]) if cnc_sell?(payload)
-      alert.update!(metadata: { placed_order: resp })
-      logger.info("[Stock ##{alert.id}] ✅ placed #{resp}")
+      alert.update!(metadata: { placed_order: { order_id: order_id } })
+      logger.info("[Stock ##{alert.id}] ✅ placed #{order_id}")
+    rescue DhanHQ::OrderError => e
+      # Handle market-closed errors specially
+      if e.message.include?('Market is Closed')
+        logger.warn("[Stock ##{alert.id}] Market is closed – skipping order placement: #{e.message}")
+        raise "Market is closed: #{e.message}"
+      else
+        # Re-raise other order errors
+        logger.error("[Stock ##{alert.id}] Order placement failed: #{e.message}")
+        raise
+      end
     end
 
     def dry_run(payload)
@@ -236,8 +259,8 @@ module AlertProcessors
     end
 
     def cnc_sell?(payload)
-      payload[:productType] == Dhanhq::Constants::CNC &&
-        payload[:transactionType] == 'SELL'
+      payload[:product_type] == 'CNC' &&
+        payload[:transaction_type] == 'SELL'
     end
 
     # eDIS (idempotent)

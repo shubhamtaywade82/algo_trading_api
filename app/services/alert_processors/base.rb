@@ -16,10 +16,15 @@ module AlertProcessors
     def ltp
       @ltp ||= begin
         fetched = instrument.ltp
-        raise 'Failed to fetch LTP from Dhan' if fetched.blank?
-
+        unless fetched.present?
+          Rails.logger.error("Failed to fetch LTP from Dhan for instrument: #{instrument.id} (#{instrument.underlying_symbol}, security_id: #{instrument.security_id}, segment: #{instrument.exchange_segment})")
+          raise 'Failed to fetch LTP from Dhan'
+        end
         fetched
       end
+    rescue StandardError => e
+      Rails.logger.error("LTP fetch error in AlertProcessor: #{e.class} - #{e.message}")
+      raise
     end
 
     def instrument
@@ -46,18 +51,21 @@ module AlertProcessors
       end
     end
 
-    # Fetches available balance from Dhanhq::API::Funds.
+    # Fetches available balance from DhanHQ::Models::Funds.
     # Raises an error if the API call fails.
     #
     # @return [Float] The current available balance in the trading account.
     def available_balance
-      @available_balance ||= Dhanhq::API::Funds.balance['availabelBalance'].to_f
+      @available_balance ||= begin
+        funds = DhanHQ::Models::Funds.fetch
+        funds.available_balance.to_f
+      end
     rescue StandardError
       raise 'Failed to fetch available balance'
     end
 
     def dhan_positions
-      @dhan_positions ||= Dhanhq::API::Portfolio.positions
+      @dhan_positions ||= DhanHQ::Models::Position.all.map(&:attributes)
     end
   end
 end
