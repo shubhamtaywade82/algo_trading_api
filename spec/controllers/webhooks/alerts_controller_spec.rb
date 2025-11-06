@@ -21,8 +21,8 @@ RSpec.describe 'Webhooks::AlertsController', type: :request do
       headers: {
         'Accept' => 'application/json',
         'Accept-Encoding' => 'gzip;q=1.0,deflate;q=0.6,identity;q=0.3',
-        'Access-Token' => ENV.fetch('DHAN_ACCESS_TOKEN', nil),
-        'Client-Id' => ENV.fetch('DHAN_CLIENT_ID', nil),
+        'Access-Token' => ENV.fetch('ACCESS_TOKEN', nil),
+        'Client-Id' => ENV.fetch('CLIENT_ID', nil),
         'Content-Type' => 'application/json',
         'User-Agent' => 'Faraday v1.10.4'
       }

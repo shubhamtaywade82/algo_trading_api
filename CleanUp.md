@@ -186,7 +186,7 @@ Authentication and Authorization:
 Secure webhook endpoints with HMAC verification to ensure requests originate from trusted sources.
 Secrets Management:
 
-Store sensitive credentials (e.g., DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN) securely using tools like Rails credentials or HashiCorp Vault. 7. Scaling the System
+Store sensitive credentials (e.g., CLIENT_ID, ACCESS_TOKEN) securely using tools like Rails credentials or HashiCorp Vault. 7. Scaling the System
 Horizontal Scaling:
 
 If the system experiences high traffic, deploy multiple instances of the app and use a load balancer to distribute requests.

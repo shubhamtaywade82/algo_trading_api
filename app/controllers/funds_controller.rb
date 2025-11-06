@@ -3,7 +3,7 @@
 class FundsController < ApplicationController
   def index
     funds = DhanHQ::Models::Funds.fetch
-    funds_hash = funds.to_h.except(:dhan_client_id, 'dhan_client_id')
+    funds_hash = funds.to_h.except(:CLIENT_ID, 'CLIENT_ID')
     render json: funds_hash
   rescue StandardError => e
     render json: ErrorHandler.handle_error(

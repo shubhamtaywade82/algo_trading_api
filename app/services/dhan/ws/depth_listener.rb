@@ -10,8 +10,8 @@ module Dhan
     class DepthListener
       DEPTH_URL = [
         'wss://depth-api-feed.dhan.co/twentydepth?',
-        "token=#{ENV.fetch('DHAN_ACCESS_TOKEN')}",
-        "clientId=#{ENV.fetch('DHAN_CLIENT_ID')}",
+        "token=#{ENV.fetch('ACCESS_TOKEN')}",
+        "clientId=#{ENV.fetch('CLIENT_ID')}",
         'authType=2'
       ].join('&').freeze
 

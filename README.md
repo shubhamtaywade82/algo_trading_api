@@ -183,7 +183,7 @@ REDIS_URL=redis://localhost:6379/0
 
 # Broker API (Dhan)
 DHAN_API_KEY=your_api_key
-DHAN_ACCESS_TOKEN=your_access_token
+ACCESS_TOKEN=your_access_token
 
 # Capital Management
 ALLOC_PCT=0.25

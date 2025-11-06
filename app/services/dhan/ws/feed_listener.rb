@@ -10,8 +10,8 @@ module Dhan
     class FeedListener
       FEED_URL = [
         'wss://api-feed.dhan.co?version=2',
-        "token=#{ENV.fetch('DHAN_ACCESS_TOKEN', nil)}",
-        "clientId=#{ENV.fetch('DHAN_CLIENT_ID', nil)}",
+        "token=#{ENV.fetch('ACCESS_TOKEN', nil)}",
+        "clientId=#{ENV.fetch('CLIENT_ID', nil)}",
         'authType=2'
       ].join('&').freeze
 
