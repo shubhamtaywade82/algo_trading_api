@@ -159,17 +159,27 @@ class Instrument < ApplicationRecord
 
   def historical_ohlc(from_date: nil, to_date: nil, oi: false)
     instrument_code = resolve_instrument_code
-    DhanHQ::Models::HistoricalData.daily(
+    params = {
       security_id: security_id,
       exchange_segment: exchange_segment,
       instrument: instrument_code,
       oi: oi,
       from_date: from_date || (Time.zone.today - 365).to_s,
-      to_date: to_date || (Time.zone.today - 1).to_s,
-      expiry_code: 0
-    )
+      to_date: to_date || (Time.zone.today - 1).to_s
+    }
+
+    # Only include expiry_code for derivative instruments (futures/options)
+    # For equity/index instruments, expiry_code is not needed and may cause errors
+    if instrument_code.to_s.match?(/^(FUT|OPT)/)
+      params[:expiry_code] = 0
+    end
+
+    Rails.logger.debug("Fetching Historical OHLC for Instrument #{security_id} with params: #{params.inspect}")
+    DhanHQ::Models::HistoricalData.daily(params)
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch Historical OHLC for Instrument #{security_id}: #{e.message}")
+    Rails.logger.error("Failed to fetch Historical OHLC for Instrument #{security_id} (#{underlying_symbol}, segment: #{segment}, exchange: #{exchange}): #{e.message}")
+    Rails.logger.error("Parameters used: #{params.inspect}") if defined?(params)
+    Rails.logger.error("Resolved instrument_code: #{instrument_code.inspect}") if defined?(instrument_code)
     nil
   end
 
