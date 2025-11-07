@@ -2,6 +2,7 @@
 
 ## 🗓️ Latest Updates
 
+* Added OptionsTrader-INDIA system prompt to market analysis API calls for consistent NSE weekly options guidance while keeping Telegram briefs textual.
 * Documented the Dhan postback webhook URL (`/webhooks/dhan_postback`) required while generating access tokens so order updates reach the app.
 
 ## 🔧 1. Add Real-Time WebSocket Integration
