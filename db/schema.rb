@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
+ActiveRecord::Schema[8.0].define(version: 2025_11_06_191727) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -64,26 +64,52 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
 
   create_table "derivatives", force: :cascade do |t|
     t.bigint "instrument_id", null: false
-    t.string "exchange", null: false
-    t.string "segment", null: false
-    t.string "security_id", null: false
-    t.string "symbol_name", null: false
-    t.string "display_name"
-    t.string "instrument"
-    t.string "instrument_type"
+    t.string "exchange"
+    t.string "segment"
+    t.string "security_id"
+    t.string "isin"
+    t.string "instrument_code"
     t.string "underlying_security_id"
     t.string "underlying_symbol"
+    t.string "symbol_name"
+    t.string "display_name"
+    t.string "instrument_type"
+    t.string "series"
+    t.integer "lot_size"
     t.date "expiry_date"
     t.decimal "strike_price", precision: 15, scale: 5
     t.string "option_type"
-    t.integer "lot_size"
+    t.decimal "tick_size", precision: 10, scale: 4
     t.string "expiry_flag"
-    t.decimal "tick_size", precision: 10, scale: 5
-    t.boolean "asm_gsm_flag", default: false
+    t.string "bracket_flag"
+    t.string "cover_flag"
+    t.string "asm_gsm_flag"
+    t.string "asm_gsm_category"
+    t.string "buy_sell_indicator"
+    t.decimal "buy_co_min_margin_per", precision: 8, scale: 2
+    t.decimal "sell_co_min_margin_per", precision: 8, scale: 2
+    t.decimal "buy_co_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "sell_co_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "buy_co_sl_range_min_perc", precision: 8, scale: 2
+    t.decimal "sell_co_sl_range_min_perc", precision: 8, scale: 2
+    t.decimal "buy_bo_min_margin_per", precision: 8, scale: 2
+    t.decimal "sell_bo_min_margin_per", precision: 8, scale: 2
+    t.decimal "buy_bo_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "buy_bo_sl_range_min_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_sl_min_range", precision: 8, scale: 2
+    t.decimal "buy_bo_profit_range_max_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_profit_range_max_perc", precision: 8, scale: 2
+    t.decimal "buy_bo_profit_range_min_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_profit_range_min_perc", precision: 8, scale: 2
+    t.decimal "mtf_leverage", precision: 8, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["instrument_code"], name: "index_derivatives_on_instrument_code"
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_derivatives_unique", unique: true
+    t.index ["symbol_name"], name: "index_derivatives_on_symbol_name"
+    t.index ["underlying_symbol", "expiry_date"], name: "index_derivatives_on_underlying_symbol_and_expiry_date", where: "(underlying_symbol IS NOT NULL)"
   end
 
   create_table "exit_logs", force: :cascade do |t|
@@ -116,23 +142,48 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
     t.string "exchange", null: false
     t.string "segment", null: false
     t.string "security_id", null: false
+    t.string "isin"
+    t.string "instrument_code"
+    t.string "underlying_security_id"
+    t.string "underlying_symbol"
     t.string "symbol_name"
     t.string "display_name"
-    t.string "isin"
-    t.string "instrument"
     t.string "instrument_type"
-    t.string "underlying_symbol"
-    t.string "underlying_security_id"
     t.string "series"
     t.integer "lot_size"
-    t.decimal "tick_size", precision: 10, scale: 4
+    t.date "expiry_date"
+    t.decimal "strike_price", precision: 15, scale: 5
+    t.string "option_type"
+    t.decimal "tick_size"
+    t.string "expiry_flag"
+    t.string "bracket_flag"
+    t.string "cover_flag"
     t.string "asm_gsm_flag"
     t.string "asm_gsm_category"
-    t.decimal "mtf_leverage", precision: 5, scale: 2
+    t.string "buy_sell_indicator"
+    t.decimal "buy_co_min_margin_per", precision: 8, scale: 2
+    t.decimal "sell_co_min_margin_per", precision: 8, scale: 2
+    t.decimal "buy_co_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "sell_co_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "buy_co_sl_range_min_perc", precision: 8, scale: 2
+    t.decimal "sell_co_sl_range_min_perc", precision: 8, scale: 2
+    t.decimal "buy_bo_min_margin_per", precision: 8, scale: 2
+    t.decimal "sell_bo_min_margin_per", precision: 8, scale: 2
+    t.decimal "buy_bo_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_sl_range_max_perc", precision: 8, scale: 2
+    t.decimal "buy_bo_sl_range_min_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_sl_min_range", precision: 8, scale: 2
+    t.decimal "buy_bo_profit_range_max_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_profit_range_max_perc", precision: 8, scale: 2
+    t.decimal "buy_bo_profit_range_min_perc", precision: 8, scale: 2
+    t.decimal "sell_bo_profit_range_min_perc", precision: 8, scale: 2
+    t.decimal "mtf_leverage", precision: 8, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["instrument"], name: "index_instruments_on_instrument"
+    t.index ["instrument_code"], name: "index_instruments_on_instrument_code"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_instruments_unique", unique: true
+    t.index ["symbol_name"], name: "index_instruments_on_symbol_name"
+    t.index ["underlying_symbol", "expiry_date"], name: "index_instruments_on_underlying_symbol_and_expiry_date", where: "(underlying_symbol IS NOT NULL)"
   end
 
   create_table "intraday_analyses", force: :cascade do |t|
@@ -306,12 +357,12 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
     t.index ["instrument_id"], name: "index_swing_picks_on_instrument_id"
   end
 
-  add_foreign_key "alerts", "instruments"
+  add_foreign_key "alerts", "instruments", validate: false
   add_foreign_key "derivatives", "instruments"
-  add_foreign_key "levels", "instruments"
-  add_foreign_key "mis_details", "instruments"
+  add_foreign_key "levels", "instruments", validate: false
+  add_foreign_key "mis_details", "instruments", validate: false
   add_foreign_key "orders", "alerts"
-  add_foreign_key "positions", "instruments"
-  add_foreign_key "quotes", "instruments"
-  add_foreign_key "swing_picks", "instruments"
+  add_foreign_key "positions", "instruments", validate: false
+  add_foreign_key "quotes", "instruments", validate: false
+  add_foreign_key "swing_picks", "instruments", validate: false
 end
