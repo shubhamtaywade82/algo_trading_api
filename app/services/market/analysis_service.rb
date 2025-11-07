@@ -181,7 +181,7 @@ module Market
       begin
         Openai::ChatRouter.ask!(
           prompt,
-          system: 'You are an elite Indian derivatives strategist.'
+          system: Market::PromptBuilder.system_prompt(@trade_type)
         )
       rescue OpenAI::Error
         attempt += 1
