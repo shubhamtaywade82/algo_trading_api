@@ -7,10 +7,13 @@ module Openai
     end
 
     def call
-      response = ChatRouter.route(prompt: @prompt, model: @model, system: @system)
-      choices = response.dig('choices', 0, 'message', 'content')
-      log_info("OpenAI Response: #{choices}")
-      choices
+      text = ChatRouter.ask!(
+        @prompt,
+        model: @model,
+        system: @system.presence || Openai::ChatRouter.send(:default_system)
+      )
+      log_info("OpenAI Response: #{text}")
+      text
     rescue StandardError => e
       log_error("OpenAI call failed: #{e.class} - #{e.message}")
       nil

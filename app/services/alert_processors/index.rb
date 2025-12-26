@@ -31,6 +31,7 @@ module AlertProcessors
     DEFAULT_TARGET_PCT     = 0.30      # aim for ~30 % (RR ≈ 1 : 1.7)
     DEFAULT_TRAIL_JUMP_PCT = 0.06      # trail every ~6 % move in price
     USE_SUPER_ORDER        = ENV.fetch('USE_SUPER_ORDER', 'true') == 'true'
+    PAPER_PROFIT_TARGET_RUPEES = ENV.fetch('PAPER_PROFIT_TARGET_RUPEES', '1000').to_f
 
     # ──────────────────────────────────────────────────────────────────
     # Capital-aware deployment policy
@@ -165,10 +166,10 @@ module AlertProcessors
         order = build_super_order_payload(strike, derivative, quantity)
         return skip!(:ltp_unavailable) unless order
 
-        ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
+        (paper_trading? || ENV['PLACE_ORDER'] == 'true') ? place_super_order!(order) : dry_run(order)
       else
         order = build_order_payload(strike, derivative, quantity) # ← legacy 1-leg
-        ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
+        (paper_trading? || ENV['PLACE_ORDER'] == 'true') ? place_order!(order) : dry_run(order)
       end
     end
 
@@ -178,11 +179,11 @@ module AlertProcessors
 
       case alert[:signal_type]
       when 'long_entry'
-        # close_opposite!(:pe)  # Close any PE before entering CE
-        true # Always allow new CE entry
+        return ensure_no_position!(:ce) if paper_trading?
+        true
       when 'short_entry'
-        # close_opposite!(:ce)  # Close any CE before entering PE
-        true # Always allow new PE entry
+        return ensure_no_position!(:pe) if paper_trading?
+        true
       when 'long_exit'
         exit_position!(:ce)
         false
@@ -348,6 +349,8 @@ module AlertProcessors
     end
 
     def place_order!(params)
+      return paper_enter_position_from_order!(params, tag: 'PAPER') if paper_trading?
+
       order = DhanHQ::Models::Order.new(params)
       order.save
       order_id = order.order_id || order.id
@@ -374,6 +377,8 @@ module AlertProcessors
     end
 
     def place_super_order!(params)
+      return paper_enter_position_from_order!(params, tag: 'PAPER_SUPER') if paper_trading?
+
       order = DhanHQ::Models::SuperOrder.create(params)
       order_id = order.order_id || order.id
       log :info, "super-order placed → #{order_id}"
@@ -463,6 +468,8 @@ module AlertProcessors
 
     # Calculate today's realized loss from positions
     def daily_loss_today
+      return 0 if paper_trading?
+
       Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
         positions = DhanHQ::Models::Position.all
         positions.sum do |pos|
@@ -567,6 +574,8 @@ module AlertProcessors
     # -- Exit helpers ---------------------------------------------------------
     def exit_position!(type)
       ids = type == :ce ? ce_security_ids : pe_security_ids
+      return paper_exit_positions!(ids, reason: "signal_#{type}") if paper_trading?
+
       positions = dhan_positions.select do |p|
         p_hash = p.is_a?(Hash) ? p : p.to_h
         position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
@@ -634,6 +643,86 @@ module AlertProcessors
       log :info, "skip – #{reason}"
 
       notify("⛔️ Skipped Index Alert ##{alert.id} – #{reason.to_s.humanize}", tag: 'SKIP')
+      false
+    end
+
+    # ------------------------------------------------------------------
+    # Paper trading helpers (no Dhan order placement)
+    # ------------------------------------------------------------------
+    def paper_enter_position_from_order!(order_params, tag:)
+      security_id = order_params[:security_id].to_s
+      derivative = Derivative.find_by(security_id: security_id)
+      raise "paper trade missing derivative for security_id=#{security_id}" unless derivative
+
+      quantity = order_params[:quantity].to_i
+      raise "paper trade invalid quantity for security_id=#{security_id}" if quantity <= 0
+
+      entry_price = (order_params[:price] || option_ltp(derivative)).to_f
+      raise "paper trade invalid entry price for security_id=#{security_id}" unless entry_price.positive?
+
+      exch_seg = order_params[:exchange_segment].to_s.presence || derivative.exchange_segment
+
+      Position.create!(
+        instrument: instrument,
+        trading_symbol: derivative.symbol_name,
+        security_id: derivative.security_id.to_s,
+        position_type: 'LONG',
+        exchange_segment: exch_seg,
+        product_type: 'MARGIN',
+        buy_avg: entry_price,
+        buy_qty: quantity,
+        sell_qty: 0,
+        net_qty: quantity,
+        cost_price: entry_price,
+        realized_profit: 0,
+        unrealized_profit: 0
+      )
+
+      alert.update!(error_message: "PAPER entry #{security_id} qty=#{quantity} @#{entry_price}")
+      notify(<<~MSG.strip, tag: tag)
+        🧾 PAPER POSITION CREATED – Alert ##{alert.id}
+        • Underlying: #{instrument.symbol_name}
+        • Derivative: #{derivative.symbol_name} (#{security_id})
+        • Qty       : #{quantity}
+        • Entry     : ₹#{entry_price}
+        • Target P&L: ₹#{PAPER_PROFIT_TARGET_RUPEES}
+      MSG
+      true
+    end
+
+    def paper_exit_positions!(security_ids, reason:)
+      positions = Position.where(position_type: 'LONG', security_id: security_ids.map(&:to_s)).where('net_qty > 0')
+      return skip!("no paper position to exit (#{reason})") if positions.blank?
+
+      positions.find_each do |p|
+        derivative = Derivative.find_by(security_id: p.security_id.to_s)
+        ltp_now = derivative&.ltp.to_f
+        next unless ltp_now.positive?
+
+        qty = p.net_qty.to_i
+        pnl = (ltp_now - p.buy_avg.to_f) * qty
+
+        p.update!(
+          sell_avg: ltp_now,
+          sell_qty: (p.sell_qty.to_i + qty),
+          net_qty: 0,
+          position_type: 'CLOSED',
+          realized_profit: p.realized_profit.to_f + pnl,
+          unrealized_profit: 0
+        )
+
+        ExitLog.create!(
+          trading_symbol: p.trading_symbol,
+          security_id: p.security_id,
+          reason: reason.to_s,
+          order_id: nil,
+          exit_price: ltp_now,
+          exit_time: Time.current
+        )
+      end
+
+      alert.update!(status: :processed, error_message: "paper exit #{reason}")
+      notify("📤 PAPER EXIT – #{reason} (Alert ##{alert.id})", tag: 'PAPER_EXIT')
       false
     end
 

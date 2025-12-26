@@ -13,6 +13,18 @@ module AlertProcessors
       raise NotImplementedError, "#{self.class} must implement #call"
     end
 
+    # ------------------------------------------------------------------------
+    # Execution mode
+    # ------------------------------------------------------------------------
+    # When enabled, processors should NOT place orders on Dhan. They should
+    # create/update local Position records instead.
+    def paper_trading?
+      meta = alert.respond_to?(:metadata) ? alert.metadata : nil
+      return true if meta.is_a?(Hash) && (meta['execution_mode'] == 'paper' || meta[:execution_mode] == 'paper')
+
+      ENV.fetch('PAPER_TRADING', 'false') == 'true'
+    end
+
     def ltp
       @ltp ||= begin
         fetched = instrument.ltp
@@ -56,6 +68,8 @@ module AlertProcessors
     #
     # @return [Float] The current available balance in the trading account.
     def available_balance
+      return ENV.fetch('PAPER_BALANCE', '100000').to_f if paper_trading?
+
       @available_balance ||= begin
         funds = DhanHQ::Models::Funds.fetch
         funds.available_balance.to_f
@@ -65,7 +79,24 @@ module AlertProcessors
     end
 
     def dhan_positions
-      @dhan_positions ||= DhanHQ::Models::Position.all.map(&:attributes)
+      @dhan_positions ||= begin
+        if paper_trading?
+          Position.where.not(net_qty: 0).where.not(position_type: 'CLOSED').map do |p|
+            {
+              'positionType' => p.position_type_before_type_cast,
+              'securityId' => p.security_id,
+              'exchangeSegment' => p.exchange_segment,
+              'quantity' => p.net_qty,
+              'netQty' => p.net_qty,
+              'buyAvg' => p.buy_avg,
+              'sellAvg' => p.sell_avg,
+              'productType' => p.product_type_before_type_cast
+            }
+          end
+        else
+          DhanHQ::Models::Position.all.map(&:attributes)
+        end
+      end
     end
   end
 end
