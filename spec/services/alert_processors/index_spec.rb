@@ -201,7 +201,4 @@ RSpec.describe AlertProcessors::Index, type: :service do
         expect(alert.reload.status).to eq('skipped')
       end
     end
-  end
-end
-  end
 end

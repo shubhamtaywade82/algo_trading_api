@@ -252,9 +252,13 @@ module Market
         VALUE
 
         <<~PROMPT
-          You must output a SINGLE trade decision in a STRICT, machine-parseable format.
-          Do not add extra sections, bullets, or commentary outside the exact fields below.
-          Do not invent prices; use the provided option-chain snapshot to estimate a realistic premium.
+          You must output exactly ONE decision using the canonical spec below.
+          GLOBAL RULES (NON-NEGOTIABLE):
+          - Exact keys, exact casing.
+          - No prose paragraphs.
+          - No missing fields.
+          - Do NOT invent structure/levels/zones; only use the provided SMC/VWAP/AVRZ and option-chain snapshot.
+          - If uncertain, output NO_TRADE.
 
           === MARKET DATA ===
           #{session_label} – **#{symbol}**
@@ -271,22 +275,61 @@ module Market
           #{chain}
           #{extra_block}
 
-          === OUTPUT FORMAT (EXACT) ===
-          Decision: BUY|AVOID
-          Instrument: #{symbol}
-          Side: CE|PE
-          Strike: <integer>
-          Entry: <number>
-          Stop Loss: <number>
-          Target: <number>
-          Risk Reward: <number>
-          Reason: <single sentence>
+          === CANONICAL RESPONSE SPEC (EXACT) ===
 
-          === RULES ===
-          - If you cannot propose a valid BUY with Risk Reward >= 1.5, output Decision: AVOID and still fill ALL fields.
-          - Entry/Stop Loss/Target must be numeric and realistic for weekly index options.
-          - Strike must be a tradeable weekly strike near ATM.
-          - Reason must be one sentence and must reference data provided above (IV/VIX/OI/bid-ask/liquidity/technicals).
+          [NO_TRADE]
+          Decision: NO_TRADE
+          Instrument: #{symbol}
+          Market Bias: RANGE / UNCLEAR
+          Reason: <one sentence>
+          Risk Note: <one sentence>
+          Re-evaluate When:
+          - <condition 1>
+          - <condition 2>
+
+          [WAIT]
+          Decision: WAIT
+          Instrument: #{symbol}
+          Bias: <e.g. BULLISH (15m) / BEARISH (15m)>
+          No Trade Because:
+          - <reason 1>
+          - <reason 2>
+          Trigger Conditions:
+          - <trigger 1>
+          - <trigger 2>
+          Preferred Option (If Triggered):
+          - Type: CE|PE
+          - Strike Zone: <range>
+          - Expected Premium Zone: <range>
+          Reason: <one sentence>
+
+          [BUY]
+          Decision: BUY
+          Instrument: #{symbol}
+          Bias: BULLISH / BEARISH
+          Option:
+          - Type: CE|PE
+          - Strike: <integer>
+          - Expiry: #{expiry}
+          Execution:
+          - Entry Premium: <number>
+          - Stop Loss Premium: <number>
+          - Target Premium: <number>
+          - Risk Reward: <number>
+          Underlying Context:
+          - Spot Above/Spot Below: <number> (VWAP/BOS reference)
+          - Invalidation Below/Invalidation Above: <number> (15m structure)
+          Exit Rules:
+          - SL Hit on premium
+          - OR Spot closes below/above <number> on 5m
+          - OR VWAP rule using 5m candles
+          Reason: <one sentence>
+
+          ENFORCEMENT:
+          - One decision only.
+          - For BUY: RR >= 1.5 and premium SL < entry < target.
+          - For NO_TRADE: do not include Option/Execution/Exit Rules.
+          - For WAIT: do not include execution prices (no Entry/SL/Target/RR).
         PROMPT
       end
 

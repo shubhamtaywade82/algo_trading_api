@@ -62,11 +62,23 @@ module Market
       # nil if answer
       return answer unless @trade_type.to_sym == :options_buying
 
-      validated = Market::AiTradeValidator.call!(answer, ltp: md[:ltp])
-      Market::AiTradeFormatter.format(validated, expiry: md[:expiry])
+      validated = Market::AiTradeValidator.call!(
+        answer,
+        instrument_symbol: md[:symbol],
+        options_snapshot: md[:options]
+      )
+      Market::AiTradeFormatter.format(validated)
     rescue Market::AiTradeValidator::ValidationError => e
       Rails.logger.warn "[AnalysisService] ⚠️ AI trade validation failed: #{e.message}"
-      "⚠️ No valid trade setup found."
+      <<~MSG.strip
+        Decision: NO_TRADE
+        Instrument: #{md[:symbol]}
+        Market Bias: UNCLEAR
+        Reason: No valid trade setup found.
+        Risk Note: No edge for options buying
+        Re-evaluate When:
+        - Wait for clear 15m BOS/CHOCH and 5m confirmation
+      MSG
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
       nil
