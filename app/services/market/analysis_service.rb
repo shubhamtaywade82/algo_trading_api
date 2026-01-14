@@ -43,6 +43,14 @@ module Market
       md[:vix] = india_vix.ltp
       md[:regime] = option_chain_regime_flags(md[:options], md[:vix])
 
+      if @trade_type.to_sym == :options_buying
+        enrich_with_structure_and_value!(md)
+        unless ready_for_options_buying?(md)
+          Rails.logger.warn '[AnalysisService] ⚠️ Missing SMC/AVRZ inputs for options buying'
+          return '⚠️ No valid trade setup found.'
+        end
+      end
+
       prompt = PromptBuilder.build_prompt(md, trade_type: @trade_type)
       Rails.logger.debug prompt
       push_info(md)
@@ -111,6 +119,85 @@ module Market
           options: option_chain_analysis
         }
       )
+    end
+
+    def enrich_with_structure_and_value!(md)
+      session_date = MarketCalendar.today_or_last_trading_day
+
+      series_5m = instrument.candle_series(interval: '5')
+      series_15m = instrument.candle_series(interval: '15')
+
+      md[:timeframes] = {
+        m5: timeframe_snapshot(series_5m, frame: '5m'),
+        m15: timeframe_snapshot(series_15m, frame: '15m')
+      }
+
+      md[:smc] = {
+        m5: Market::Structure::SmcAnalyzer.call(series_5m, timeframe_minutes: 5),
+        m15: Market::Structure::SmcAnalyzer.call(series_15m, timeframe_minutes: 15)
+      }
+
+      md[:value] = {
+        m5: value_snapshot(series_5m, smc: md.dig(:smc, :m5), session_date: session_date, vix: md[:vix]),
+        m15: value_snapshot(series_15m, smc: md.dig(:smc, :m15), session_date: session_date, vix: md[:vix])
+      }
+    end
+
+    def timeframe_snapshot(series, frame:)
+      return {} if series.candles.empty?
+
+      {
+        frame: frame,
+        ohlc: {
+          open: PriceMath.round_tick(series.opens.last),
+          high: PriceMath.round_tick(series.highs.last),
+          low: PriceMath.round_tick(series.lows.last),
+          close: PriceMath.round_tick(series.closes.last),
+          volume: series.candles.last.volume
+        },
+        atr: series.atr[:atr].round(2),
+        rsi: series.rsi[:rsi].round(2),
+        macd: series.macd.transform_values { |v| v.round(2) },
+        super: series.supertrend_signal
+      }
+    rescue StandardError => e
+      Rails.logger.warn "[AnalysisService] ⚠️ timeframe_snapshot failed: #{e.class} – #{e.message}"
+      {}
+    end
+
+    def value_snapshot(series, smc:, session_date:, vix:)
+      return {} if series.candles.empty?
+
+      vwap = Market::Value::VwapCalculator.session_vwap(series, session_date: session_date)
+
+      bos_ts = smc&.last_bos&.dig(:ts)
+      avwap_bos =
+        if bos_ts
+          Market::Value::VwapCalculator.anchored_vwap(series, from_ts: bos_ts, session_date: session_date)
+        end
+
+      atr_points = series.atr[:atr].to_f
+      avrz = Market::Value::AvrzCalculator.call(mid: vwap, atr_points: atr_points, vix: vix)
+
+      {
+        vwap: vwap,
+        avwap_bos: avwap_bos,
+        avrz: avrz
+      }
+    end
+
+    def ready_for_options_buying?(md)
+      smc_15m = md.dig(:smc, :m15)
+      avrz_15m = md.dig(:value, :m15, :avrz)
+      vwap_15m = md.dig(:value, :m15, :vwap)
+
+      smc_15m.present? &&
+        smc_15m.last_swing_high.present? &&
+        smc_15m.last_swing_low.present? &&
+        vwap_15m.present? &&
+        avrz_15m.present? &&
+        avrz_15m[:low].present? &&
+        avrz_15m[:high].present?
     end
 
     # ------------------------------------------------------------------------

@@ -225,6 +225,32 @@ module Market
         extra = context.to_s.strip
         extra_block = extra.empty? ? '' : "\n=== ADDITIONAL CONTEXT ===\n#{extra}\n"
 
+        smc_15 = md.dig(:smc, :m15)
+        smc_5 = md.dig(:smc, :m5)
+        val_15 = md.dig(:value, :m15) || {}
+        val_5 = md.dig(:value, :m5) || {}
+
+        structure_block = <<~STRUCT
+          === 15m STRUCTURE (SMC) ===
+          Market Structure: #{smc_15&.market_structure || 'unknown'}
+          Last Swing High: #{fmt2(smc_15&.last_swing_high&.dig(:price))}
+          Last Swing Low: #{fmt2(smc_15&.last_swing_low&.dig(:price))}
+          Last BOS: #{smc_15&.last_bos ? "#{smc_15.last_bos[:direction]} @ #{fmt2(smc_15.last_bos[:level])}" : 'none'}
+
+          === 5m STRUCTURE (SMC) ===
+          Market Structure: #{smc_5&.market_structure || 'unknown'}
+          Last BOS: #{smc_5&.last_bos ? "#{smc_5.last_bos[:direction]} @ #{fmt2(smc_5.last_bos[:level])}" : 'none'}
+        STRUCT
+
+        value_block = <<~VALUE
+          === VALUE ZONES (VWAP/AVWAP/AVRZ) ===
+          15m VWAP: #{fmt2(val_15[:vwap])} | 15m AVWAP(BOS): #{fmt2(val_15[:avwap_bos])}
+          15m AVRZ: low #{fmt2(val_15.dig(:avrz, :low))} | mid #{fmt2(val_15.dig(:avrz, :mid))} | high #{fmt2(val_15.dig(:avrz, :high))} (#{val_15.dig(:avrz, :regime)})
+
+          5m VWAP: #{fmt2(val_5[:vwap])} | 5m AVWAP(BOS): #{fmt2(val_5[:avwap_bos])}
+          5m AVRZ: low #{fmt2(val_5.dig(:avrz, :low))} | mid #{fmt2(val_5.dig(:avrz, :mid))} | high #{fmt2(val_5.dig(:avrz, :high))} (#{val_5.dig(:avrz, :regime)})
+        VALUE
+
         <<~PROMPT
           You must output a SINGLE trade decision in a STRICT, machine-parseable format.
           Do not add extra sections, bullets, or commentary outside the exact fields below.
@@ -237,6 +263,9 @@ module Market
           Expiry: #{expiry}
 
           #{format_technical_indicators(md)}
+
+          #{structure_block}
+          #{value_block}
 
           === OPTION CHAIN DATA ===
           #{chain}
