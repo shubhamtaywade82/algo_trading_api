@@ -577,7 +577,7 @@ Telegram:
 
 Broker/data:
 
-- DhanHQ credentials (wherever your DhanHQ client expects them; see `lib/dhanhq/api.rb` and env usage)
+- DhanHQ credentials (used by `DhanHQ.configure_with_env` in `config/initializers/dhanhq.rb`)
 
 ### Required database seed/config
 
@@ -591,6 +591,107 @@ To analyze an index by symbol, `instruments` must include:
   - `security_id: 21` (currently assumed by `Market::AnalysisService`)
 
 If any of these are missing, analysis will be partial (no options/vix) or fail (instrument not found).
+
+---
+
+## Local testing with real DhanHQ data (development)
+
+This section is for testing **against live DhanHQ endpoints** (real market data). It does **not** place orders.
+
+### 0) Safety defaults
+
+- Do **not** enable any order placement flags in your `.env`:
+  - Keep `PLACE_ORDER` unset or `false`.
+- Be aware `TelegramNotifier` will send messages if `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` are set.
+
+### 1) Configure DhanHQ credentials (required)
+
+This app configures DhanHQ via `DhanHQ.configure_with_env`, which expects these env vars **without prefixes**:
+
+- `CLIENT_ID` (your Dhan client id)
+- `ACCESS_TOKEN` (your Dhan access token)
+
+Optional DhanHQ env vars you may set:
+
+- `DHAN_BASE_URL` (default: `https://api.dhan.co/v2`)
+- `DHAN_WS_VERSION` (default: `2`)
+- `DHAN_WS_ORDER_URL` (optional)
+- `DHAN_WS_MARKET_FEED_URL` (optional)
+- `DHAN_WS_MARKET_DEPTH_URL` (optional)
+- `DHAN_MARKET_DEPTH_LEVEL` (optional)
+- `DHAN_WS_USER_TYPE` (optional, default: `SELF`)
+- `DHAN_PARTNER_ID` / `DHAN_PARTNER_SECRET` (optional)
+- `DHAN_DEBUG=true` (enables HTTP logging inside the SDK)
+- `DHAN_LOG_LEVEL=DEBUG|INFO|WARN|ERROR` (app-level Dhan logger)
+
+### 2) Import instruments (required for NIFTY/SENSEX/VIX + options)
+
+Market analysis relies on `Instrument` records and derivatives mapping.
+
+Run:
+
+- `bundle exec rake import:instruments`
+
+This downloads the Dhan scrip master CSV and populates:
+
+- `instruments` (indices/equities/etc.)
+- `derivatives` (options/futures rows; linked to underlying instrument)
+
+### 3) Verify prerequisites in Rails console
+
+Start console:
+
+- `bundle exec rails c`
+
+Quick checks:
+
+- Dhan auth works:
+  - `Dhanhq::API::Funds.balance`
+- Index instrument exists:
+  - `Instrument.segment_index.find_by!(underlying_symbol: 'NIFTY')`
+  - `Instrument.segment_index.find_by!(underlying_symbol: 'SENSEX')`
+- India VIX instrument exists (this app currently assumes `security_id: 21`):
+  - `Instrument.find_by!(security_id: 21)`
+- Spot + option chain calls work:
+  - `inst = Instrument.segment_index.find_by!(underlying_symbol: 'NIFTY')`
+  - `inst.ltp`
+  - `expiry = inst.expiry_list.first`
+  - `inst.fetch_option_chain(expiry)`
+  - `inst.candle_series(interval: '5')`
+
+If any of these fail, fix the instruments import first (and confirm your Dhan credentials).
+
+### 4) Run analysis directly (fastest, no Telegram needed)
+
+AI options setup (uses SMC+AVRZ gating + strict canonical validator):
+
+- `Market::AnalysisService.call('NIFTY', trade_type: :options_buying)`
+
+Deterministic expiry strategy (no AI):
+
+- `Market::AnalysisService.call('NIFTY', trade_type: :expiry_range_strategy)`
+
+### 5) Test via Telegram webhook locally (optional)
+
+Set Telegram env vars:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+Run the server and send a local webhook payload:
+
+- `POST /telegram/webhook` with `message.chat.id` and `message.text`
+
+Commands of interest:
+
+- `/nifty_options`
+- `/sensex_options`
+- `/nifty_expiry_range`
+- `/sensex_expiry_range`
+
+Background jobs:
+
+- If you don’t run a worker locally, configure `ActiveJob` to run inline in development for testing.
 
 ---
 
