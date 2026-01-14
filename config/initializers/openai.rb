@@ -1,9 +1,28 @@
 # config/initializers/openai.rb
+#
+# OpenAI is the default provider, but local/dev can switch to Ollama via:
+#   LLM_PROVIDER=ollama
+#
+# In that case we must not require/configure OpenAI at boot.
+
+provider = ENV.fetch('LLM_PROVIDER', 'openai').to_s.downcase
+return if provider == 'ollama'
+
+# In test/dev, avoid hard-failing boot when OPENAI_API_KEY isn't configured.
+api_key =
+  if Rails.env.production?
+    ENV.fetch('OPENAI_API_KEY')
+  else
+    ENV['OPENAI_API_KEY']
+  end
+
+return if api_key.blank?
+
 require 'openai'
 
 OpenAI.configure do |config|
-  config.access_token    = ENV.fetch('OPENAI_API_KEY') # ← keep names consistent
-  config.organization_id = ENV.fetch('OPENAI_ORG_ID', nil) # optional
-  config.log_errors      = !Rails.env.production?
+  config.access_token = api_key
+  config.organization_id = ENV['OPENAI_ORG_ID'] # optional
+  config.log_errors = !Rails.env.production?
   config.request_timeout = 360
 end

@@ -15,6 +15,15 @@ GIT
       faraday_middleware
       faye-websocket
 
+GIT
+  remote: https://github.com/shubhamtaywade82/ollama-client.git
+  revision: a8defbfc02a52a764e1bf339d2aff3b6539d05b3
+  branch: dhanhq_agent
+  specs:
+    ollama-client (0.2.1)
+      bigdecimal
+      json-schema (~> 4.0)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -248,6 +257,8 @@ GEM
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
     json (2.9.0)
+    json-schema (4.3.1)
+      addressable (>= 2.8)
     kamal (2.4.0)
       activesupport (>= 7.0)
       base64 (~> 0.2)
@@ -565,6 +576,7 @@ DEPENDENCIES
   kaminari (~> 1.2)
   matrix
   memory_profiler
+  ollama-client!
   pg (~> 1.1)
   puma (>= 5.0)
   rack-cors

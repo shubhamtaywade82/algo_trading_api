@@ -79,7 +79,7 @@ def call
 end
 ```
 
-### Execution: background job → analysis service → OpenAI → Telegram
+### Execution: background job → analysis service → LLM → Telegram
 
 `MarketAnalysisJob`:
 
@@ -502,9 +502,34 @@ These commands do **not** call OpenAI. They create an `Alert` record (mimicking 
 
 ---
 
-## OpenAI model selection and behavior
+## LLM provider selection (OpenAI in prod, Ollama in local/dev)
 
-The OpenAI call is done through `Openai::ChatRouter` which:
+All LLM calls go through `Openai::ChatRouter` (name kept for backward compatibility). It supports:
+
+- **OpenAI** (default, recommended for production)
+- **Ollama** via `ollama-client` (recommended for local/dev)
+
+### Use Ollama locally (development)
+
+1) Install and run Ollama locally:
+
+- Ensure Ollama is running at `http://localhost:11434`
+- Pull a model, e.g. `llama3.1`
+
+2) Set env vars:
+
+- `LLM_PROVIDER=ollama`
+- `OLLAMA_BASE_URL=http://localhost:11434` (optional)
+- `OLLAMA_MODEL=llama3.1` (optional)
+- `OLLAMA_TIMEOUT=60` (optional)
+- `OLLAMA_RETRIES=2` (optional)
+- `OLLAMA_TEMPERATURE=0.2` (optional)
+
+With `LLM_PROVIDER=ollama`, the OpenAI initializer is skipped and `OPENAI_API_KEY` is not required for boot.
+
+### OpenAI behavior (default)
+
+When using OpenAI, the router:
 
 - Returns **plain text** (not JSON)
 - Picks a default model by environment:

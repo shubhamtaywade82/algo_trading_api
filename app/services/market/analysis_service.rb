@@ -54,7 +54,7 @@ module Market
       prompt = PromptBuilder.build_prompt(md, trade_type: @trade_type)
       Rails.logger.debug prompt
       push_info(md)
-      answer = ask_openai(prompt)
+      answer = ask_llm(prompt)
       typing_ping
 
       Rails.logger.debug answer.length
@@ -268,7 +268,7 @@ module Market
       TelegramNotifier.send_message(message)
     end
 
-    def ask_openai(prompt, retries: 3, backoff: 4)
+    def ask_llm(prompt, retries: 3, backoff: 4)
       attempt = 0
 
       begin
@@ -276,7 +276,11 @@ module Market
           prompt,
           system: Market::PromptBuilder.system_prompt(@trade_type)
         )
-      rescue OpenAI::Error
+      rescue StandardError => e
+        # Retry only for provider/network style failures (avoid masking coding bugs).
+        retryable = e.class.name.match?(/OpenAI|Ollama|Timeout|HTTP/i)
+        raise unless retryable
+
         attempt += 1
         raise if attempt > retries
 

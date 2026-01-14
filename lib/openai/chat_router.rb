@@ -13,22 +13,78 @@ module Openai
                   model:  nil,
                   max_tokens: nil,
                   force: false)
+      case provider
+      when 'ollama'
+        ask_ollama!(user_prompt, system: system, model: model, max_tokens: max_tokens)
+      else
+        ask_openai!(user_prompt, system: system, model: model, max_tokens: max_tokens, force: force)
+      end
+    end
+
+    def self.provider
+      ENV.fetch('LLM_PROVIDER', 'openai').to_s.downcase
+    end
+    private_class_method :provider
+
+    def self.ask_openai!(user_prompt, system:, model:, max_tokens:, force:)
       mdl = resolve_model(model, force, "#{system} #{user_prompt}")
 
-      pp mdl
       params = {
         model: mdl,
         messages: [
           { role: 'system', content: system },
-          { role: 'user',   content: user_prompt }
+          { role: 'user', content: user_prompt }
         ]
       }
       params[:max_tokens] = max_tokens if max_tokens
+
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
       resp = Client.instance.chat(parameters: params)
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
+
       resp.dig('choices', 0, 'message', 'content').to_s.strip
     end
+    private_class_method :ask_openai!
+
+    def self.ask_ollama!(user_prompt, system:, model:, max_tokens:)
+      require 'ollama_client'
+
+      config = Ollama::Config.new
+      config.base_url = ENV.fetch('OLLAMA_BASE_URL', 'http://localhost:11434')
+      config.model = (model.presence || ENV.fetch('OLLAMA_MODEL', 'llama3.1')).to_s
+      config.timeout = ENV.fetch('OLLAMA_TIMEOUT', '60').to_i
+      config.retries = ENV.fetch('OLLAMA_RETRIES', '2').to_i
+      config.temperature = ENV.fetch('OLLAMA_TEMPERATURE', '0.2').to_f
+
+      client = Ollama::Client.new(config: config)
+
+      prompt = <<~PROMPT
+        SYSTEM:
+        #{system}
+
+        USER:
+        #{user_prompt}
+      PROMPT
+
+      TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
+      resp = client.generate(prompt: prompt)
+      TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
+
+      extract_text(resp).to_s.strip
+    rescue LoadError => e
+      raise "ollama-client gem not available: #{e.message}"
+    end
+    private_class_method :ask_ollama!
+
+    def self.extract_text(resp)
+      return resp if resp.is_a?(String)
+
+      return resp['response'] if resp.is_a?(Hash) && resp['response'].present?
+      return resp.dig('message', 'content') if resp.is_a?(Hash) && resp.dig('message', 'content').present?
+
+      resp.to_s
+    end
+    private_class_method :extract_text
 
     # # ------------------------------------------------------------------
     # private_class_method :choose_model, :token_estimate, :default_system
