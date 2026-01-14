@@ -429,6 +429,41 @@ In `Market::AnalysisService`, don’t compute SMC/AVRZ inline repeatedly. Prefer
 
 This keeps analysis deterministic (“same candle close → same snapshot”), and keeps Telegram analysis fast.
 
+#### Scheduling it like `UpdateTechnicalAnalysisJob` (in-process loop)
+
+This codebase already runs periodic technical-analysis updates via:
+
+- `UpdateTechnicalAnalysisJob` (calls `Market::AnalysisUpdater.call`)
+- `config/initializers/ta_scheduler.rb` which starts a loop thread after boot:
+  - runs between `09:10` and `15:30` IST
+  - enqueues `UpdateTechnicalAnalysisJob.perform_later`
+  - sleeps `3.minutes`
+  - guarded by `ENV['ENABLE_TA_LOOP'] == 'true'`
+
+To schedule SMC+AVRZ snapshots the same way, mirror this pattern:
+
+- **Job**: add a job like `UpdateSmcAvrzSnapshotsJob` that calls a single service, e.g. `Market::SmcAvrz::SnapshotUpdater.call`.
+- **Initializer loop**: add a new initializer similar to `ta_scheduler.rb`:
+  - guard with `ENV['ENABLE_SMC_AVRZ_LOOP'] == 'true'`
+  - run only during market hours
+  - **tick every 1 minute**
+  - inside the updater, compute snapshots only when a new 5m/15m candle has *closed* (otherwise no-op)
+
+Operational notes:
+
+- This assumes a queue backend is running (e.g. delayed_job), because the loop uses `perform_later`.
+- Make the updater idempotent (unique key on `instrument_id + timeframe + session_date + source_candle_close_at`) to avoid duplicate rows when multiple workers enqueue simultaneously.
+
+#### Manual run (rake task pattern)
+
+There is an existing rake entry point for TA:
+
+- `rake technical_analysis:update` → `UpdateTechnicalAnalysisJob.perform_now`
+
+For SMC+AVRZ you can mirror this for one-off runs/backfills:
+
+- `rake market_metrics:update_smc_avrz` → `UpdateSmcAvrzSnapshotsJob.perform_now`
+
 ## Telegram commands (what users type)
 
 ### Index AI analysis (report comes later)
