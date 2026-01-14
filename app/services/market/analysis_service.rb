@@ -51,7 +51,8 @@ module Market
       if @trade_type.to_sym == :options_buying
         enrich_with_structure_and_value!(md)
         unless ready_for_options_buying?(md)
-          Rails.logger.warn '[AnalysisService] ⚠️ Missing SMC/AVRZ inputs for options buying'
+          missing = missing_requirements(md)
+          Rails.logger.warn "[AnalysisService] ⚠️ Missing SMC/AVRZ inputs for options buying: #{missing.join(', ')}"
           return '⚠️ No valid trade setup found.'
         end
       end
@@ -144,19 +145,32 @@ module Market
       series_5m = instrument.candle_series(interval: '5')
       series_15m = instrument.candle_series(interval: '15')
 
+      Rails.logger.debug "[AnalysisService] 5m candles: #{series_5m.candles.size}, 15m candles: #{series_15m.candles.size}"
+
       md[:timeframes] = {
         m5: timeframe_snapshot(series_5m, frame: '5m'),
         m15: timeframe_snapshot(series_15m, frame: '15m')
       }
 
+      smc_5m = Market::Structure::SmcAnalyzer.call(series_5m, timeframe_minutes: 5)
+      smc_15m = Market::Structure::SmcAnalyzer.call(series_15m, timeframe_minutes: 15)
+
+      Rails.logger.debug "[AnalysisService] SMC 5m: #{smc_5m.present? ? 'present' : 'nil'}, swing_high: #{smc_5m&.last_swing_high.present?}, swing_low: #{smc_5m&.last_swing_low.present?}"
+      Rails.logger.debug "[AnalysisService] SMC 15m: #{smc_15m.present? ? 'present' : 'nil'}, swing_high: #{smc_15m&.last_swing_high.present?}, swing_low: #{smc_15m&.last_swing_low.present?}"
+
       md[:smc] = {
-        m5: Market::Structure::SmcAnalyzer.call(series_5m, timeframe_minutes: 5),
-        m15: Market::Structure::SmcAnalyzer.call(series_15m, timeframe_minutes: 15)
+        m5: smc_5m,
+        m15: smc_15m
       }
 
+      value_5m = value_snapshot(series_5m, smc: smc_5m, session_date: session_date, vix: md[:vix])
+      value_15m = value_snapshot(series_15m, smc: smc_15m, session_date: session_date, vix: md[:vix])
+
+      Rails.logger.debug "[AnalysisService] Value 15m - VWAP: #{value_15m[:vwap]}, AVRZ: #{value_15m[:avrz].present? ? 'present' : 'nil'}"
+
       md[:value] = {
-        m5: value_snapshot(series_5m, smc: md.dig(:smc, :m5), session_date: session_date, vix: md[:vix]),
-        m15: value_snapshot(series_15m, smc: md.dig(:smc, :m15), session_date: session_date, vix: md[:vix])
+        m5: value_5m,
+        m15: value_15m
       }
     end
 
@@ -165,6 +179,8 @@ module Market
       vix_series_5m = india_vix.candle_series(interval: '5')
       vix_snapshot = Vix::Guard.snapshot(vix_instrument: india_vix, vix_series_5m: vix_series_5m)
 
+      # Use Zeitwerk's autoloading - just reference the constant directly
+      # The file app/strategies/expiry_range_strategy.rb defines Strategies::ExpiryRangeStrategy
       Strategies::ExpiryRangeStrategy.call(md: md, series_5m: series_5m, vix_snapshot: vix_snapshot)
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ ExpiryRangeStrategy failed: #{e.class} – #{e.message}"
@@ -196,12 +212,19 @@ module Market
     def value_snapshot(series, smc:, session_date:, vix:)
       return {} if series.candles.empty?
 
-      vwap = Market::Value::VwapCalculator.session_vwap(series, session_date: session_date)
+      # Use the date of the most recent candle if available, otherwise fall back to session_date
+      # This handles cases where candles are from a previous trading day (e.g., pre-open session)
+      candle_date = series.candles.last&.timestamp&.to_date || session_date
+      effective_session_date = candle_date
+
+      Rails.logger.debug "[AnalysisService] VWAP calculation - session_date: #{session_date}, candle_date: #{candle_date}, using: #{effective_session_date}"
+
+      vwap = Market::Value::VwapCalculator.session_vwap(series, session_date: effective_session_date)
 
       bos_ts = smc&.last_bos&.dig(:ts)
       avwap_bos =
         if bos_ts
-          Market::Value::VwapCalculator.anchored_vwap(series, from_ts: bos_ts, session_date: session_date)
+          Market::Value::VwapCalculator.anchored_vwap(series, from_ts: bos_ts, session_date: effective_session_date)
         end
 
       atr_points = series.atr[:atr].to_f
@@ -228,6 +251,23 @@ module Market
         avrz_15m[:high].present?
     end
 
+    def missing_requirements(md)
+      missing = []
+      smc_15m = md.dig(:smc, :m15)
+      avrz_15m = md.dig(:value, :m15, :avrz)
+      vwap_15m = md.dig(:value, :m15, :vwap)
+
+      missing << 'SMC_15m' unless smc_15m.present?
+      missing << 'swing_high' if smc_15m.present? && smc_15m.last_swing_high.blank?
+      missing << 'swing_low' if smc_15m.present? && smc_15m.last_swing_low.blank?
+      missing << 'VWAP_15m' unless vwap_15m.present?
+      missing << 'AVRZ_15m' unless avrz_15m.present?
+      missing << 'AVRZ_low' if avrz_15m.present? && avrz_15m[:low].blank?
+      missing << 'AVRZ_high' if avrz_15m.present? && avrz_15m[:high].blank?
+
+      missing
+    end
+
     # ------------------------------------------------------------------------
     # Option-chain preprocessing (unchanged logic moved to its own method)
     # ------------------------------------------------------------------------
@@ -242,8 +282,25 @@ module Market
 
     def previous_daily_ohlc
       Rails.cache.fetch("pd-ohlc:#{instrument.id}", expires_in: 15.minutes) do
-        to_date = MarketCalendar.today_or_last_trading_day
-        from_date = MarketCalendar.last_trading_day(from: to_date - 1)
+        # Get the previous trading day (the day before today, accounting for weekends/holidays)
+        today = Time.zone.today
+        prev_trading_day = MarketCalendar.last_trading_day(from: today - 1)
+
+        # Determine date range based on session state
+        # If pre-open or before market close, don't use today's date
+        if session_state == :pre_open || session_state == :weekend
+          # Use previous trading day as end date, and day before as start date
+          # This ensures we only query completed trading days
+          from_date = MarketCalendar.last_trading_day(from: prev_trading_day - 1)
+          to_date = prev_trading_day
+        else
+          # Post-close or live: can use today if it's a trading day
+          from_date = prev_trading_day
+          to_date = MarketCalendar.trading_day?(today) ? today : prev_trading_day
+        end
+
+        Rails.logger.debug "[AnalysisService] Previous daily OHLC - today: #{today}, prev_trading_day: #{prev_trading_day}, from_date: #{from_date}, to_date: #{to_date}, session: #{session_state}"
+
         bars = instrument.historical_ohlc(
           from_date: from_date.to_s,
           to_date: to_date.to_s
@@ -251,12 +308,12 @@ module Market
 
         return nil if bars.blank?
 
-        bar = bars
+        # Extract the single day's OHLC (bars should contain only one day)
         {
-          open: PriceMath.round_tick(bar['open'].last.to_f),
-          high: PriceMath.round_tick(bar['high'].last.to_f),
-          low: PriceMath.round_tick(bar['low'].last.to_f),
-          close: PriceMath.round_tick(bar['close'].last.to_f)
+          open: PriceMath.round_tick(bars['open'].last.to_f),
+          high: PriceMath.round_tick(bars['high'].last.to_f),
+          low: PriceMath.round_tick(bars['low'].last.to_f),
+          close: PriceMath.round_tick(bars['close'].last.to_f)
         }
       end
     end
