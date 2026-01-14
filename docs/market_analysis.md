@@ -340,6 +340,95 @@ Add focused specs with small fixtures / synthetic candles:
 
 This keeps responsibilities explicit and makes future tuning safe.
 
+### Persistence, expiry, and event-driven recompute (recommended design)
+
+If you want SMC + AVRZ to be **consistent**, **auditable**, and **cheap to reuse** across Telegram commands / API calls, persist them as timeboxed “snapshots” per instrument + timeframe.
+
+#### Persist as snapshots (single responsibility)
+
+Create a dedicated model/table such as `MarketMetricsSnapshot` (name should communicate it’s *computed market state*, not orders/signals).
+
+Recommended fields:
+
+- **Identity**
+  - `instrument_id`
+  - `timeframe_minutes` (5 or 15)
+  - `session_date` (IST trading day; resets VWAP/AVWAP)
+  - `computed_at`
+  - `source_candle_close_at` (the candle close the snapshot is based on)
+- **Validity**
+  - `expires_at` (time-based TTL)
+  - `invalidated_at` (nullable)
+  - `invalidated_reason` (nullable, string)
+- **Payload** (store as jsonb to avoid schema churn while iterating)
+  - `smc` (BOS/CHOCH, OB/FVG zones, liquidity levels, distances)
+  - `value_zones` (VWAP, AVWAP anchors, AVRZ low/mid/high, widths)
+  - `regime` (VIX/IV flags used to size zones)
+  - `metadata` (version, inputs summary)
+
+Recommended indexes:
+
+- unique: (`instrument_id`, `timeframe_minutes`, `session_date`, `source_candle_close_at`)
+- query: (`instrument_id`, `timeframe_minutes`, `expires_at`)
+
+#### Expiry policy (simple + predictable)
+
+Use candle-close TTLs:
+
+- **5m** snapshot: `expires_at = source_candle_close_at + 5.minutes`
+- **15m** snapshot: `expires_at = source_candle_close_at + 15.minutes`
+
+Treat expiry as **soft**: a snapshot can become invalid **earlier** due to events (below).
+
+Validity check:
+
+- valid if `invalidated_at IS NULL` **and** `Time.current < expires_at`
+
+#### Event-driven invalidation (don’t recompute “randomly”)
+
+Persist market-structure/value events so recomputes are explainable. Create `MarketStructureEvent` (or equivalent) with:
+
+- `instrument_id`, `timeframe_minutes`
+- `event_at`
+- `event_type` (e.g. `bos`, `choch`, `ob_touched`, `fvg_filled`, `avrz_break`, `session_reset`)
+- optional `direction`, `level`/`zone` (jsonb)
+- optional `snapshot_id` (which snapshot got invalidated)
+
+When an event triggers:
+
+- mark snapshot `invalidated_at = Time.current`, `invalidated_reason = <event_type>`
+- write an event record
+- enqueue a recompute job for the same timeframe (idempotent)
+
+#### Recompute triggers (baseline + early)
+
+Baseline (time-based):
+
+- On every **5m candle close**, compute/persist the 5m snapshot for that close.
+- On every **15m candle close**, compute/persist the 15m snapshot for that close.
+
+Early recompute (event-based):
+
+- **BOS/CHOCH** on that timeframe
+- price **touches/consumes** the nearest OB/FVG zone (zone is “used up”)
+- **AVRZ break** (candle close decisively outside band)
+- **session reset** (new IST trading day → VWAP/AVWAP reset)
+
+Practical coupling rule:
+
+- A **15m BOS/CHOCH** should invalidate 15m and also trigger a fresh 5m snapshot (regime changed).
+
+#### Runtime usage (get-or-build, then prompt)
+
+In `Market::AnalysisService`, don’t compute SMC/AVRZ inline repeatedly. Prefer:
+
+- fetch latest **valid** snapshots for 5m + 15m
+- if missing/expired/invalidated → compute and persist for the latest closed candle
+- inject into `md[:smc]` and `md[:value]`
+- `Market::PromptBuilder` renders them
+
+This keeps analysis deterministic (“same candle close → same snapshot”), and keeps Telegram analysis fast.
+
 ## Telegram commands (what users type)
 
 ### Index AI analysis (report comes later)
