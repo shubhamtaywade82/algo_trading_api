@@ -226,7 +226,9 @@ module Market
         extra_block = extra.empty? ? '' : "\n=== ADDITIONAL CONTEXT ===\n#{extra}\n"
 
         <<~PROMPT
-          Based on the following option-chain snapshot for #{symbol}, suggest an instant options buying trade. Use ATM or slightly ITM strikes guided by delta near ±0.50, evaluate IV, OI/volume shifts, and explain the rationale.
+          You must output a SINGLE trade decision in a STRICT, machine-parseable format.
+          Do not add extra sections, bullets, or commentary outside the exact fields below.
+          Do not invent prices; use the provided option-chain snapshot to estimate a realistic premium.
 
           === MARKET DATA ===
           #{session_label} – **#{symbol}**
@@ -240,41 +242,22 @@ module Market
           #{chain}
           #{extra_block}
 
-          === TRADE SETUP REQUIRED ===
-          Provide:
-          1) **Trade Type**: Buy [CE/PE] [Strike] [Expiry]
-          2) **Entry**: ₹[price] (limit near best bid/ask), **Reason**: [delta≈0.5 ATM, OI/IV context]
-          3) **Stop Loss**: [20–30%] of premium or invalidation level; exact ₹ value
-          4) **Take Profit**: [50–100%] premium or at [underlying target zone]
-          5) **Position Sizing**: For ₹50,000 account with 3% risk = [lots] calculation
-          6) **Validity**: [day/IOC]; avoid illiquid spreads
-          7) **Key Levels**: Support/Resistance based on technical + option OI
+          === OUTPUT FORMAT (EXACT) ===
+          Decision: BUY|AVOID
+          Instrument: #{symbol}
+          Side: CE|PE
+          Strike: <integer>
+          Entry: <number>
+          Stop Loss: <number>
+          Target: <number>
+          Risk Reward: <number>
+          Reason: <single sentence>
 
-          **Analysis Focus:**
-          - Delta around 0.5 for ATM exposure and responsive premium
-          - Use OI/Change in OI to infer support/resistance and sentiment
-          - Consider IV levels - avoid buying during extreme IV unless expecting expansion
-          - Factor in theta decay, especially for weekly expiries
-          - Lot sizes: Nifty 50, Bank Nifty 15, Sensex 10
-
-          **Risk Management:**
-          - Account: ₹50,000 (adjust as needed)
-          - Risk per trade: 2-5% of capital
-          - Avoid positions >20% of account in single expiry
-          - Time-based exit if no move by 2:30 PM
-
-          === AVOID-BUYING CHECKS ===
-          If any of the below hold, output: "Decision Gate: AVOID – <reason>"
-          - IV regime likely to compress (IV high and falling or post-event) 
-          - VIX falling and price range-bound
-          - <48 hours to expiry without momentum; theta risk high (expiry-day scalps allowed if momentum confirmed)
-          - Wide spreads or low OI/volume at chosen strike
-          - No clear directional edge on this timeframe
-          Otherwise output: "Decision Gate: BUY – <reason>"
-          
-          Decision Gate: BUY/AVOID – <one-line reason referencing IV/VIX/theta/liquidity>
-
-          Format clearly for immediate execution with specific entry/exit levels.
+          === RULES ===
+          - If you cannot propose a valid BUY with Risk Reward >= 1.5, output Decision: AVOID and still fill ALL fields.
+          - Entry/Stop Loss/Target must be numeric and realistic for weekly index options.
+          - Strike must be a tradeable weekly strike near ATM.
+          - Reason must be one sentence and must reference data provided above (IV/VIX/OI/bid-ask/liquidity/technicals).
         PROMPT
       end
 

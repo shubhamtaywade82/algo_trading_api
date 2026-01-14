@@ -52,7 +52,13 @@ module Market
       Rails.logger.debug answer.length
       # TelegramNotifier.send_message(answer)
       # nil if answer
-      answer
+      return answer unless @trade_type.to_sym == :options_buying
+
+      validated = Market::AiTradeValidator.call!(answer, ltp: md[:ltp])
+      Market::AiTradeFormatter.format(validated, expiry: md[:expiry])
+    rescue Market::AiTradeValidator::ValidationError => e
+      Rails.logger.warn "[AnalysisService] ⚠️ AI trade validation failed: #{e.message}"
+      "⚠️ No valid trade setup found."
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
       nil
