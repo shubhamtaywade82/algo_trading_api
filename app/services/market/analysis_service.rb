@@ -43,6 +43,11 @@ module Market
       md[:vix] = india_vix.ltp
       md[:regime] = option_chain_regime_flags(md[:options], md[:vix])
 
+      if @trade_type.to_sym == :expiry_range_strategy
+        enrich_with_structure_and_value!(md)
+        return run_expiry_range_strategy(md)
+      end
+
       if @trade_type.to_sym == :options_buying
         enrich_with_structure_and_value!(md)
         unless ready_for_options_buying?(md)
@@ -153,6 +158,17 @@ module Market
         m5: value_snapshot(series_5m, smc: md.dig(:smc, :m5), session_date: session_date, vix: md[:vix]),
         m15: value_snapshot(series_15m, smc: md.dig(:smc, :m15), session_date: session_date, vix: md[:vix])
       }
+    end
+
+    def run_expiry_range_strategy(md)
+      series_5m = instrument.candle_series(interval: '5')
+      vix_series_5m = india_vix.candle_series(interval: '5')
+      vix_snapshot = Vix::Guard.snapshot(vix_instrument: india_vix, vix_series_5m: vix_series_5m)
+
+      Strategies::ExpiryRangeStrategy.call(md: md, series_5m: series_5m, vix_snapshot: vix_snapshot)
+    rescue StandardError => e
+      Rails.logger.error "[AnalysisService] ❌ ExpiryRangeStrategy failed: #{e.class} – #{e.message}"
+      nil
     end
 
     def timeframe_snapshot(series, frame:)
