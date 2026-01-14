@@ -31,4 +31,8 @@ module MarketCalendar
   def self.today_or_last_trading_day
     trading_day?(Time.zone.today) ? Time.zone.today : last_trading_day
   end
+
+  def self.trading_days_between(from_date, to_date)
+    (from_date..to_date).select { |date| trading_day?(date) }
+  end
 end
