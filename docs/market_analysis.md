@@ -223,6 +223,123 @@ The prompt also includes bid/ask, OI, volume (where available) in the chain form
 
 ---
 
+## How to integrate SMC + AVRZ (5m + 15m) for better options suggestions + closing range
+
+The current system prompt mentions “SMC-lite” and “VWAP/Anchored VWAP”, but the market snapshot (`md`) does **not** provide explicit market-structure levels or VWAP/AVWAP/zone levels. The AI therefore has to infer/hallucinate them, which reduces consistency.
+
+To integrate **SMC + AVRZ** cleanly:
+
+- compute **multi-timeframe** signals (5m trigger + 15m regime)
+- add them to the snapshot (`md`)
+- render them into the prompt so the model reasons from *actual* structure/value levels
+
+### Goals
+
+- **Options strike suggestion**: avoid buying into opposing structure; pick strikes aligned with 15m regime and confirmed by 5m structure break.
+- **Intraday closing range**: derive a range from volatility *and* structure/value zones (not only ATR + Bollinger).
+
+### Where it fits in the pipeline
+
+- Data collection happens in `Market::AnalysisService#build_market_snapshot`.
+- Prompt formatting happens in `Market::PromptBuilder.build_prompt`.
+
+The integration should keep `Market::AnalysisService` thin by delegating calculations into focused classes.
+
+### Step 1 — Add multi-timeframe candle series to the snapshot
+
+Today the snapshot is built from a single interval (`DEFAULT_CANDLE = '15m'`). For SMC + AVRZ you want both:
+
+- **5m**: entry/trigger timeframe (micro structure)
+- **15m**: regime/structure timeframe (trend + larger zones)
+
+Recommended snapshot shape (additive; keep existing keys for backward compatibility):
+
+- `md[:timeframes][:m5]` and `md[:timeframes][:m15]`
+  - each includes: `ohlc`, `atr`, `rsi`, `macd`, `supertrend`, `hi20`, `lo20`, `liq_up`, `liq_dn`
+
+### Step 2 — Add a dedicated SMC analyzer (SMC-lite, intention-revealing outputs)
+
+Create a focused class, e.g. `Market::SmcAnalyzer`, that takes a `CandleSeries` and returns a small hash of actionable structure data.
+
+Avoid ambiguous names and “do everything” objects. This analyzer should return predictable keys, for example:
+
+- **Trend/legs**
+  - `:market_structure` → `:bullish | :bearish | :range`
+  - `:last_swing_high`, `:last_swing_low`
+- **Events**
+  - `:last_bos` → `{ direction:, level:, ts: }` (or `nil`)
+  - `:last_choch` → `{ direction:, level:, ts: }` (or `nil`)
+- **Zones**
+  - `:nearest_order_block` → `{ direction:, high:, low:, ts: }` (or `nil`)
+  - `:nearest_fvg` → `{ direction:, high:, low:, ts: }` (or `nil`)
+- **Liquidity**
+  - `:buy_side_liquidity` / `:sell_side_liquidity` → arrays of levels or a nearest level + distance
+
+Then attach per timeframe:
+
+- `md[:smc][:m5] = Market::SmcAnalyzer.new(series_5m).call`
+- `md[:smc][:m15] = Market::SmcAnalyzer.new(series_15m).call`
+
+### Step 3 — Add VWAP/AVWAP + AVRZ (value zones) in a dedicated calculator
+
+Create:
+
+- `Market::VwapCalculator` (VWAP + anchored VWAP)
+- `Market::AvrzCalculator` (builds the AVRZ bands)
+
+Definitions used in this app:
+
+- **VWAP**: session VWAP on the chosen timeframe
+- **AVWAP**: VWAP anchored from a meaningful event
+  - session open
+  - IB start (if you add IB)
+  - last BOS candle time (SMC-driven anchor)
+- **AVRZ (Average Volatility Range Zone)**: a volatility-derived “fair value zone” around a VWAP/AVWAP center, adjusted by volatility regime
+
+Recommended snapshot shape:
+
+- `md[:value][:m5]  = { vwap:, avwap_open:, avwap_bos:, avrz: { mid:, low:, high:, width_points:, regime: } }`
+- `md[:value][:m15] = { vwap:, avwap_open:, avwap_bos:, avrz: { mid:, low:, high:, width_points:, regime: } }`
+
+AVRZ width policy (simple and explicit):
+
+- `mid = avwap_open_15m` (fallback to `vwap_15m`)
+- `base = atr_15m` (or `min(atr_15m, 0.75% of LTP)` if you want a clamp)
+- widen/shrink based on `md[:regime]` (VIX/IV flags)
+- final range can be “snapped” to nearby SMC levels (nearest liquidity pool / OB boundary) to respect structure
+
+### Step 4 — Feed SMC + AVRZ into the prompt (stop making the model guess)
+
+Update `Market::PromptBuilder` to print explicit sections such as:
+
+- `=== 15m STRUCTURE (SMC) ===` (regime: structure, BOS/CHOCH, key zones, nearest liquidity)
+- `=== 5m STRUCTURE (SMC) ===` (trigger: recent BOS/CHOCH, distances)
+- `=== VALUE ZONES (VWAP/AVWAP/AVRZ) ===`
+  - include `vwap`, `avwap_open`, `avwap_bos`, and `avrz low/mid/high` for both 5m and 15m
+
+Then tighten the model instructions:
+
+- **Options suggestion**
+  - “Only recommend CE buys if 15m structure is bullish AND 5m has a bullish BOS/CHOCH confirmation, and price is above VWAP/AVWAP and not directly into a bearish OB/FVG.”
+  - Equivalent rule for PE buys.
+- **Closing range**
+  - “Use AVRZ-15m as the primary close range; widen/shrink based on VIX regime; adjust to nearest structure levels.”
+
+### Step 5 — Minimal tests (so the logic doesn’t rot)
+
+Add focused specs with small fixtures / synthetic candles:
+
+- `spec/services/market/smc_analyzer_spec.rb`
+  - detects BOS/CHOCH and returns expected levels
+- `spec/services/market/vwap_calculator_spec.rb`
+  - VWAP/AVWAP math sanity (small arrays)
+- `spec/services/market/avrz_calculator_spec.rb`
+  - zone width changes with regime flags
+- `spec/services/market/prompt_builder_spec.rb`
+  - prompt includes the new “SMC” and “AVRZ” sections when fields exist
+
+This keeps responsibilities explicit and makes future tuning safe.
+
 ## Telegram commands (what users type)
 
 ### Index AI analysis (report comes later)
