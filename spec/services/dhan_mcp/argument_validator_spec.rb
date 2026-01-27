@@ -16,6 +16,11 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
     it 'returns empty hash for non-hash' do
       expect(described_class.symbolize('foo')).to eq({})
     end
+
+    it 'accepts symbol keys unchanged' do
+      result = described_class.symbolize(exchange_segment: 'NSE_EQ', symbol: 'RELIANCE')
+      expect(result).to eq(exchange_segment: 'NSE_EQ', symbol: 'RELIANCE')
+    end
   end
 
   describe '.validate' do
@@ -40,6 +45,10 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
         expect(described_class.validate('get_order_by_id', {})).to eq('Missing required argument(s): order_id')
       end
 
+      it 'returns error when order_id is nil' do
+        expect(described_class.validate('get_order_by_id', { order_id: nil })).to eq('order_id must be non-empty.')
+      end
+
       it 'returns error when order_id is blank' do
         expect(described_class.validate('get_order_by_id', { order_id: '  ' })).to eq('order_id must be non-empty.')
       end
@@ -54,7 +63,11 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
         expect(described_class.validate('get_order_by_correlation_id', {})).to eq('Missing required argument(s): correlation_id')
       end
 
-      it 'returns nil when correlation_id is present' do
+      it 'returns error when correlation_id is blank' do
+        expect(described_class.validate('get_order_by_correlation_id', { correlation_id: '' })).to eq('correlation_id must be non-empty.')
+      end
+
+      it 'returns nil when correlation_id is present and non-empty' do
         expect(described_class.validate('get_order_by_correlation_id', { correlation_id: 'ref-1' })).to be_nil
       end
     end
@@ -64,7 +77,11 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
         expect(described_class.validate('get_trade_book', {})).to eq('Missing required argument(s): order_id')
       end
 
-      it 'returns nil when order_id is present' do
+      it 'returns error when order_id is blank' do
+        expect(described_class.validate('get_trade_book', { order_id: "\t " })).to eq('order_id must be non-empty.')
+      end
+
+      it 'returns nil when order_id is present and non-empty' do
         expect(described_class.validate('get_trade_book', { order_id: 'ORD123' })).to be_nil
       end
     end
@@ -86,6 +103,16 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
             err = described_class.validate(tool, { exchange_segment: 'INVALID', symbol: 'RELIANCE' })
             expect(err).to include('exchange_segment must be one of:')
             expect(err).to include('NSE_EQ')
+          end
+
+          it 'returns error when exchange_segment is blank' do
+            err = described_class.validate(tool, { exchange_segment: '  ', symbol: 'RELIANCE' })
+            expect(err).to eq('exchange_segment must be non-empty.')
+          end
+
+          it 'returns error when symbol is blank' do
+            err = described_class.validate(tool, { exchange_segment: 'NSE_EQ', symbol: '' })
+            expect(err).to eq('symbol must be non-empty.')
           end
 
           it 'returns nil when both are valid' do
@@ -132,6 +159,16 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
         expect(err).to eq('from_date must be YYYY-MM-DD.')
       end
 
+      it 'returns error when from_date is blank' do
+        err = described_class.validate('get_trade_history', { from_date: '  ', to_date: today.to_s })
+        expect(err).to eq('from_date must be non-empty.')
+      end
+
+      it 'returns error when to_date is blank' do
+        err = described_class.validate('get_trade_history', { from_date: last_trading_day.to_s, to_date: '' })
+        expect(err).to eq('to_date must be non-empty.')
+      end
+
       it 'returns error when page_number is negative' do
         err = described_class.validate('get_trade_history', {
           from_date: last_trading_day.to_s,
@@ -168,6 +205,16 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
         expect(err).to include('from_date must be the last trading day')
       end
 
+      it 'returns error when symbol is blank' do
+        err = described_class.validate('get_historical_daily_data', {
+          exchange_segment: 'NSE_EQ',
+          symbol: '',
+          from_date: last_trading_day.to_s,
+          to_date: today.to_s
+        })
+        expect(err).to eq('symbol must be non-empty.')
+      end
+
       it 'returns nil when segment, symbol and date range are valid' do
         expect(described_class.validate('get_historical_daily_data', {
           exchange_segment: 'NSE_EQ',
@@ -181,6 +228,10 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
     describe 'get_intraday_minute_data' do
       let(:today) { Time.zone.today }
       let(:last_trading_day) { MarketCalendar.last_trading_day(from: today - 1) }
+
+      it 'returns error when required args are missing' do
+        expect(described_class.validate('get_intraday_minute_data', {})).to include('Missing required argument(s)')
+      end
 
       it 'returns error when interval is invalid' do
         err = described_class.validate('get_intraday_minute_data', {
@@ -215,6 +266,12 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
     end
 
     describe 'get_option_chain' do
+      it 'returns error when required args are missing' do
+        expect(described_class.validate('get_option_chain', {})).to include('Missing required argument(s)')
+        err = described_class.validate('get_option_chain', { exchange_segment: 'NSE_FNO', symbol: 'NIFTY' })
+        expect(err).to eq('Missing required argument(s): expiry')
+      end
+
       it 'returns error when expiry format is invalid' do
         err = described_class.validate('get_option_chain', {
           exchange_segment: 'NSE_FNO',
@@ -224,12 +281,29 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
         expect(err).to eq('expiry must be YYYY-MM-DD.')
       end
 
+      it 'returns error when symbol is blank' do
+        err = described_class.validate('get_option_chain', {
+          exchange_segment: 'NSE_FNO',
+          symbol: '  ',
+          expiry: '2025-01-30'
+        })
+        expect(err).to eq('symbol must be non-empty.')
+      end
+
       it 'returns nil when all args are valid' do
         expect(described_class.validate('get_option_chain', {
           exchange_segment: 'NSE_FNO',
           symbol: 'NIFTY',
           expiry: '2025-01-30'
         })).to be_nil
+      end
+    end
+
+    describe 'validation with string-keyed args' do
+      it 'validates correctly when args use string keys' do
+        expect(described_class.validate('get_instrument', { 'exchange_segment' => 'NSE_EQ', 'symbol' => 'RELIANCE' })).to be_nil
+        err = described_class.validate('get_instrument', { 'exchange_segment' => 'NSE_EQ' })
+        expect(err).to eq('Missing required argument(s): symbol')
       end
     end
 

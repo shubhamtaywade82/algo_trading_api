@@ -17,7 +17,11 @@ class Instrument < ApplicationRecord
   accepts_nested_attributes_for :margin_requirements, allow_destroy: true
   accepts_nested_attributes_for :order_features, allow_destroy: true
 
-  # Enums
+  # Enums (explicit attribute types for Rails 8)
+  attribute :exchange, :string
+  attribute :segment, :string
+  attribute :instrument, :string
+
   enum :exchange, { nse: 'NSE', bse: 'BSE', mcx: 'MCX' }
   enum :segment, { index: 'I', equity: 'E', currency: 'C', derivatives: 'D', commodity: 'M' }, prefix: true
   enum :instrument, {

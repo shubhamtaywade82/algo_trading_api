@@ -26,5 +26,15 @@ RSpec.describe DhanMcpService, type: :service, mcp: true do
         expect(tool_names).to include(name), "expected tool #{name} to be listed"
       end
     end
+
+    it 'returns valid JSON-RPC for unknown method' do
+      server = described_class.build_server
+      body = { jsonrpc: '2.0', id: 99, method: 'unknown/method' }.to_json
+      result = server.handle_json(body)
+      parsed = JSON.parse(result)
+      expect(parsed['jsonrpc']).to eq('2.0')
+      expect(parsed['id']).to eq(99)
+      expect(parsed.key?('error') || parsed.key?('result')).to be true
+    end
   end
 end
