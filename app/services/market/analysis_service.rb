@@ -37,6 +37,8 @@ module Market
       return log_missing unless instrument
 
       candle_series = instrument.candle_series(interval: @candle.delete_suffix('m'))
+      return nil if candle_series.candles.blank?
+
       md = build_market_snapshot(candle_series)
 
       sleep(1.5)
@@ -89,7 +91,7 @@ module Market
             high: session_state == :live ? PriceMath.round_tick(series.highs.last) : PriceMath.round_tick(series.highs.second_to_last),
             low: session_state == :live ? PriceMath.round_tick(series.lows.last) : PriceMath.round_tick(series.lows.second_to_last),
             close: session_state == :live ? PriceMath.round_tick(series.closes.last) : PriceMath.round_tick(series.closes.second_to_last),
-            volume: series.candles.last.volume
+            volume: series.candles.last&.volume.to_f
           },
           prev_day: prev_day,
           boll: series.bollinger_bands(period: 20),
