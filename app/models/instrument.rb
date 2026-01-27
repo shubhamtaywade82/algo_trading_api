@@ -40,9 +40,6 @@ class Instrument < ApplicationRecord
   # Validations
   validates :security_id, presence: true
 
-  # Scopes
-  scope :expiring_soon, -> { where(expiry_flag: '1') }
-
   # Class Methods
 
   # Define searchable attributes for Ransack
