@@ -122,7 +122,13 @@ class DhanMcpService
         properties: { order_id: { type: "string", description: "The Dhan order ID" } },
         required: ["order_id"]
       }
-    ) { |order_id:, server_context:| svc.send(:dhan, fmt) { ::DhanHQ::Models::Order.find(order_id) } }
+    ) do |order_id:, server_context:|
+      if (err = DhanMcp::ArgumentValidator.validate("get_order_by_id", { order_id: order_id }))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { ::DhanHQ::Models::Order.find(order_id) }
+      end
+    end
   end
 
   def define_order_by_correlation_id(svc, fmt)
@@ -133,7 +139,13 @@ class DhanMcpService
         properties: { correlation_id: { type: "string", description: "The correlation ID" } },
         required: ["correlation_id"]
       }
-    ) { |correlation_id:, server_context:| svc.send(:dhan, fmt) { ::DhanHQ::Models::Order.find_by_correlation(correlation_id) } }
+    ) do |correlation_id:, server_context:|
+      if (err = DhanMcp::ArgumentValidator.validate("get_order_by_correlation_id", { correlation_id: correlation_id }))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { ::DhanHQ::Models::Order.find_by_correlation(correlation_id) }
+      end
+    end
   end
 
   def define_trade_book(svc, fmt)
@@ -144,7 +156,13 @@ class DhanMcpService
         properties: { order_id: { type: "string", description: "The Dhan order ID" } },
         required: ["order_id"]
       }
-    ) { |order_id:, server_context:| svc.send(:dhan, fmt) { ::DhanHQ::Models::Trade.find_by_order_id(order_id) } }
+    ) do |order_id:, server_context:|
+      if (err = DhanMcp::ArgumentValidator.validate("get_trade_book", { order_id: order_id }))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { ::DhanHQ::Models::Trade.find_by_order_id(order_id) }
+      end
+    end
   end
 
   def define_trade_history(svc, fmt)
@@ -160,7 +178,12 @@ class DhanMcpService
         required: %w[from_date to_date]
       }
     ) do |from_date:, to_date:, page_number: 0, server_context:|
-      svc.send(:dhan, fmt) { ::DhanHQ::Models::Trade.history(from_date: from_date, to_date: to_date, page: page_number) }
+      args = { from_date: from_date, to_date: to_date, page_number: page_number }
+      if (err = DhanMcp::ArgumentValidator.validate("get_trade_history", args))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { ::DhanHQ::Models::Trade.history(from_date: from_date, to_date: to_date, page: page_number) }
+      end
     end
   end
 
@@ -176,7 +199,12 @@ class DhanMcpService
         required: %w[exchange_segment symbol]
       }
     ) do |exchange_segment:, symbol:, server_context:|
-      svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol) }
+      args = { exchange_segment: exchange_segment, symbol: symbol }
+      if (err = DhanMcp::ArgumentValidator.validate("get_instrument", args))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol) }
+      end
     end
   end
 
@@ -194,7 +222,12 @@ class DhanMcpService
         required: %w[exchange_segment symbol from_date to_date]
       }
     ) do |exchange_segment:, symbol:, from_date:, to_date:, server_context:|
-      svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).daily(from_date: from_date, to_date: to_date) }
+      args = { exchange_segment: exchange_segment, symbol: symbol, from_date: from_date, to_date: to_date }
+      if (err = DhanMcp::ArgumentValidator.validate("get_historical_daily_data", args))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).daily(from_date: from_date, to_date: to_date) }
+      end
     end
   end
 
@@ -213,12 +246,17 @@ class DhanMcpService
         required: %w[exchange_segment symbol from_date to_date]
       }
     ) do |exchange_segment:, symbol:, from_date:, to_date:, interval: "1", server_context:|
-      from_ts = from_date.to_s.include?(" ") ? from_date : "#{from_date} 09:15:00"
-      to_ts = to_date.to_s.include?(" ") ? to_date : "#{to_date} 15:30:00"
-      svc.send(:dhan, fmt) do
-        svc.send(:resolve_instrument, exchange_segment, symbol).intraday(
-          from_date: from_ts, to_date: to_ts, interval: interval
-        )
+      args = { exchange_segment: exchange_segment, symbol: symbol, from_date: from_date, to_date: to_date, interval: interval }
+      if (err = DhanMcp::ArgumentValidator.validate("get_intraday_minute_data", args))
+        fmt.call({ error: err })
+      else
+        from_ts = from_date.to_s.include?(" ") ? from_date : "#{from_date} 09:15:00"
+        to_ts = to_date.to_s.include?(" ") ? to_date : "#{to_date} 15:30:00"
+        svc.send(:dhan, fmt) do
+          svc.send(:resolve_instrument, exchange_segment, symbol).intraday(
+            from_date: from_ts, to_date: to_ts, interval: interval
+          )
+        end
       end
     end
   end
@@ -235,7 +273,12 @@ class DhanMcpService
         required: %w[exchange_segment symbol]
       }
     ) do |exchange_segment:, symbol:, server_context:|
-      svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).ohlc }
+      args = { exchange_segment: exchange_segment, symbol: symbol }
+      if (err = DhanMcp::ArgumentValidator.validate("get_market_ohlc", args))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).ohlc }
+      end
     end
   end
 
@@ -252,7 +295,12 @@ class DhanMcpService
         required: %w[exchange_segment symbol expiry]
       }
     ) do |exchange_segment:, symbol:, expiry:, server_context:|
-      svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).option_chain(expiry: expiry) }
+      args = { exchange_segment: exchange_segment, symbol: symbol, expiry: expiry }
+      if (err = DhanMcp::ArgumentValidator.validate("get_option_chain", args))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).option_chain(expiry: expiry) }
+      end
     end
   end
 
@@ -268,7 +316,12 @@ class DhanMcpService
         required: %w[exchange_segment symbol]
       }
     ) do |exchange_segment:, symbol:, server_context:|
-      svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).expiry_list }
+      args = { exchange_segment: exchange_segment, symbol: symbol }
+      if (err = DhanMcp::ArgumentValidator.validate("get_expiry_list", args))
+        fmt.call({ error: err })
+      else
+        svc.send(:dhan, fmt) { svc.send(:resolve_instrument, exchange_segment, symbol).expiry_list }
+      end
     end
   end
 

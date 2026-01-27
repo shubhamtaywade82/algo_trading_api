@@ -203,5 +203,3 @@ RSpec.describe AlertProcessors::Index, type: :service do
     end
   end
 end
-  end
-end

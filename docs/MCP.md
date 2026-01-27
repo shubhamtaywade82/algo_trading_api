@@ -15,6 +15,24 @@ The app exposes a **read-only** DhanHQ MCP server over HTTP. AI assistants (e.g.
 
 Empty or invalid JSON body returns **400** with a JSON-RPC parse error.
 
+## Argument validation
+
+The server validates tool arguments **before** calling the Dhan API. Invalid or missing arguments produce a clear error in `result.content[].text` (e.g. `"Error: Missing required argument(s): symbol"`), so the model can correct and retry.
+
+Validation rules:
+
+| Rule | Applies to | Example |
+|------|------------|---------|
+| **Required args** | All tools with params | `get_instrument` needs `exchange_segment` and `symbol` |
+| **Non-empty strings** | `order_id`, `correlation_id`, `symbol`, etc. | `"symbol": ""` → error |
+| **exchange_segment** | Instrument/market/options tools | Must be one of: `IDX_I`, `NSE_EQ`, `NSE_FNO`, `BSE_EQ`, `NSE_CURRENCY`, `MCX_COMM`, `BSE_CURRENCY`, `BSE_FNO` |
+| **Dates** | `from_date`, `to_date`, `expiry` | `YYYY-MM-DD` for daily/history/expiry; `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` for intraday |
+| **to_date / from_date** | `get_trade_history`, `get_historical_daily_data`, `get_intraday_minute_data` | **to_date must be today.** **from_date must be the last trading day before to_date** (NSE/BSE calendar via `MarketCalendar`). Any other combination is rejected. |
+| **interval** | `get_intraday_minute_data` | One of: `1`, `5`, `15`, `25`, `60` |
+| **page_number** | `get_trade_history` | Non-negative integer |
+
+Implementation: `DhanMcp::ArgumentValidator` (see `app/services/dhan_mcp/argument_validator.rb`). Tools with no arguments (e.g. `get_holdings`) are not validated for extra keys.
+
 ## Protocol
 
 All requests are JSON-RPC 2.0. To call a tool, use `method: "tools/call"` and pass `name` and `arguments` in `params`.
@@ -149,8 +167,11 @@ A local config example lives in `.cursor/mcp.json`; you can point it at the prod
 ## Implementation notes
 
 - **Controller**: `McpController#index` — reads body, returns 400 when body is blank, otherwise forwards to the MCP server.
-- **Service**: `DhanMcpService` — builds the `MCP::Server`, defines all tools, and uses the DhanHQ gem under the hood.
+- **Service**: `DhanMcpService` — builds the `MCP::Server`, defines all tools, and uses the DhanHQ gem under the hood. Each tool that takes arguments runs `DhanMcp::ArgumentValidator.validate(tool_name, args)` before calling Dhan; invalid args return an error string in the usual `Error: …` format.
+- **Validator**: `DhanMcp::ArgumentValidator` — validates required/optional args, `exchange_segment` enum, date formats, `interval`, and `page_number`. Returns `nil` if valid, or a short error message string.
 - **Config**: `config/initializers/dhan_mcp.rb` — builds the server at boot and stores it in `Rails.application.config.x.dhan_mcp_server`.
 - **Route**: `POST /mcp` → `mcp#index`.
 
 All tools are read-only; no orders or modifications are performed via the MCP.
+
+**Running MCP specs:** `bundle exec rspec --tag mcp`
