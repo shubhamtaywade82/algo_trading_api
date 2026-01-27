@@ -14,8 +14,6 @@ module Openai
                   max_tokens: nil,
                   force: false)
       mdl = resolve_model(model, force, "#{system} #{user_prompt}")
-
-      pp mdl
       params = {
         model: mdl,
         messages: [
@@ -23,7 +21,7 @@ module Openai
           { role: 'user',   content: user_prompt }
         ]
       }
-      params[:max_tokens] = max_tokens if max_tokens
+      params[:max_completion_tokens] = max_tokens if max_tokens
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
       resp = Client.instance.chat(parameters: params)
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
