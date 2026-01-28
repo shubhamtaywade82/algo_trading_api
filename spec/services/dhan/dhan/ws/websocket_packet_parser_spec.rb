@@ -1,8 +1,9 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
-RSpec.describe Dhan::Ws::WebsocketPacketParser do
+RSpec.describe DhanHQ::WS::WebsocketPacketParser do
   let(:binary_data) { Rails.root.join('spec/fixtures/ws/full_packet_13.bin').binread }
-
   let(:parsed) { described_class.new(binary_data).parse }
 
   it 'parses FullPacket correctly for security_id 13' do
@@ -22,14 +23,14 @@ RSpec.describe Dhan::Ws::WebsocketPacketParser do
     depth = parsed[:market_depth]
     expect(depth.size).to eq(5)
 
-    expect(depth[0][:ask_price]).to be_within(0.5).of(5971.0)
-    expect(depth[0][:ask_quantity]).to eq(289)
-    expect(depth[0][:no_of_ask_orders]).to eq(8)
+    # Gem returns BinData records (struct-like)
+    expect(depth[0].ask_price).to be_within(0.5).of(5971.0)
+    expect(depth[0].ask_quantity).to eq(289)
+    expect(depth[0].no_of_ask_orders).to eq(8)
 
-    # Ensure rest of depth is zeroed out
-    depth[1..4].each do |d|
-      expect(d[:ask_price]).to eq(0.0)
-      expect(d[:ask_quantity]).to eq(0)
+    depth[1..4].each do |level|
+      expect(level.ask_price).to eq(0.0)
+      expect(level.ask_quantity).to eq(0)
     end
   end
 end

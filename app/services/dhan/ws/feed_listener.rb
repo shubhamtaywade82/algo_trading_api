@@ -110,8 +110,10 @@ module Dhan
       def self.handle_message(data)
         return unless data.is_a?(String) && !data.start_with?('[')
 
-        packet = WebsocketPacketParser.new(data).parse
+        packet = DhanHQ::WS::WebsocketPacketParser.new(data).parse
         return if packet.blank?
+
+        packet = normalize_market_depth(packet)
 
         # log_ltp_change(packet)
         case packet[:feed_response_code]
@@ -156,6 +158,26 @@ module Dhan
                        Instrument.find_by(security_id: security_id) # fallback if unknown
                      end
         @instrument_cache[cache_key] = instrument
+      end
+
+      # DhanHQ::WS::WebsocketPacketParser returns market_depth as BinData records; convert to hashes for handlers.
+      def self.normalize_market_depth(packet)
+        return packet unless packet[:market_depth].is_a?(Array)
+
+        packet = packet.dup
+        packet[:market_depth] = packet[:market_depth].map do |level|
+          next level if level.is_a?(Hash)
+
+          {
+            bid_quantity: level.bid_quantity,
+            ask_quantity: level.ask_quantity,
+            no_of_bid_orders: level.no_of_bid_orders,
+            no_of_ask_orders: level.no_of_ask_orders,
+            bid_price: level.bid_price,
+            ask_price: level.ask_price
+          }
+        end
+        packet
       end
 
       def self.log_ltp_change(packet)

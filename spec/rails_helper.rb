@@ -38,13 +38,7 @@ rescue ActiveRecord::PendingMigrationError => e
   abort e.to_s.strip
 end
 
-# Suppress BinData "replacing registered class" when app Dhan::Ws::Packets shadow the gem's
-$rspec_original_verbose = nil
-
 RSpec.configure do |config|
-  config.before(:suite) { $rspec_original_verbose = $VERBOSE; $VERBOSE = nil }
-  config.after(:suite) { $VERBOSE = $rspec_original_verbose if $rspec_original_verbose }
-
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
   config.fixture_paths = [
     Rails.root.join('spec/fixtures')
