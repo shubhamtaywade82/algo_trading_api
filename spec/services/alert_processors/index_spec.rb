@@ -92,12 +92,20 @@ RSpec.describe AlertProcessors::Index, type: :service do
   before do
     allow(processor).to receive(:available_balance).and_return(100_000.0)
     allow(processor).to receive(:dhan_positions).and_return([])
+    allow(processor).to receive(:daily_loss_guard_ok?).and_return(true)
+    allow(processor).to receive(:current_atr_pct).and_return(nil)
+    allow(processor).to receive(:instrument).and_return(instrument)
+    allow(instrument).to receive(:expiry_list).and_return([expiry_date])
+    allow(instrument).to receive(:fetch_option_chain).and_return(option_chain_data)
 
+    allow(Option::ChainAnalyzer).to receive(:estimate_iv_rank).and_return(0.5)
+    allow(Option::HistoricalDataFetcher).to receive(:for_strategy).and_return([])
     analyzer_double = instance_double('Option::ChainAnalyzer', analyze: analyzer_result)
     allow(Option::ChainAnalyzer).to receive(:new).and_return(analyzer_double)
 
     allow(processor).to receive(:fetch_derivative).and_return(derivative)
     allow(processor).to receive(:place_order!).and_return(true)
+    allow(processor).to receive(:option_ltp).and_return(100.0)
     allow(processor).to receive(:notify)
     allow(Rails.logger).to receive(:info)
     allow(Rails.logger).to receive(:error)
@@ -106,6 +114,8 @@ RSpec.describe AlertProcessors::Index, type: :service do
 
   describe '#call' do
     context 'when processing is successful' do
+      before { allow(processor).to receive(:place_super_order!).and_return(true) }
+
       it 'places an order and updates alert status to processed', vcr: { cassette_name: 'dhan/option_expiry_list' } do
         expect { processor.call }.to change { alert.reload.status }
           .from('pending').to('processed')
@@ -126,7 +136,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
 
       it 'skips processing and updates alert as skipped', vcr: { cassette_name: 'dhan/option_expiry_list' } do
         expect { processor.call }.to change { alert.reload.status }
-          .from('pending').to('processed')
+          .from('pending').to('skipped')
 
         expect(alert.reload.error_message).to eq('no viable strike')
       end
@@ -134,31 +144,36 @@ RSpec.describe AlertProcessors::Index, type: :service do
 
     context 'when a StandardError occurs' do
       before do
-        allow(processor).to receive(:place_order!).and_raise('no_affordable_strike')
+        allow(processor).to receive(:place_order!).and_raise(StandardError.new('no_affordable_strike'))
+        allow(processor).to receive(:place_super_order!).and_raise(StandardError.new('no_affordable_strike'))
+        allow(processor).to receive(:dry_run).and_raise(StandardError.new('no_affordable_strike'))
       end
 
       it 'updates alert as failed and logs error', vcr: { cassette_name: 'dhan/option_expiry_list' } do
-        expect do
-          processor.call
-        end.not_to raise_error
+        expect { processor.call }.not_to raise_error
 
         alert.reload
-        expect(alert.status).to eq('processed')
+        expect(alert.status).to eq('failed')
         expect(alert.error_message).to eq('no_affordable_strike')
       end
     end
 
     context 'when dry-run mode is active' do
       before do
-        stub_const('ENV', ENV.to_hash.merge('PLACE_ORDER' => 'false'))
+        allow(processor).to receive(:place_order!) { raise 'should not place' }
+        allow(processor).to receive(:place_super_order!) { raise 'should not place' }
         allow(processor).to receive(:dry_run).and_call_original
+        @orig_place_order = ENV['PLACE_ORDER']
+        ENV['PLACE_ORDER'] = 'false'
       end
+
+      after { ENV['PLACE_ORDER'] = @orig_place_order }
 
       it 'performs dry-run instead of placing real order', vcr: { cassette_name: 'dhan/option_expiry_list' } do
         processor.call
 
-        expect(alert.reload.status).to eq('processed')
-        expect(alert.error_message).to eq('no_affordable_strike')
+        expect(alert.reload.status).to eq('skipped')
+        expect(alert.error_message).to eq('PLACE_ORDER disabled')
       end
     end
 
@@ -171,7 +186,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
 
       it 'skips processing and logs a message', vcr: { cassette_name: 'dhan/option_expiry_list' } do
         expect { processor.call }.to change { alert.reload.status }
-          .from('pending').to('processed')
+          .from('pending').to('skipped')
 
         expect(alert.reload.error_message).to eq('no_affordable_strike')
       end

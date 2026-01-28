@@ -85,13 +85,12 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
 
         it 'calculates correct quantity for medium account' do
           # Allocation: 1L * 0.25 = 25K, 25K / 15K = 1 lot
-          # Risk: 1L * 0.035 = 3.5K, 15K * 0.15 = 2.25K risk/lot, 3.5K / 2.25K = 1 lot
+          # Risk: 1L * 0.035 = 3.5K, 15K * 0.18 = 2.7K risk/lot, 3.5K / 2.7K = 1 lot
           # Affordability: 1L / 15K = 6 lots
           # Min of [1, 1, 6] = 1 lot
-          # But the graceful 1-lot allowance kicks in, so we get 2 lots
 
           quantity = processor.send(:calculate_quantity, strike, lot_size)
-          expect(quantity).to eq(150) # 2 lots * 75 lot_size
+          expect(quantity).to eq(75) # 1 lot * 75 lot_size
         end
       end
 
@@ -100,13 +99,12 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
 
         it 'calculates correct quantity for large account' do
           # Allocation: 2L * 0.20 = 40K, 40K / 15K = 2 lots
-          # Risk: 2L * 0.030 = 6K, 15K * 0.15 = 2.25K risk/lot, 6K / 2.25K = 2 lots
+          # Risk: 2L * 0.030 = 6K, 15K * 0.18 = 2.7K risk/lot, 6K / 2.7K = 2 lots
           # Affordability: 2L / 15K = 13 lots
           # Min of [2, 2, 13] = 2 lots
-          # But the graceful 1-lot allowance kicks in, so we get 3 lots
 
           quantity = processor.send(:calculate_quantity, strike, lot_size)
-          expect(quantity).to eq(225) # 3 lots * 75 lot_size
+          expect(quantity).to eq(150) # 2 lots * 75 lot_size
         end
       end
 

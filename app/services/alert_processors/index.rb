@@ -32,17 +32,6 @@ module AlertProcessors
     DEFAULT_TRAIL_JUMP_PCT = 0.06      # trail every ~6 % move in price
     USE_SUPER_ORDER        = ENV.fetch('USE_SUPER_ORDER', 'true') == 'true'
 
-    # ──────────────────────────────────────────────────────────────────
-    # Capital-aware deployment policy
-    # ──────────────────────────────────────────────────────────────────
-    # Bands are inclusive upper-bounds. Tweak as you like.
-    CAPITAL_BANDS = [
-      { upto: 75_000, alloc_pct: 0.30, risk_per_trade_pct: 0.050, daily_max_loss_pct: 0.050 }, # small a/c (≈ ₹50k)
-      { upto: 150_000,  alloc_pct: 0.25, risk_per_trade_pct: 0.035, daily_max_loss_pct: 0.060 }, # ≈ ₹1L
-      { upto: 300_000,  alloc_pct: 0.20, risk_per_trade_pct: 0.030, daily_max_loss_pct: 0.060 }, # ≈ ₹2–3L
-      { upto: Float::INFINITY, alloc_pct: 0.20, risk_per_trade_pct: 0.025, daily_max_loss_pct: 0.050 }
-    ].freeze
-
     # Entry-point that the Sidekiq job / controller calls
     # ----------------------------------------------------------------
     def call
@@ -51,7 +40,7 @@ module AlertProcessors
       return skip!(:validation_failed) unless pre_trade_validation
 
       execute_trade_plan!
-      alert.update!(status: :processed)
+      alert.update!(status: :processed) unless alert.status == 'skipped'
     rescue StandardError => e
       # Handle market-closed errors by skipping instead of failing
       if e.message.include?('Market is closed')
@@ -86,13 +75,6 @@ module AlertProcessors
       'short_exit' => :pe
     }.freeze
 
-    SIGNAL_TO_SIDE = {
-      'long_entry' => 'BUY',
-      'short_entry' => 'BUY',
-      'long_exit' => 'SELL',
-      'short_exit' => 'SELL'
-    }.freeze
-
     # ----------------------------------------------------------------
 
     # -- Main orchestration ---------------------------------------------------
@@ -113,7 +95,8 @@ module AlertProcessors
       log :info, "Proceed? => #{result[:proceed]}"
 
       unless result[:proceed]
-        skip_reason = build_detailed_skip_reason(result)
+        skip_reason = IndexSkipReasonBuilder.build(result)
+        log :warn, "Signal skipped - #{skip_reason}"
         return skip!(skip_reason)
       end
 
@@ -155,11 +138,13 @@ module AlertProcessors
         return skip!(:no_derivative)
       end
 
-      quantity = calculate_quantity(strike, derivative.lot_size)
+      sizing = quantity_calculator_result(strike, derivative.lot_size)
+      quantity = sizing[:quantity]
       if quantity.zero?
-        log :warn, "🚫 Calculated quantity is 0 for #{format_strike(strike)}"
+        log_sizing_failure(strike, sizing)
         return skip!(:invalid_quantity)
       end
+      log_sizing_success(strike, derivative.lot_size, sizing) if sizing[:lots]
 
       if USE_SUPER_ORDER
         order = build_super_order_payload(strike, derivative, quantity)
@@ -167,7 +152,7 @@ module AlertProcessors
 
         ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
       else
-        order = build_order_payload(strike, derivative, quantity) # ← legacy 1-leg
+        order = build_legacy_order_payload(derivative, quantity)
         ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
       end
     end
@@ -312,16 +297,13 @@ module AlertProcessors
     end
 
     # -- Order building & execution ------------------------------------------
-    def build_order_payload(strike, derivative, quantity)
-      {
-        transaction_type: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY / SELL
-        order_type: alert[:order_type].to_s.upcase, # MARKET / LIMIT
-        product_type: 'MARGIN',
-        validity: 'DAY',
-        security_id: derivative.security_id,
-        exchange_segment: derivative.exchange_segment,
-        quantity: quantity
-      }
+    def build_legacy_order_payload(derivative, quantity)
+      IndexOrderPayloadBuilder.build_legacy(
+        derivative: derivative,
+        quantity: quantity,
+        signal_type: alert[:signal_type],
+        order_type: alert[:order_type]
+      )
     end
 
     def build_super_order_payload(strike, derivative, quantity)
@@ -332,19 +314,16 @@ module AlertProcessors
       end
 
       rr = rrules_for(live) || rrules_for(strike[:last_price])
-      pp rr, live
-      {
-        transaction_type: SIGNAL_TO_SIDE.fetch(alert[:signal_type]), # BUY
-        exchange_segment: derivative.exchange_segment,
-        product_type: 'MARGIN',
-        order_type: alert[:order_type].to_s.upcase, # MARKET/LIMIT
-        security_id: derivative.security_id,
+      IndexOrderPayloadBuilder.build_super(
+        derivative: derivative,
         quantity: quantity,
-        price: live.to_f, # entry price
-        target_price: rr[:target],
-        stop_loss_price: rr[:stop_loss],
+        signal_type: alert[:signal_type],
+        order_type: alert[:order_type],
+        entry_price: live.to_f,
+        stop_loss: rr[:stop_loss],
+        target: rr[:target],
         trailing_jump: rr[:trail_jump]
-      }
+      )
     end
 
     def place_order!(params)
@@ -406,7 +385,7 @@ module AlertProcessors
     # Returns nil if no fresh row (<10 min old) exists.
     # ────────────────────────────────────────────────────────────
     def current_atr_pct
-      row = IntradayAnalysis.for(instrument.underlying_symbol, '5m')
+      row = IntradayAnalysis.for_symbol_timeframe(instrument.underlying_symbol, '5m')
       return nil unless row && row.calculated_at > 10.minutes.ago
 
       row.atr_pct.to_f # eg 0.0082  ( = 0.82 %)
@@ -422,20 +401,13 @@ module AlertProcessors
       notify(<<~MSG.strip, tag: 'DRYRUN')
         💡 DRY-RUN (PLACE_ORDER=false) – Alert ##{alert.id}
         • Symbol: #{instrument.symbol_name}
-        • Type: #{params[:transactionType]}
+        • Type: #{params[:transaction_type]}
         • Qty: #{params[:quantity]}
       MSG
     end
 
-    # -- Capital-aware deployment policy --------------------------------------
     def deployment_policy(balance = available_balance.to_f)
-      band = CAPITAL_BANDS.find { |b| balance <= b[:upto] } || CAPITAL_BANDS.last
-      # Allow env overrides (optional)
-      alloc = ENV['ALLOC_PCT']&.to_f || band[:alloc_pct]
-      r_pt  = ENV['RISK_PER_TRADE_PCT']&.to_f || band[:risk_per_trade_pct]
-      d_ml  = ENV['DAILY_MAX_LOSS_PCT']&.to_f || band[:daily_max_loss_pct]
-
-      { alloc_pct: alloc, risk_per_trade_pct: r_pt, daily_max_loss_pct: d_ml }
+      IndexQuantityCalculator.policy(balance)
     end
 
     # Get effective SL% used for risk math. Prefer ATR-adaptive; fallback to default.
@@ -458,7 +430,7 @@ module AlertProcessors
       return true if loss_today.to_f.abs < max_loss.abs
 
       log :warn, "⛔️ Daily loss guard hit: #{PriceMath.round_tick(loss_today)} >= max #{PriceMath.round_tick(max_loss)}"
-      true # false
+      false
     end
 
     # Calculate today's realized loss from positions
@@ -473,69 +445,50 @@ module AlertProcessors
       end
     end
 
-    # -- Sizing ---------------------------------------------------------------
+    # -- Sizing (delegates to IndexQuantityCalculator) ------------------------
     def calculate_quantity(strike, lot_size)
-      lot_size = lot_size.to_i
-      price    = strike[:last_price].to_f
+      sizing = quantity_calculator_result(strike, lot_size)
+      if sizing[:invalid]
+        strike_info = "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]}"
+        log :error, "❗ Invalid sizing inputs (lot=#{sizing[:lot_size]}, price=#{sizing[:price]}) for #{instrument.id} (#{strike_info})"
+      end
+      sizing[:quantity] || 0
+    end
+
+    def quantity_calculator_result(strike, lot_size)
+      balance = available_balance.to_f
+      sl_pct = effective_sl_pct(strike[:last_price].to_f)
+      IndexQuantityCalculator.quantity(
+        strike: strike,
+        lot_size: lot_size,
+        balance: balance,
+        sl_pct: sl_pct,
+        return_details: true
+      )
+    end
+
+    def log_sizing_failure(strike, sizing)
       strike_info = "Strike #{strike[:strike_price]} | Last: #{strike[:last_price]}"
-
-      if lot_size.zero? || price <= 0
-        log :error, "❗ Invalid sizing inputs (lot=#{lot_size}, price=#{price}) for #{instrument.id} (#{strike_info})"
-        return 0
+      if sizing[:invalid]
+        log :error, "❗ Invalid sizing inputs (lot=#{sizing[:lot_size]}, price=#{sizing[:price]}) for #{instrument.id} (#{strike_info})"
+      elsif sizing[:per_lot_cost] && sizing[:balance] && sizing[:per_lot_cost] > sizing[:balance]
+        log_insufficient_margin(strike_info, sizing[:per_lot_cost], sizing[:balance])
+      else
+        log :warn, "🚫 Sizing → No size fits constraints. alloc_cap=₹#{PriceMath.round_tick(sizing[:alloc_cap])}, " \
+                  "risk_cap=₹#{PriceMath.round_tick(sizing[:risk_cap])}, per_lot_cost=₹#{PriceMath.round_tick(sizing[:per_lot_cost])}, " \
+                  "per_lot_risk=₹#{PriceMath.round_tick(sizing[:per_lot_risk])}"
       end
+    end
 
-      balance     = available_balance.to_f
-      policy      = deployment_policy(balance)
-      alloc_cap   = (balance * policy[:alloc_pct]) # ₹ you may deploy in this trade
-      per_lot_cost  = price * lot_size
-
-      # If you can't afford a lot at all, bail early
-      if per_lot_cost > balance
-        log_insufficient_margin(strike_info, per_lot_cost, balance)
-        return 0
-      end
-
-      # 1) Allocation constraint: how many lots fit inside alloc_cap?
-      max_lots_by_alloc = (alloc_cap / per_lot_cost).floor
-
-      # 2) Risk constraint: cap lots so that (lots * per_lot_risk) <= risk_per_trade_cap
-      #    per_lot_risk ≈ premium * lot_size * SL%
-      #    Use ATR-adaptive SL% if available.
-      sl_pct         = effective_sl_pct(price)
-      per_lot_risk   = per_lot_cost * sl_pct
-      risk_cap       = balance * policy[:risk_per_trade_pct]
-      max_lots_by_risk = per_lot_risk.positive? ? (risk_cap / per_lot_risk).floor : 0
-
-      # 3) Affordability constraint: you must at least afford 1 lot
-      max_lots_by_afford = (balance / per_lot_cost).floor
-
-      # The final lots are bounded by all three constraints.
-      lots = [max_lots_by_alloc, max_lots_by_risk, max_lots_by_afford].min
-
-      # Graceful 1-lot allowance if alloc-bound is 0 but you still can afford & risk allows
-      if lots.zero? && per_lot_cost <= balance && per_lot_risk <= risk_cap
-        lots = 1
-        log :info, "💡 Alloc-band too tight for >0 lots, allowing 1 lot given affordability & risk OK. (#{strike_info})"
-      end
-
-      if lots.zero?
-        msg = "No size fits constraints. alloc_cap=₹#{PriceMath.round_tick(alloc_cap)}, " \
-              "risk_cap=₹#{PriceMath.round_tick(risk_cap)}, per_lot_cost=₹#{PriceMath.round_tick(per_lot_cost)}, " \
-              "per_lot_risk=₹#{PriceMath.round_tick(per_lot_risk)}"
-        log :warn, "🚫 Sizing → #{msg}"
-        return 0
-      end
-
-      total_cost = lots * per_lot_cost
-      total_risk = lots * per_lot_risk
-
+    def log_sizing_success(strike, lot_size, sizing)
+      lots = sizing[:lots]
+      total_cost = lots * sizing[:per_lot_cost]
+      total_risk = lots * sizing[:per_lot_risk]
       log :info, "✅ Sizing decided: #{lots} lot(s) (qty ~ #{lots * lot_size}). " \
-                 "Alloc cap: ₹#{PriceMath.round_tick(alloc_cap)}, Risk cap: ₹#{PriceMath.round_tick(risk_cap)}. " \
-                 "Per-lot cost: ₹#{PriceMath.round_tick(per_lot_cost)}, Per-lot risk: ₹#{PriceMath.round_tick(per_lot_risk)}. " \
+                 "Alloc cap: ₹#{PriceMath.round_tick(sizing[:alloc_cap])}, Risk cap: ₹#{PriceMath.round_tick(sizing[:risk_cap])}. " \
+                 "Per-lot cost: ₹#{PriceMath.round_tick(sizing[:per_lot_cost])}, Per-lot risk: ₹#{PriceMath.round_tick(sizing[:per_lot_risk])}. " \
                  "Total cost: ₹#{PriceMath.round_tick(total_cost)}, Total risk: ₹#{PriceMath.round_tick(total_risk)}. " \
-                 "(SL%≈#{(sl_pct * 100).round(1)}%)"
-
-      lots * lot_size
+                 "(SL%≈#{(sizing[:sl_pct] * 100).round(1)}%)"
     end
 
     # -- Positions helpers ----------------------------------------------------
@@ -712,78 +665,5 @@ module AlertProcessors
           "Available: ₹#{PriceMath.round_tick(available_balance)}, Shortfall: ₹#{PriceMath.round_tick(shortfall)}. No order placed."
     end
 
-    def build_detailed_skip_reason(result)
-      reasons = result[:reasons] || [result[:reason]]
-      validation_details = result[:validation_details] || {}
-
-      # Build the main reason
-      main_reason = reasons.join('; ')
-
-      # Add detailed context
-      details = []
-
-      # IV Rank details
-      if validation_details[:iv_rank]
-        iv_info = validation_details[:iv_rank]
-        details << "IV Rank: #{iv_info[:current_rank]&.round(3)} (Range: #{iv_info[:min_rank]}-#{iv_info[:max_rank]})"
-      end
-
-      # Theta Risk details
-      if validation_details[:theta_risk]
-        theta_info = validation_details[:theta_risk]
-        details << "Theta Risk: #{theta_info[:current_time]} (Expiry: #{theta_info[:expiry_date]}, Hours left: #{theta_info[:hours_left]})"
-      end
-
-      # ADX details
-      if validation_details[:adx]
-        adx_info = validation_details[:adx]
-        details << "ADX: #{adx_info[:current_value]&.round(2)} (Min: #{adx_info[:min_value]})"
-      end
-
-      # Trend/Momentum details
-      if validation_details[:trend_momentum]
-        tm_info = validation_details[:trend_momentum]
-        details << "Trend: #{tm_info[:trend][:current_trend]} (Signal: #{tm_info[:trend][:signal_type]})" if tm_info[:trend]
-        details << "Momentum: #{tm_info[:momentum][:current_momentum]} (Signal: #{tm_info[:momentum][:signal_type]})" if tm_info[:momentum]
-        if tm_info[:trend_mismatch]
-          details << "Trend Mismatch: #{tm_info[:trend_mismatch][:signal_type]} vs #{tm_info[:trend_mismatch][:current_trend]}"
-        end
-      end
-
-      # Strike Selection details
-      if validation_details[:strike_selection]
-        ss_info = validation_details[:strike_selection]
-        details << "Strikes: #{ss_info[:filtered_count]}/#{ss_info[:total_strikes]} passed filters"
-
-        # Add strike guidance if available
-        if ss_info[:strike_guidance] && ss_info[:strike_guidance][:recommended_strikes]&.any?
-          guidance = ss_info[:strike_guidance]
-          details << "Recommended: #{Array(guidance[:recommended_strikes]).join(', ')}"
-          details << "Explanation: #{guidance[:explanation]}" if guidance[:explanation].present?
-        end
-
-        if ss_info[:filters_applied]&.any?
-          filters = ss_info[:filters_applied]
-          formatted_filters = Array(filters).map do |filter|
-            if filter.is_a?(Hash)
-              reasons = Array(filter[:reasons]).join(', ')
-              "#{filter[:strike_price]} (#{reasons})"
-            else
-              filter
-            end
-          end
-          details << "Filter Details: #{formatted_filters.join('; ')}"
-        end
-      end
-
-      # Combine all information
-      full_reason = main_reason
-      full_reason += " | Details: #{details.join(' | ')}" if details.any?
-
-      # Log the detailed reason for debugging
-      log :warn, "Signal skipped - #{full_reason}"
-
-      full_reason
-    end
   end
 end

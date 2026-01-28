@@ -14,7 +14,7 @@ RSpec.describe MarketAnalysisJob, type: :job do
     it 'calls Market::AnalysisService with correct parameters' do
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(Market::AnalysisService).to have_received(:call).with(symbol, exchange: exchange)
+      expect(Market::AnalysisService).to have_received(:call).with(symbol, hash_including(exchange: exchange))
     end
 
     it 'sends telegram notification when analysis is present' do
@@ -23,20 +23,26 @@ RSpec.describe MarketAnalysisJob, type: :job do
       expect(TelegramNotifier).to have_received(:send_message).with('Analysis result', chat_id: chat_id)
     end
 
-    it 'does not send notification when analysis is empty' do
+    it 'sends "could not be completed" when analysis is empty' do
       allow(Market::AnalysisService).to receive(:call).and_return('')
 
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(TelegramNotifier).not_to have_received(:send_message)
+      expect(TelegramNotifier).to have_received(:send_message).with(
+        /could not be completed/,
+        hash_including(chat_id: chat_id)
+      )
     end
 
-    it 'does not send notification when analysis is nil' do
+    it 'sends "could not be completed" when analysis is nil' do
       allow(Market::AnalysisService).to receive(:call).and_return(nil)
 
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(TelegramNotifier).not_to have_received(:send_message)
+      expect(TelegramNotifier).to have_received(:send_message).with(
+        /could not be completed/,
+        hash_including(chat_id: chat_id)
+      )
     end
 
     context 'when Market::AnalysisService raises an error' do

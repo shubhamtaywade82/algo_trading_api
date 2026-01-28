@@ -95,12 +95,12 @@ RSpec.describe AlertProcessors::Stock, type: :service do
       payload = pr.build_order_payload
 
       expect(payload).to include(
-        transactionType: 'SELL',
-        orderType: 'LIMIT',
-        productType: Dhanhq::Constants::INTRA,
-        validity: Dhanhq::Constants::DAY,
-        exchangeSegment: instrument.exchange_segment,
-        securityId: instrument.security_id,
+        transaction_type: 'SELL',
+        order_type: 'LIMIT',
+        product_type: 'INTRADAY',
+        validity: 'DAY',
+        exchange_segment: instrument.exchange_segment,
+        security_id: instrument.security_id,
         price: 100.0
       )
     end
@@ -113,12 +113,12 @@ RSpec.describe AlertProcessors::Stock, type: :service do
       pr      = processor(order_type: 'stop_loss_market')
       payload = pr.build_order_payload
 
-      expect(payload[:orderType]).to eq 'STOP_LOSS_MARKET'
-      expect(payload).to include(:triggerPrice)
+      expect(payload[:order_type]).to eq 'STOP_LOSS_MARKET'
+      expect(payload).to include(:trigger_price)
 
       # short-entry → stop above ltp by ≈5 %
       derived = (pr.ltp * 0.95).round(2)
-      expect(payload[:triggerPrice]).to eq(derived)
+      expect(payload[:trigger_price]).to eq(derived)
     end
   end
 
@@ -143,24 +143,30 @@ RSpec.describe AlertProcessors::Stock, type: :service do
   describe '#place_order!' do
     let(:payload) do
       {
-        transactionType: 'SELL',
-        orderType: 'MARKET',
-        productType: Dhanhq::Constants::CNC,
-        validity: Dhanhq::Constants::DAY,
-        exchangeSegment: instrument.exchange_segment,
-        securityId: instrument.security_id,
+        transaction_type: 'SELL',
+        order_type: 'MARKET',
+        product_type: 'CNC',
+        validity: 'DAY',
+        exchange_segment: instrument.exchange_segment,
+        security_id: instrument.security_id,
         quantity: 40
       }
     end
 
-    it 'delegates to Orders.place and guards with eDIS' do
+    it 'creates order via DhanHQ and guards with eDIS' do
       pr = processor(strategy_type: 'swing', signal_type: 'long_exit')
       allow(pr).to receive(:build_order_payload).and_return(payload)
       allow(pr).to receive(:ensure_edis!)
 
-      expect(Dhanhq::API::Orders).to receive(:place).with(payload)
+      order_double = double('Order', save: true, order_id: 'oid-1', id: 'oid-1', order_status: 'PENDING', status: 'PENDING')
+      order_class = double('OrderClass')
+      allow(order_class).to receive(:new).and_return(order_double)
+      stub_const('DhanHQ::Models::Order', order_class)
+
       expect(pr).to receive(:ensure_edis!).with(40)
       pr.place_order!(payload)
+
+      expect(order_class).to have_received(:new).with(hash_including(security_id: instrument.security_id.to_s, quantity: 40))
     end
   end
 end

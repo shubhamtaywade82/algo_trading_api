@@ -25,21 +25,25 @@ RSpec.describe Orders::Executor, type: :service do
     }
   end
 
-  before do
-    # Stub the actual HTTP request for order placement
-    stub_request(:post, 'https://api.dhan.co/orders')
-      .to_return(
-        status: 200,
-        body: { orderId: '112111182198', orderStatus: 'PENDING' }.to_json,
-        headers: { 'Content-Type' => 'application/json' }
-      )
-  end
-
   it 'creates order and exit log, sends Telegram' do
-    # expect(Order).to receive(:create!).once
-    # expect(ExitLog).to receive(:create!).once
-    expect(TelegramNotifier).to receive(:send_message).once
+    order_double = double(
+      'Order',
+      save: true,
+      order_id: '112111182198',
+      id: '112111182198',
+      order_status: 'PENDING',
+      status: 'PENDING'
+    )
+    order_class = double('OrderClass')
+    allow(order_class).to receive(:new).and_return(order_double)
+    stub_const('DhanHQ::Models::Order', order_class)
+    allow(Charges::Calculator).to receive(:call).and_return(0)
+    orig = ENV['PLACE_ORDER']
+    ENV['PLACE_ORDER'] = 'true'
 
+    expect(TelegramNotifier).to receive(:send_message).once
     described_class.call(position, 'StopLoss_30%', analysis)
+  ensure
+    ENV['PLACE_ORDER'] = orig
   end
 end
