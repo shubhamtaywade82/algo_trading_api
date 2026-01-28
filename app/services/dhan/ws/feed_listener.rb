@@ -103,7 +103,8 @@ module Dhan
           }
 
           ws.send(payload.to_json)
-          Rails.logger.info "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
+          ids = batch.map { |h| h[:SecurityId] }.join(', ') # rubocop:disable Rails/Pluck -- batch is Array, not Relation
+          Rails.logger.info "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{ids}"
         end
       end
 

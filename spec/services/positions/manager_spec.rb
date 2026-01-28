@@ -106,4 +106,49 @@ RSpec.describe Positions::Manager, type: :service do
       described_class.call
     end
   end
+
+  # Stub only external boundaries; real Analyzer and Manager (incl. RiskManager) run.
+  context 'integration: stubs only external boundaries' do
+    let(:position_fixture) do
+      {
+        'netQty' => 75,
+        'buyAvg' => 100,
+        'costPrice' => 100,
+        'securityId' => 'OPT1',
+        'exchangeSegment' => 'NSE_FNO',
+        'productType' => 'INTRADAY',
+        'tradingSymbol' => 'NIFTY24JUL17500CE',
+        'unrealizedProfit' => 1500
+      }
+    end
+
+    before do
+      Rails.cache.clear
+      allow(Rails.logger).to receive(:error)
+      allow(Rails.logger).to receive(:info)
+      allow(Time).to receive(:current).and_return(Time.zone.local(2024, 1, 1, 14, 0))
+      allow(TelegramNotifier).to receive(:send_message)
+      position_objects = [double('Position', attributes: position_fixture)]
+      allow(DhanHQ::Models::Position).to receive(:all).and_return(position_objects)
+      allow(DhanHQ::Models::Order).to receive(:all).and_return([])
+      allow(DhanHQ::Models::Order).to receive(:find).and_return(nil)
+      allow(Orders::Analyzer).to receive(:call).and_call_original
+      allow(Orders::Manager).to receive(:call).and_call_original
+    end
+
+    it 'runs real Analyzer and Manager with only broker/Telegram stubbed' do
+      described_class.call
+
+      expect(Orders::Analyzer).to have_received(:call).with(hash_including(
+        'netQty' => 75,
+        'buyAvg' => 100,
+        'securityId' => 'OPT1',
+        'ltp' => 120.0
+      ))
+      expect(Orders::Manager).to have_received(:call).with(
+        hash_including('securityId' => 'OPT1', 'ltp' => 120.0),
+        hash_including(:entry_price, :ltp, :pnl, :pnl_pct, :quantity, :instrument_type)
+      )
+    end
+  end
 end

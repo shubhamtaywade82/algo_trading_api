@@ -14,4 +14,9 @@ This directory tracks progress and changes to the project in markdown files.
 | ---------- | --------------- | ------- |
 | 2026-01-28 | [2026-01-28.md] | RSpec fixes, warning cleanup, DhanHQ::WS migration |
 
+| Reference | File | Summary |
+| --------- | ---- | ------- |
+| Audit | [SPEC_STUBBING_AUDIT.md] | What we stub in specs: external vs internal; when to stub only external boundaries |
+
 [2026-01-28.md]: ./2026-01-28.md
+[SPEC_STUBBING_AUDIT.md]: ./SPEC_STUBBING_AUDIT.md

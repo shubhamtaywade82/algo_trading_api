@@ -215,6 +215,11 @@ RSpec/NoExpectationExample:
   Exclude:
     - 'spec/jobs/portfolio_insights/daily_reporter_job_spec.rb'
 
+# Integration context: two receivers (Analyzer, Manager), each needs and_call_original.
+RSpec/ReceiveMessages:
+  Exclude:
+    - 'spec/services/positions/manager_spec.rb'
+
 # Offense count: 2
 RSpec/RepeatedExampleGroupDescription:
   Exclude:
