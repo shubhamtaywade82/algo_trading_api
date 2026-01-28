@@ -6,9 +6,6 @@ set -o errexit
 echo "📦 Installing dependencies..."
 bundle install
 
-# Regenerate binstubs so start command (bundle exec rails server) works on Render
-bundle binstubs bundler --force
-
 #bundle exec rails g solid_cache:install
 
 # Run database migrations
