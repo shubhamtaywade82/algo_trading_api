@@ -147,7 +147,7 @@ module Market
       series_5m = instrument.candle_series(interval: '5')
       series_15m = instrument.candle_series(interval: '15')
 
-      Rails.logger.debug "[AnalysisService] 5m candles: #{series_5m.candles.size}, 15m candles: #{series_15m.candles.size}"
+      Rails.logger.debug { "[AnalysisService] 5m candles: #{series_5m.candles.size}, 15m candles: #{series_15m.candles.size}" }
 
       md[:timeframes] = {
         m5: timeframe_snapshot(series_5m, frame: '5m'),
@@ -157,8 +157,12 @@ module Market
       smc_5m = Market::Structure::SmcAnalyzer.call(series_5m, timeframe_minutes: 5)
       smc_15m = Market::Structure::SmcAnalyzer.call(series_15m, timeframe_minutes: 15)
 
-      Rails.logger.debug "[AnalysisService] SMC 5m: #{smc_5m.present? ? 'present' : 'nil'}, swing_high: #{smc_5m&.last_swing_high.present?}, swing_low: #{smc_5m&.last_swing_low.present?}"
-      Rails.logger.debug "[AnalysisService] SMC 15m: #{smc_15m.present? ? 'present' : 'nil'}, swing_high: #{smc_15m&.last_swing_high.present?}, swing_low: #{smc_15m&.last_swing_low.present?}"
+      Rails.logger.debug do
+        "[AnalysisService] SMC 5m: #{smc_5m.present? ? 'present' : 'nil'}, swing_high: #{smc_5m&.last_swing_high.present?}, swing_low: #{smc_5m&.last_swing_low.present?}"
+      end
+      Rails.logger.debug do
+        "[AnalysisService] SMC 15m: #{smc_15m.present? ? 'present' : 'nil'}, swing_high: #{smc_15m&.last_swing_high.present?}, swing_low: #{smc_15m&.last_swing_low.present?}"
+      end
 
       md[:smc] = {
         m5: smc_5m,
@@ -168,7 +172,9 @@ module Market
       value_5m = value_snapshot(series_5m, smc: smc_5m, session_date: session_date, vix: md[:vix])
       value_15m = value_snapshot(series_15m, smc: smc_15m, session_date: session_date, vix: md[:vix])
 
-      Rails.logger.debug "[AnalysisService] Value 15m - VWAP: #{value_15m[:vwap]}, AVRZ: #{value_15m[:avrz].present? ? 'present' : 'nil'}"
+      Rails.logger.debug do
+        "[AnalysisService] Value 15m - VWAP: #{value_15m[:vwap]}, AVRZ: #{value_15m[:avrz].present? ? 'present' : 'nil'}"
+      end
 
       md[:value] = {
         m5: value_5m,
@@ -219,15 +225,15 @@ module Market
       candle_date = series.candles.last&.timestamp&.to_date || session_date
       effective_session_date = candle_date
 
-      Rails.logger.debug "[AnalysisService] VWAP calculation - session_date: #{session_date}, candle_date: #{candle_date}, using: #{effective_session_date}"
+      Rails.logger.debug do
+        "[AnalysisService] VWAP calculation - session_date: #{session_date}, candle_date: #{candle_date}, using: #{effective_session_date}"
+      end
 
       vwap = Market::Value::VwapCalculator.session_vwap(series, session_date: effective_session_date)
 
       bos_ts = smc&.last_bos&.dig(:ts)
       avwap_bos =
-        if bos_ts
-          Market::Value::VwapCalculator.anchored_vwap(series, from_ts: bos_ts, session_date: effective_session_date)
-        end
+        (Market::Value::VwapCalculator.anchored_vwap(series, from_ts: bos_ts, session_date: effective_session_date) if bos_ts)
 
       atr_points = series.atr[:atr].to_f
       avrz = Market::Value::AvrzCalculator.call(mid: vwap, atr_points: atr_points, vix: vix)
@@ -301,7 +307,9 @@ module Market
           to_date = MarketCalendar.trading_day?(today) ? today : prev_trading_day
         end
 
-        Rails.logger.debug "[AnalysisService] Previous daily OHLC - today: #{today}, prev_trading_day: #{prev_trading_day}, from_date: #{from_date}, to_date: #{to_date}, session: #{session_state}"
+        Rails.logger.debug do
+          "[AnalysisService] Previous daily OHLC - today: #{today}, prev_trading_day: #{prev_trading_day}, from_date: #{from_date}, to_date: #{to_date}, session: #{session_state}"
+        end
 
         bars = instrument.historical_ohlc(
           from_date: from_date.to_s,

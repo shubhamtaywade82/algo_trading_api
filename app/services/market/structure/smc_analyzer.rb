@@ -65,7 +65,7 @@ module Market
       end
 
       def swing_points(type, lookback: 2)
-        return [] if candles.size < (lookback * 2 + 1)
+        return [] if candles.size < ((lookback * 2) + 1)
 
         points = []
 

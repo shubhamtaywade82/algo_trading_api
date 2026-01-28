@@ -7,7 +7,7 @@ RSpec.describe Market::AnalysisService do
     it 'does not call OpenAI when SMC/AVRZ inputs are missing' do
       service = described_class.new('NIFTY', trade_type: :options_buying)
 
-      series = instance_double(CandleSeries, candles: [])
+      series = instance_double(CandleSeries, candles: [double('Candle')])
       instrument = instance_double(Instrument, symbol_name: 'NIFTY', ltp: 20_000, id: 1)
       allow(instrument).to receive(:candle_series).and_return(series)
 
@@ -33,11 +33,14 @@ RSpec.describe Market::AnalysisService do
         options: nil
       )
 
-      allow(service).to receive(:instrument).and_return(instrument)
-      allow(service).to receive(:india_vix).and_return(instance_double(Instrument, ltp: 12))
-      allow(service).to receive(:build_market_snapshot).and_return(md)
-      allow(service).to receive(:option_chain_regime_flags).and_return({})
-      allow(service).to receive(:sleep)
+      allow(service).to receive_messages(
+        instrument: instrument,
+        india_vix: instance_double(Instrument, ltp: 12),
+        build_market_snapshot: md,
+        option_chain_regime_flags: {},
+        enrich_with_structure_and_value!: nil,
+        sleep: nil
+      )
 
       expect(Openai::ChatRouter).not_to receive(:ask!)
 

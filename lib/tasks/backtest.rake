@@ -2,18 +2,18 @@
 
 namespace :backtest do
   desc 'Run backtest for a strategy'
-  task :run, [:symbol, :from_date, :to_date, :strategy] => :environment do |_t, args|
+  task :run, %i[symbol from_date to_date strategy] => :environment do |_t, args|
     symbol = args[:symbol] || 'NIFTY'
     from_date = args[:from_date] || 1.month.ago.to_date.to_s
     to_date = args[:to_date] || Date.yesterday.to_s
     strategy = args[:strategy] || 'expiry_range_strategy'
 
-    puts "🧪 Running backtest:"
+    puts '🧪 Running backtest:'
     puts "   Symbol: #{symbol}"
     puts "   From: #{from_date}"
     puts "   To: #{to_date}"
     puts "   Strategy: #{strategy}"
-    puts ""
+    puts ''
 
     result = Backtest::Runner.call(
       symbol: symbol,
@@ -27,7 +27,7 @@ namespace :backtest do
       exit 1
     end
 
-    puts "📊 Results:"
+    puts '📊 Results:'
     puts "   Total Trades: #{result[:total_trades]}"
     puts "   Total Decisions: #{result[:total_decisions]}"
 
@@ -37,14 +37,14 @@ namespace :backtest do
     end
 
     if result[:metrics] && result[:metrics].any?
-      puts "   Metrics:"
+      puts '   Metrics:'
       result[:metrics].each do |key, value|
         puts "      #{key}: #{value}"
       end
     end
 
-    puts ""
-    puts "📈 Trades:"
+    puts ''
+    puts '📈 Trades:'
     if result[:trades].any?
       result[:trades].each_with_index do |trade, idx|
         puts "   #{idx + 1}. #{trade[:entry_date]} - #{trade[:option_type]} #{trade[:strike]} @ ₹#{trade[:entry_premium]}"
@@ -52,15 +52,15 @@ namespace :backtest do
         puts "      SL: ₹#{trade[:stop_loss]} | Target: ₹#{trade[:target]}"
       end
     else
-      puts "   No trades generated"
+      puts '   No trades generated'
     end
 
-    puts ""
-    puts "✅ Backtest completed!"
+    puts ''
+    puts '✅ Backtest completed!'
   end
 
   desc 'Backtest expiry range strategy for last N days'
-  task :expiry_range, [:symbol, :days] => :environment do |_t, args|
+  task :expiry_range, %i[symbol days] => :environment do |_t, args|
     symbol = args[:symbol] || 'NIFTY'
     days = (args[:days] || 30).to_i
 
@@ -71,7 +71,7 @@ namespace :backtest do
   end
 
   desc 'Backtest options buying strategy for last N days'
-  task :options_buying, [:symbol, :days] => :environment do |_t, args|
+  task :options_buying, %i[symbol days] => :environment do |_t, args|
     symbol = args[:symbol] || 'NIFTY'
     days = (args[:days] || 30).to_i
 

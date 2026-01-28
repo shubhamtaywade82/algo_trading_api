@@ -44,9 +44,9 @@ module Market
     }.freeze
 
     REQUIRED_BY_DECISION = {
-      'NO_TRADE' => %w[Decision Instrument Market\ Bias Reason Risk\ Note Re-evaluate\ When],
-      'WAIT' => %w[Decision Instrument Bias No\ Trade\ Because Trigger\ Conditions Preferred\ Option\ (If\ Triggered) Reason],
-      'BUY' => %w[Decision Instrument Bias Option Execution Underlying\ Context Exit\ Rules Reason]
+      'NO_TRADE' => ['Decision', 'Instrument', 'Market Bias', 'Reason', 'Risk Note', 'Re-evaluate When'],
+      'WAIT' => ['Decision', 'Instrument', 'Bias', 'No Trade Because', 'Trigger Conditions', 'Preferred Option (If Triggered)', 'Reason'],
+      'BUY' => ['Decision', 'Instrument', 'Bias', 'Option', 'Execution', 'Underlying Context', 'Exit Rules', 'Reason']
     }.freeze
 
     ALLOWED_BY_DECISION = {
@@ -145,7 +145,7 @@ module Market
       preferred = h['Preferred Option (If Triggered)']
       raise ValidationError, 'Preferred Option (If Triggered) must be a map' unless preferred.is_a?(Hash) && preferred.any?
 
-      %w[Type Strike\ Zone Expected\ Premium\ Zone].each do |k|
+      ['Type', 'Strike Zone', 'Expected Premium Zone'].each do |k|
         raise ValidationError, "Preferred Option missing #{k}" if preferred[k].blank?
       end
 
@@ -224,7 +224,9 @@ module Market
     private_class_method :validate_underlying_context!
 
     def self.validate_exit_rules!(rules)
-      underlying_rule = rules.any? { |r| r.match?(/\bSpot\b.*\b(below|above)\b.*\d/i) || r.match?(/\bSpot closes\b.*\b(below|above)\b.*\d/i) }
+      underlying_rule = rules.any? do |r|
+        r.match?(/\bSpot\b.*\b(below|above)\b.*\d/i) || r.match?(/\bSpot closes\b.*\b(below|above)\b.*\d/i)
+      end
       raise ValidationError, 'Exit Rules must include an underlying condition' unless underlying_rule
     end
     private_class_method :validate_exit_rules!

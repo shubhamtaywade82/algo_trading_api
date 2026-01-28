@@ -13,7 +13,7 @@ api_key =
   if Rails.env.production?
     ENV.fetch('OPENAI_API_KEY')
   else
-    ENV['OPENAI_API_KEY']
+    ENV.fetch('OPENAI_API_KEY', nil)
   end
 
 return if api_key.blank?
@@ -22,7 +22,7 @@ require 'openai'
 
 OpenAI.configure do |config|
   config.access_token = api_key
-  config.organization_id = ENV['OPENAI_ORG_ID'] # optional
+  config.organization_id = ENV.fetch('OPENAI_ORG_ID', nil) # optional
   config.log_errors = !Rails.env.production?
   config.request_timeout = 360
 end

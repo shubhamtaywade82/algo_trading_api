@@ -63,7 +63,7 @@ RSpec.describe MarketAnalysisJob do
         described_class.perform_now(chat_id, symbol, exchange: exchange)
 
         expect(TelegramNotifier).to have_received(:send_message).with(
-          '🚨 Error running analysis. Please try again shortly.',
+          "🚨 Error running analysis – #{error_message}",
           chat_id: chat_id
         )
       end

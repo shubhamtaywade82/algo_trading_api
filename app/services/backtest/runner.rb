@@ -23,7 +23,7 @@ module Backtest
       return error_result("Instrument not found: #{@symbol}") unless instrument
 
       trading_days = MarketCalendar.trading_days_between(@from_date, @to_date)
-      return error_result("No trading days in range") if trading_days.empty?
+      return error_result('No trading days in range') if trading_days.empty?
 
       Rails.logger.info "[Backtest] Running #{@strategy} for #{@symbol} from #{@from_date} to #{@to_date} (#{trading_days.size} trading days)"
 
@@ -143,7 +143,7 @@ module Backtest
       expiries.find { |e| Date.parse(e) >= date } || expiries.last
     end
 
-    def fetch_option_chain_snapshot(instrument, date)
+    def fetch_option_chain_snapshot(_instrument, _date)
       # For backtesting, we'd need historical option chain data
       # This is a simplified version - in production you'd need historical option prices
       nil # Return nil for now, or implement historical option chain fetching
@@ -239,13 +239,12 @@ module Backtest
         return decision
       end
 
-      if @use_llm
-        # Actually call LLM (expensive but accurate)
-        return run_llm_decision(md, date)
-      else
-        # Use deterministic rule-based approach for faster backtesting
-        return run_rule_based_decision(md, date)
-      end
+      return run_llm_decision(md, date) if @use_llm
+
+      # Actually call LLM (expensive but accurate)
+
+      # Use deterministic rule-based approach for faster backtesting
+      run_rule_based_decision(md, date)
     end
 
     def run_llm_decision(md, date)
@@ -466,7 +465,7 @@ module Backtest
         decision: decision
       }
 
-      Rails.logger.debug "[Backtest] Entry: #{option_type} #{strike} @ #{entry_premium} on #{date}"
+      Rails.logger.debug { "[Backtest] Entry: #{option_type} #{strike} @ #{entry_premium} on #{date}" }
     end
 
     def build_result
@@ -495,13 +494,15 @@ module Backtest
     end
 
     def calculate_metrics
-      return {
-        total_trades: 0,
-        total_decisions: @decisions.size,
-        buy_rate: 0,
-        wait_rate: 0,
-        no_trade_rate: 0
-      } if @decisions.empty?
+      if @decisions.empty?
+        return {
+          total_trades: 0,
+          total_decisions: @decisions.size,
+          buy_rate: 0,
+          wait_rate: 0,
+          no_trade_rate: 0
+        }
+      end
 
       summary = summarize_decisions
       total = @decisions.size

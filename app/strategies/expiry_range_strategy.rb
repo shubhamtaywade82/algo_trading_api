@@ -103,7 +103,7 @@ module Strategies
 
       entry = premium_ref.round(2)
       stop_loss = (entry * 0.75).round(2)
-      target = (entry + (entry - stop_loss) * 1.5).round(2)
+      target = (entry + ((entry - stop_loss) * 1.5)).round(2)
       rr = ((target - entry) / (entry - stop_loss)).round(2)
 
       inv_level = md.dig(:smc, :m15)&.last_swing_low&.dig(:price) || avrz_15m[:low]
@@ -145,7 +145,7 @@ module Strategies
 
       entry = premium_ref.round(2)
       stop_loss = (entry * 0.75).round(2)
-      target = (entry + (entry - stop_loss) * 1.5).round(2)
+      target = (entry + ((entry - stop_loss) * 1.5)).round(2)
       rr = ((target - entry) / (entry - stop_loss)).round(2)
 
       inv_level = md.dig(:smc, :m15)&.last_swing_high&.dig(:price) || avrz_15m[:high]
