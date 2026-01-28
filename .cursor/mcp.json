@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "dhan_mcp_server_http": {
+    "dhan": {
       "url": "http://localhost:5002/mcp"
     }
   }

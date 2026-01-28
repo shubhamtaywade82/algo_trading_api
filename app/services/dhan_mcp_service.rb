@@ -52,7 +52,7 @@ class DhanMcpService
 
   def dhan(fmt, &block)
     unless dhan_configured?
-      return fmt.call({ error: "Dhan credentials not configured. Set DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN (or CLIENT_ID and ACCESS_TOKEN)." })
+      return fmt.call({ error: "Dhan credentials not configured. Set CLIENT_ID and ACCESS_TOKEN (used by DhanHQ.configure_with_env)." })
     end
     data = block.call
     fmt.call(to_jsonable(data))

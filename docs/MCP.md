@@ -6,8 +6,8 @@ The app exposes a **read-only** DhanHQ MCP server over HTTP. AI assistants (e.g.
 
 | Environment | URL |
 |-------------|-----|
-| **Production** | `https://algo-trading-api.onrender.com/mcp` |
 | **Local** | `http://localhost:5002/mcp` (or `PORT` from `.env`) |
+| **Deployed** | `https://YOUR_APP_HOST/mcp` (use your app’s base URL) |
 
 - **Method**: `POST`
 - **Content-Type**: `application/json`
@@ -40,7 +40,7 @@ All requests are JSON-RPC 2.0. To call a tool, use `method: "tools/call"` and pa
 ### Example: call a tool
 
 ```bash
-curl -s -X POST https://algo-trading-api.onrender.com/mcp \
+curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -122,7 +122,7 @@ Common `exchange_segment` values:
 ### Holdings
 
 ```bash
-curl -s -X POST https://algo-trading-api.onrender.com/mcp \
+curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_holdings","arguments":{}}}'
 ```
@@ -130,7 +130,7 @@ curl -s -X POST https://algo-trading-api.onrender.com/mcp \
 ### Market OHLC (RELIANCE)
 
 ```bash
-curl -s -X POST https://algo-trading-api.onrender.com/mcp \
+curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_market_ohlc","arguments":{"exchange_segment":"NSE_EQ","symbol":"RELIANCE"}}}'
 ```
@@ -138,7 +138,7 @@ curl -s -X POST https://algo-trading-api.onrender.com/mcp \
 ### NIFTY expiry list
 
 ```bash
-curl -s -X POST https://algo-trading-api.onrender.com/mcp \
+curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_expiry_list","arguments":{"exchange_segment":"NSE_FNO","symbol":"NIFTY"}}}'
 ```
@@ -146,21 +146,91 @@ curl -s -X POST https://algo-trading-api.onrender.com/mcp \
 ### Instrument (SENSEX)
 
 ```bash
-curl -s -X POST https://algo-trading-api.onrender.com/mcp \
+curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_instrument","arguments":{"exchange_segment":"IDX_I","symbol":"SENSEX"}}}'
 ```
 
 ---
 
-## Using from Cursor
+## Client configuration
 
-1. Ensure the app is deployed and `/mcp` is reachable (e.g. `https://algo-trading-api.onrender.com/mcp`).
-2. In Cursor, add an **HTTP** MCP server:
-   - **URL**: `https://algo-trading-api.onrender.com/mcp`
-3. Cursor will then be able to use the tools in this project (holdings, positions, orders, market data, options, etc.).
+This MCP is exposed as a **single HTTP POST endpoint** (JSON-RPC 2.0). Use the URL for your environment:
 
-A local config example lives in `.cursor/mcp.json`; you can point it at the production URL when using the deployed app.
+| Environment | URL |
+|-------------|-----|
+| Local | `http://localhost:5002/mcp` (or your `PORT`) |
+| Deployed | Your app’s base URL + `/mcp` (e.g. `https://your-app.example.com/mcp`) |
+
+Configure your client to use that URL as an **HTTP / Streamable HTTP** MCP server. No auth is required.
+
+| Client | Where to configure | What to set |
+|--------|--------------------|-------------|
+| **Cursor** | `.cursor/mcp.json` or Settings → MCP | Server type **URL**, value = URL above |
+| **Claude Desktop** | Settings → Connectors, or `claude_desktop_config.json` | MCP connector with **Server URL** = URL above |
+| **Windsurf** | Settings → MCP | Add server, type **HTTP/URL**, URL = above |
+| **Others** | MCP / Connectors / Integrations | Add HTTP MCP server with URL above |
+
+### Cursor
+
+1. **Project-level**  
+   Edit or create `.cursor/mcp.json` in the project root:
+
+   ```json
+   {
+     "mcpServers": {
+       "dhan": {
+         "url": "http://localhost:5002/mcp"
+       }
+     }
+   }
+   ```
+
+   For a deployed app, set `"url"` to your app’s base URL + `/mcp`.
+
+2. **App settings**  
+   Or add the server in **Cursor Settings → MCP**: create a new server, choose **URL** as the type, and set the URL above.
+
+3. Restart Cursor or reload the window so it picks up the new server. The Dhan tools should appear when the MCP is enabled.
+
+### Claude Desktop
+
+Claude supports **remote HTTP MCP servers** via Connectors (Streamable HTTP).
+
+1. **Settings → Connectors** (or **Features → Build**)  
+   Add a new connector and choose **Model Context Protocol (MCP)**.
+
+2. **Server URL**  
+   Set the MCP endpoint (e.g. `http://localhost:5002/mcp` for local, or your deployed app URL + `/mcp`).
+
+3. **Auth**  
+   This server does not require auth; leave auth empty unless you add your own.
+
+4. Save and enable the connector. Remote MCP/Connectors are available on **Pro, Max, Team, and Enterprise** plans.
+
+**Manual config (if your build uses a config file):**  
+Edit the Claude Desktop config and add under `mcpServers`: `"dhan": { "url": "http://localhost:5002/mcp" }` (or your deployed URL + `/mcp`). File locations:
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+### Windsurf (Codeium)
+
+1. Open **Settings → MCP** (or equivalent).
+2. Add an MCP server with **URL** / **HTTP** type.
+3. URL: your MCP endpoint (e.g. `http://localhost:5002/mcp` or your deployed app URL + `/mcp`).
+
+### Other clients (Continue, MCP explorers, etc.)
+
+Any client that supports **MCP over HTTP** (Streamable HTTP / JSON-RPC POST to one URL) can use this server:
+
+1. Add a new MCP server / connection.
+2. Set transport to **HTTP** or **URL**.
+3. Set the server URL (e.g. `http://localhost:5002/mcp` or your deployed app URL + `/mcp`).
+4. No headers or auth are required for the current deployment.
+
+If the client asks for **SSE** or **Streamable HTTP**, use the same URL; this endpoint accepts JSON-RPC `POST` and returns JSON.
 
 ---
 
