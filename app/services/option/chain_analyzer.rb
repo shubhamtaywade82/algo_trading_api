@@ -17,7 +17,7 @@ module Option
 
       chain = option_chain.with_indifferent_access
       oc     = chain[:oc]
-      return 0.5 unless oc.present?
+      return 0.5 if oc.blank?
 
       spot    = chain[:last_price].to_f
       strikes = oc.keys.map(&:to_f)
@@ -171,7 +171,7 @@ module Option
     private
 
     def build_ta_snapshot
-      return nil unless @historical_data.present?
+      return nil if @historical_data.blank?
 
       closes = Array(@historical_data['close']).compact
       if closes.size < Indicators::HolyGrail::EMA_SLOW
@@ -299,7 +299,7 @@ module Option
       return false unless atm_strike
 
       # Calculate distance from ATM strike
-      distance_from_atm = (strike - atm_strike).abs
+      (strike - atm_strike).abs
 
       # Define acceptable ranges based on signal type and market conditions
       base_range = atm_range_pct * @underlying_spot
@@ -675,7 +675,7 @@ module Option
       end
     end
 
-    def perform_validation_checks(signal_type, strategy_type)
+    def perform_validation_checks(signal_type, _strategy_type)
       checks = {
         failed: [],
         details: {}

@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe Order, type: :model do
+RSpec.describe Order do
   describe 'associations' do
     it { is_expected.to belong_to(:alert).optional }
   end
@@ -12,7 +12,7 @@ RSpec.describe Order, type: :model do
   describe 'enums' do
     describe 'transaction_type' do
       it 'has correct transaction types' do
-        expect(Order.transaction_types.keys).to match_array(%w[buy sell])
+        expect(described_class.transaction_types.keys).to match_array(%w[buy sell])
       end
 
       it 'can be set to buy' do
@@ -28,7 +28,7 @@ RSpec.describe Order, type: :model do
 
     describe 'product_type' do
       it 'has correct product types' do
-        expect(Order.product_types.keys).to match_array(%w[cnc intraday margin mtf co bo])
+        expect(described_class.product_types.keys).to match_array(%w[cnc intraday margin mtf co bo])
       end
 
       it 'can be set to intraday' do
@@ -44,7 +44,7 @@ RSpec.describe Order, type: :model do
 
     describe 'order_type' do
       it 'has correct order types' do
-        expect(Order.order_types.keys).to match_array(%w[limit market stop_loss stop_loss_market])
+        expect(described_class.order_types.keys).to match_array(%w[limit market stop_loss stop_loss_market])
       end
 
       it 'can be set to market' do
@@ -65,7 +65,7 @@ RSpec.describe Order, type: :model do
 
     describe 'validity' do
       it 'has correct validity types' do
-        expect(Order.validities.keys).to match_array(%w[day ioc])
+        expect(described_class.validities.keys).to match_array(%w[day ioc])
       end
 
       it 'can be set to day' do
@@ -81,7 +81,7 @@ RSpec.describe Order, type: :model do
 
     describe 'order_status' do
       it 'has correct order statuses' do
-        expect(Order.order_statuses.keys).to match_array(%w[transit pending rejected cancelled traded expired])
+        expect(described_class.order_statuses.keys).to match_array(%w[transit pending rejected cancelled traded expired])
       end
 
       it 'can be set to pending' do
@@ -107,18 +107,18 @@ RSpec.describe Order, type: :model do
     let!(:rejected_order) { create(:order, order_status: 'rejected', security_id: '1333') }
 
     it 'can find pending orders' do
-      expect(Order.pending).to include(pending_order)
-      expect(Order.pending).not_to include(traded_order, rejected_order)
+      expect(described_class.pending).to include(pending_order)
+      expect(described_class.pending).not_to include(traded_order, rejected_order)
     end
 
     it 'can find traded orders' do
-      expect(Order.traded).to include(traded_order)
-      expect(Order.traded).not_to include(pending_order, rejected_order)
+      expect(described_class.traded).to include(traded_order)
+      expect(described_class.traded).not_to include(pending_order, rejected_order)
     end
 
     it 'can find rejected orders' do
-      expect(Order.rejected).to include(rejected_order)
-      expect(Order.rejected).not_to include(pending_order, traded_order)
+      expect(described_class.rejected).to include(rejected_order)
+      expect(described_class.rejected).not_to include(pending_order, traded_order)
     end
   end
 

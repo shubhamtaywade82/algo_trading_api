@@ -150,6 +150,17 @@ The system includes comprehensive webhook testing tools:
 - `short_entry` - Enter short position
 - `short_exit` - Exit short position
 
+## 🤖 MCP (Model Context Protocol)
+
+The app exposes a **read-only DhanHQ MCP server** over HTTP so AI assistants (e.g. Cursor) and other MCP clients can call broker and market tools via JSON-RPC.
+
+- **Endpoint**: `POST /mcp`
+- **Local**: `http://localhost:5002/mcp` (or your `PORT`). For deployed app, use your app’s base URL + `/mcp`.
+
+Available tools include: `get_holdings`, `get_positions`, `get_fund_limits`, `get_order_list`, `get_order_by_id`, `get_trade_book`, `get_trade_history`, `get_instrument`, `get_market_ohlc`, `get_historical_daily_data`, `get_intraday_minute_data`, `get_option_chain`, `get_expiry_list`, `get_edis_inquiry`.
+
+Full docs, argument shapes, and example `curl` calls: **[docs/MCP.md](docs/MCP.md)**.
+
 ## 🏗️ Architecture
 
 ### Core Components

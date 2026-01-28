@@ -22,9 +22,13 @@ RSpec.describe Positions::ActiveCache, type: :service do
     stub_const('DhanhqMappings::SEGMENT_ENUM_TO_KEY', { 1 => 'NSE_EQ', 2 => 'NSE_FNO' })
     stub_const('DhanhqMappings::SEGMENT_KEY_TO_ENUM', { 'NSE_EQ' => 1, 'NSE_FNO' => 2 })
 
-    # Stub positions API
-    allow(Dhanhq::API::Portfolio).to receive(:positions)
-      .and_return([pos_eq_enum, pos_fno_str, flat_pos])
+    # Stub DhanHQ positions API (ActiveCache calls Position.all.map(&:attributes)
+    position_objects = [
+      double('Position', attributes: pos_eq_enum),
+      double('Position', attributes: pos_fno_str),
+      double('Position', attributes: flat_pos)
+    ]
+    allow(DhanHQ::Models::Position).to receive(:all).and_return(position_objects)
   end
 
   # ------------------------------------------------------------------
@@ -32,6 +36,7 @@ RSpec.describe Positions::ActiveCache, type: :service do
     before { described_class.refresh! }
 
     it 'stores only non-zero positions keyed by securityId + segment' do
+      # pos_eq_enum has exchangeSegment 1 → reverse_convert_segment => 'NSE_EQ'; pos_fno_str has 'NSE_FNO' → => 2
       expect(described_class.keys).to match_array(%w[EQ123_NSE_EQ OPT456_2])
     end
 

@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe MarketAnalysisJob, type: :job do
+RSpec.describe MarketAnalysisJob do
   describe '#perform' do
     let(:chat_id) { '123456789' }
     let(:symbol) { 'RELIANCE' }
@@ -23,20 +23,26 @@ RSpec.describe MarketAnalysisJob, type: :job do
       expect(TelegramNotifier).to have_received(:send_message).with('Analysis result', chat_id: chat_id)
     end
 
-    it 'does not send notification when analysis is empty' do
+    it 'sends "could not be completed" when analysis is empty' do
       allow(Market::AnalysisService).to receive(:call).and_return('')
 
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(TelegramNotifier).not_to have_received(:send_message)
+      expect(TelegramNotifier).to have_received(:send_message).with(
+        /could not be completed/,
+        hash_including(chat_id: chat_id)
+      )
     end
 
-    it 'does not send notification when analysis is nil' do
+    it 'sends "could not be completed" when analysis is nil' do
       allow(Market::AnalysisService).to receive(:call).and_return(nil)
 
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(TelegramNotifier).not_to have_received(:send_message)
+      expect(TelegramNotifier).to have_received(:send_message).with(
+        /could not be completed/,
+        hash_including(chat_id: chat_id)
+      )
     end
 
     context 'when Market::AnalysisService raises an error' do

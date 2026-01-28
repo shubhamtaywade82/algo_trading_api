@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe SwingPick, type: :model do
+RSpec.describe SwingPick do
   describe 'associations' do
     it { is_expected.to belong_to(:instrument) }
   end
@@ -8,7 +8,7 @@ RSpec.describe SwingPick, type: :model do
   describe 'enums' do
     describe 'status' do
       it 'has correct status values' do
-        expect(SwingPick.statuses.keys).to match_array(%w[pending triggered closed])
+        expect(described_class.statuses.keys).to match_array(%w[pending triggered closed])
       end
 
       it 'can be set to pending' do
@@ -37,18 +37,18 @@ RSpec.describe SwingPick, type: :model do
     let!(:closed_pick) { create(:swing_pick, status: 'closed', instrument: instrument3) }
 
     it 'can find pending picks' do
-      expect(SwingPick.pending).to include(pending_pick)
-      expect(SwingPick.pending).not_to include(triggered_pick, closed_pick)
+      expect(described_class.pending).to include(pending_pick)
+      expect(described_class.pending).not_to include(triggered_pick, closed_pick)
     end
 
     it 'can find triggered picks' do
-      expect(SwingPick.triggered).to include(triggered_pick)
-      expect(SwingPick.triggered).not_to include(pending_pick, closed_pick)
+      expect(described_class.triggered).to include(triggered_pick)
+      expect(described_class.triggered).not_to include(pending_pick, closed_pick)
     end
 
     it 'can find closed picks' do
-      expect(SwingPick.closed).to include(closed_pick)
-      expect(SwingPick.closed).not_to include(pending_pick, triggered_pick)
+      expect(described_class.closed).to include(closed_pick)
+      expect(described_class.closed).not_to include(pending_pick, triggered_pick)
     end
   end
 

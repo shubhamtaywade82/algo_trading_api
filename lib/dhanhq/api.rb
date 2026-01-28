@@ -49,8 +49,8 @@ module Dhanhq
       end
 
       def underscore_params(params)
-        params.each_with_object({}) do |(key, value), memo|
-          memo[key.to_s.underscore.to_sym] = value
+        params.transform_keys do |key|
+          key.to_s.underscore.to_sym
         end
       end
 
@@ -59,11 +59,10 @@ module Dhanhq
         hash['status'] ||= status
         hash
       end
-
     end
 
     module Funds
-      extend self
+      module_function
 
       def balance
         funds = DhanHQ::Models::Funds.fetch
@@ -83,7 +82,7 @@ module Dhanhq
     end
 
     module Holdings
-      extend self
+      module_function
 
       def fetch
         Helpers.wrap_collection(DhanHQ::Models::Holding.all)
@@ -93,7 +92,7 @@ module Dhanhq
     end
 
     module Portfolio
-      extend self
+      module_function
 
       def holdings
         Holdings.fetch
@@ -138,7 +137,7 @@ module Dhanhq
     end
 
     module Market
-      extend self
+      module_function
 
       def bulk_quote(securityIds:, segment: nil, segments: nil)
         payload =
@@ -147,7 +146,7 @@ module Dhanhq
           elsif securityIds.is_a?(Hash)
             Helpers.normalize_payload(securityIds)
           else
-            { (segment || 'NSE_EQ').to_s => Array(securityIds).map { |id| id.to_i } }
+            { (segment || 'NSE_EQ').to_s => Array(securityIds).map(&:to_i) }
           end
 
         response = DhanHQ::Models::MarketFeed.quote(payload)
@@ -215,7 +214,7 @@ module Dhanhq
     end
 
     module Historical
-      extend self
+      module_function
 
       def daily(params)
         normalized = Helpers.underscore_params(params)
@@ -231,7 +230,7 @@ module Dhanhq
     end
 
     module Statements
-      extend self
+      module_function
 
       def ledger(from_date:, to_date:)
         Helpers.wrap_collection(
@@ -254,7 +253,7 @@ module Dhanhq
     end
 
     module EDIS
-      extend self
+      module_function
 
       def status(isin:)
         Helpers.wrap_attributes(DhanHQ::Models::Edis.inquire(isin))
@@ -297,9 +296,9 @@ module Dhanhq
       DhanHQ::Constants.respond_to?(name, include_private) || super
     end
 
-    def method_missing(name, *args, &block)
+    def method_missing(name, ...)
       if DhanHQ::Constants.respond_to?(name)
-        DhanHQ::Constants.public_send(name, *args, &block)
+        DhanHQ::Constants.public_send(name, ...)
       else
         super
       end

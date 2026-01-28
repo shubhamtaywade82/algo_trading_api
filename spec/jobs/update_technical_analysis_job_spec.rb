@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe UpdateTechnicalAnalysisJob, type: :job do
+RSpec.describe UpdateTechnicalAnalysisJob do
   describe '#perform' do
     before do
       allow(Market::AnalysisUpdater).to receive(:call)

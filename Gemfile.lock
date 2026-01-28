@@ -297,6 +297,8 @@ GEM
       net-smtp
     marcel (1.0.4)
     matrix (0.4.3)
+    mcp (0.6.0)
+      json-schema (>= 4.1)
     memory_profiler (1.1.0)
     mini_mime (1.1.5)
     minitest (5.25.5)
@@ -575,6 +577,7 @@ DEPENDENCIES
   kamal
   kaminari (~> 1.2)
   matrix
+  mcp (~> 0.5)
   memory_profiler
   ollama-client!
   pg (~> 1.1)

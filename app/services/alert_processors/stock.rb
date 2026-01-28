@@ -109,15 +109,16 @@ module AlertProcessors
       }
 
       # Set price based on order type
-      if order_type == 'STOP_LOSS_MARKET'
+      case order_type
+      when 'STOP_LOSS_MARKET'
         trigger = derived_stop_price(txn_side)
         payload[:trigger_price] = PriceMath.round_tick(trigger)
         payload[:price] = 0 # Market order
-      elsif order_type == 'STOP_LOSS'
+      when 'STOP_LOSS'
         trigger = derived_stop_price(txn_side)
         payload[:trigger_price] = PriceMath.round_tick(trigger)
         payload[:price] = PriceMath.round_tick(ltp)
-      elsif order_type == 'MARKET'
+      when 'MARKET'
         # MARKET orders don't need a price
       else
         payload[:price] = PriceMath.round_tick(ltp)

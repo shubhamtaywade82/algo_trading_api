@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe 'SwingPicks', type: :request do
+RSpec.describe 'SwingPicks' do
   describe 'GET /swing_picks' do
     it 'returns a successful response' do
       get '/swing_picks'

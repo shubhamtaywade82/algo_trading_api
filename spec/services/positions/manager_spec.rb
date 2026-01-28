@@ -23,53 +23,46 @@ RSpec.describe Positions::Manager, type: :service do
   end
 
   before do
+    Rails.cache.clear
     allow(Rails.logger).to receive(:error)
     allow(Rails.logger).to receive(:info)
-    # Stub Orders::Analyzer and Orders::Manager for simplicity—remove if you want their real side effects
     allow(Orders::Analyzer).to receive(:call).and_return({ dummy: :data })
     allow(Orders::Manager).to receive(:call)
-    # Ensure cache is empty so it falls back to DhanHQ API
-    allow(Positions::ActiveCache).to receive(:all).and_return({})
-    # Mock time to be during market hours (before 15:15)
     allow(Time).to receive(:current).and_return(Time.zone.local(2024, 1, 1, 14, 0))
   end
 
-  # Helper to stub Dhanhq positions API (adjust URL to real endpoint if needed)
-  def stub_dhan_positions(positions)
-    allow(Dhanhq::API::Portfolio).to receive(:positions).and_return(positions)
+  def stub_position_models(positions)
+    position_objects = positions.map { |p| double('Position', attributes: p) }
+    allow(DhanHQ::Models::Position).to receive(:all).and_return(position_objects)
   end
 
   context 'with mixed valid/invalid positions' do
     before do
-      stub_dhan_positions([valid_position, invalid_position])
-      valid_position['ltp'] = 120.0
+      # valid_position has unrealizedProfit 1500, netQty 75, buyAvg 100 → estimate_ltp yields 120
+      stub_position_models([valid_position, invalid_position])
     end
 
     it 'calls Orders::Manager only for valid positions' do
-      # Use hash_including to match the position with ltp field added
-      expect(Orders::Analyzer).to receive(:call).with(hash_including(
+      described_class.call
+
+      expect(Orders::Analyzer).to have_received(:call).with(hash_including(
         'netQty' => 75,
         'buyAvg' => 100,
         'securityId' => 'OPT1',
         'ltp' => 120.0
-      )).and_return({ dummy: :data })
-
-      expect(Orders::Manager).to receive(:call).with(hash_including(
+      ))
+      expect(Orders::Manager).to have_received(:call).with(hash_including(
         'netQty' => 75,
         'buyAvg' => 100,
         'securityId' => 'OPT1',
         'ltp' => 120.0
       ), { dummy: :data })
-
-      expect(Orders::Manager).not_to receive(:call).with(invalid_position, anything)
-      described_class.call
+      expect(Orders::Manager).not_to have_received(:call).with(invalid_position, anything)
     end
   end
 
   context 'when all positions are invalid' do
-    before do
-      stub_dhan_positions([invalid_position])
-    end
+    before { stub_position_models([invalid_position]) }
 
     it 'does not call Orders::Manager or Analyzer' do
       expect(Orders::Analyzer).not_to receive(:call)
@@ -79,9 +72,7 @@ RSpec.describe Positions::Manager, type: :service do
   end
 
   context 'when positions are empty' do
-    before do
-      stub_dhan_positions([])
-    end
+    before { stub_position_models([]) }
 
     it 'does not call Orders::Manager or Analyzer' do
       expect(Orders::Analyzer).not_to receive(:call)
@@ -92,7 +83,7 @@ RSpec.describe Positions::Manager, type: :service do
 
   context 'when Orders::Manager raises an error' do
     before do
-      stub_dhan_positions([valid_position])
+      stub_position_models([valid_position])
       allow(Orders::Analyzer).to receive(:call).and_return({ dummy: :data })
       allow(Orders::Manager).to receive(:call).and_raise(StandardError, 'Boom')
     end
@@ -105,14 +96,59 @@ RSpec.describe Positions::Manager, type: :service do
 
   context 'when after EOD, skips exit' do
     before do
-      allow(Time).to receive(:current).and_return(Time.zone.local(2024, 1, 1, 15, 16)) # After 15:15
-      stub_dhan_positions([valid_position])
+      allow(Time).to receive(:current).and_return(Time.zone.local(2024, 1, 1, 15, 16))
+      stub_position_models([valid_position])
     end
 
     it 'logs skip and does not call Orders::Manager' do
       expect(Rails.logger).to receive(:info).with(/\[Positions::Manager\] Skipped/)
       expect(Orders::Manager).not_to receive(:call)
       described_class.call
+    end
+  end
+
+  # Stub only external boundaries; real Analyzer and Manager (incl. RiskManager) run.
+  context 'integration: stubs only external boundaries' do
+    let(:position_fixture) do
+      {
+        'netQty' => 75,
+        'buyAvg' => 100,
+        'costPrice' => 100,
+        'securityId' => 'OPT1',
+        'exchangeSegment' => 'NSE_FNO',
+        'productType' => 'INTRADAY',
+        'tradingSymbol' => 'NIFTY24JUL17500CE',
+        'unrealizedProfit' => 1500
+      }
+    end
+
+    before do
+      Rails.cache.clear
+      allow(Rails.logger).to receive(:error)
+      allow(Rails.logger).to receive(:info)
+      allow(Time).to receive(:current).and_return(Time.zone.local(2024, 1, 1, 14, 0))
+      allow(TelegramNotifier).to receive(:send_message)
+      position_objects = [double('Position', attributes: position_fixture)]
+      allow(DhanHQ::Models::Position).to receive(:all).and_return(position_objects)
+      allow(DhanHQ::Models::Order).to receive(:all).and_return([])
+      allow(DhanHQ::Models::Order).to receive(:find).and_return(nil)
+      allow(Orders::Analyzer).to receive(:call).and_call_original
+      allow(Orders::Manager).to receive(:call).and_call_original
+    end
+
+    it 'runs real Analyzer and Manager with only broker/Telegram stubbed' do
+      described_class.call
+
+      expect(Orders::Analyzer).to have_received(:call).with(hash_including(
+        'netQty' => 75,
+        'buyAvg' => 100,
+        'securityId' => 'OPT1',
+        'ltp' => 120.0
+      ))
+      expect(Orders::Manager).to have_received(:call).with(
+        hash_including('securityId' => 'OPT1', 'ltp' => 120.0),
+        hash_including(:entry_price, :ltp, :pnl, :pnl_pct, :quantity, :instrument_type)
+      )
     end
   end
 end

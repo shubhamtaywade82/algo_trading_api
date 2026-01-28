@@ -26,6 +26,8 @@ module PortfolioInsights
       # notify(answer, tag: 'PORTFOLIO_AI') if interactive
       # answer
     rescue StandardError => e
+      raise if dhan_auth_error?(e)
+
       log_error(e.message)
       notify("❌ Portfolio AI failed: #{e.message}", tag: 'PORTFOLIO_AI_ERR')
       nil
@@ -72,9 +74,16 @@ module PortfolioInsights
         end
       rescue StandardError => e
         Rails.logger.error "[Analyzer] ❌ Batch LTP fetch failed: #{e.class} - #{e.message}"
-        # fallback (optional): set to 0 or try single fetch per item
+        raise if dhan_auth_error?(e)
+
         rows.each { |h| h['ltp'] ||= 0.0 }
       end
+    end
+
+    def dhan_auth_error?(e)
+      name = e.class.name.to_s
+      msg  = e.message.to_s
+      name.include?('Authentication') || name.include?('Unauthorized') || msg.include?('401')
     end
 
     def fetch_bulk_quotes(sec_ids)

@@ -103,15 +103,18 @@ module Dhan
           }
 
           ws.send(payload.to_json)
-          Rails.logger.info "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{batch.pluck(:SecurityId).join(', ')}"
+          ids = batch.map { |h| h[:SecurityId] }.join(', ') # rubocop:disable Rails/Pluck -- batch is Array, not Relation
+          Rails.logger.info "[WS] 📡 Subscribed #{batch.size} instruments via code #{request_code}: #{ids}"
         end
       end
 
       def self.handle_message(data)
         return unless data.is_a?(String) && !data.start_with?('[')
 
-        packet = WebsocketPacketParser.new(data).parse
+        packet = DhanHQ::WS::WebsocketPacketParser.new(data).parse
         return if packet.blank?
+
+        packet = normalize_market_depth(packet)
 
         # log_ltp_change(packet)
         case packet[:feed_response_code]
@@ -122,7 +125,7 @@ module Dhan
         when 50
           Rails.logger.warn "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
         else
-          Rails.logger.debug "[WS] Ignored packet type: #{packet[:feed_response_code]}"
+          Rails.logger.debug { "[WS] Ignored packet type: #{packet[:feed_response_code]}" }
         end
       rescue StandardError => e
         Rails.logger.error "[WS] ❌ Parse/Dispatch Error: #{e.class} - #{e.message}"
@@ -158,6 +161,26 @@ module Dhan
         @instrument_cache[cache_key] = instrument
       end
 
+      # DhanHQ::WS::WebsocketPacketParser returns market_depth as BinData records; convert to hashes for handlers.
+      def self.normalize_market_depth(packet)
+        return packet unless packet[:market_depth].is_a?(Array)
+
+        packet = packet.dup
+        packet[:market_depth] = packet[:market_depth].map do |level|
+          next level if level.is_a?(Hash)
+
+          {
+            bid_quantity: level.bid_quantity,
+            ask_quantity: level.ask_quantity,
+            no_of_bid_orders: level.no_of_bid_orders,
+            no_of_ask_orders: level.no_of_ask_orders,
+            bid_price: level.bid_price,
+            ask_price: level.ask_price
+          }
+        end
+        packet
+      end
+
       def self.log_ltp_change(packet)
         return unless packet[:ltp]
 
@@ -178,7 +201,7 @@ module Dhan
 
         name = instrument&.symbol_name || key
 
-        Rails.logger.debug "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
+        Rails.logger.debug { "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}" }
       end
     end
   end

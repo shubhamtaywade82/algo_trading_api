@@ -1,3 +1,5 @@
+inherit_from: .rubocop_todo.yml
+
 require:
   - rubocop-rails
   - rubocop-performance
@@ -48,38 +50,8 @@ Style/MultilineBlockChain:
   Enabled: false                # allow multi‐line chains of blocks
 
 ################################################################################
-# 3. Metrics (Complexity / Size) adjustments
+# 3. Metrics (Complexity / Size) – see .rubocop_todo.yml for Max and Exclude
 ################################################################################
-
-Metrics/AbcSize:
-  Enabled: true
-  Max: 40                       # bumped from 17 to 40
-  Exclude:
-    - 'app/services/option/strategy_suggester.rb'  # or any file you want to carve out
-
-Metrics/CyclomaticComplexity:
-  Enabled: true
-  Max: 10                       # bumped from 7 to 10
-
-Metrics/PerceivedComplexity:
-  Enabled: true
-  Max: 12                       # bumped from 8 to 12
-
-Metrics/MethodLength:
-  Enabled: true
-  Max: 80                       # bumped from 50 to 80
-
-Metrics/ClassLength:
-  Enabled: true
-  Max: 300                      # bumped from 100 to 300
-
-Metrics/BlockLength:
-  Enabled: true
-  Max: 50                       # bumped from 25 to 50
-
-Metrics/ParameterLists:
-  Enabled: true
-  Max: 6                        # bumped from 5 to 6
 
 ################################################################################
 # 4. Security / Rails adjustments

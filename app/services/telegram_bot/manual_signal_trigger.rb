@@ -47,8 +47,8 @@ module TelegramBot
     def find_instrument!
       Instrument
         .where('LOWER(underlying_symbol) = ?', @symbol.downcase)
-        .where('LOWER(exchange) = ?', exchange_code)
-        .where('LOWER(segment) = ?', 'index')
+        .where(exchange: @exchange)
+        .where(segment: :index)
         .first!
     end
 

@@ -2,7 +2,7 @@
 
 # Calculates entry/ltp/pnl/percent/type for any position
 #
-# This service analyzes a trading position and calculates various metrics such as entry price, last traded price (LTP), profit and loss (P&L), percentage change, and the type of instrument (stock or option).
+# Analyzes a trading position and returns entry price, LTP, P&L, percentage change, and instrument type.
 #
 # @example
 #   analyzer = Orders::Analyzer.new(position)

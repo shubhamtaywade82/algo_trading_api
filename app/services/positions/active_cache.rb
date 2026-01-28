@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Caches open DhanHQ positions for ultra-fast lookup and polling avoidance.
 module Positions
+  # Caches open DhanHQ positions for ultra-fast lookup and polling avoidance.
   class ActiveCache
     CACHE_KEY = 'active_positions_cache'
     CACHE_TTL = 30 # seconds
@@ -13,7 +13,7 @@ module Positions
     def self.refresh!
       positions = DhanHQ::Models::Position.all.map(&:attributes).reject { |p| (p['netQty'] || p[:net_qty]).to_f.zero? }
 
-      # Normalize exchange segment as string key
+      # Build cache key from security_id and segment (enum → string key, string → enum)
       normalized = positions.index_by do |p|
         security_id = p['securityId'] || p[:security_id]
         exchange_segment = reverse_convert_segment(p['exchangeSegment'] || p[:exchange_segment])
@@ -71,10 +71,10 @@ module Positions
       "#{security_id}_#{exchange_segment_enum}"
     end
 
-    # Ensures exchange_segment is always the string key (e.g., "NSE_FNO")
+    # Converts segment for cache key: Integer → string key (e.g. 2 → "NSE_FNO"); String → enum.
     #
     # @param [String, Integer] segment
-    # @return [String]
+    # @return [String, Integer]
     def self.reverse_convert_segment(segment)
       if segment.is_a?(Integer)
         DhanhqMappings::SEGMENT_ENUM_TO_KEY[segment] || segment.to_s

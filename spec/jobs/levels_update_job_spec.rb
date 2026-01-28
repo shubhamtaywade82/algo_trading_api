@@ -3,7 +3,7 @@
 require 'rails_helper'
 require 'rake'
 
-RSpec.describe LevelsUpdateJob, type: :job do
+RSpec.describe LevelsUpdateJob do
   describe '#perform' do
     it 'invokes the levels:update rake task' do
       expect(Rake::Task).to receive(:[]).with('levels:update').and_return(double(invoke: true))

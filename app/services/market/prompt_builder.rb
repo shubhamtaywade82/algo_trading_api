@@ -1,47 +1,47 @@
 module Market
   class PromptBuilder
     class << self
-        MARKET_ANALYSIS_SYSTEM_PROMPT = <<~PROMPT.freeze
-          You are OptionsTrader-INDIA v1, a senior options-buyer specializing in Indian NSE weekly expiries for NIFTY, BANKNIFTY, FINNIFTY and SENSEX.
+      MARKET_ANALYSIS_SYSTEM_PROMPT = <<~PROMPT.freeze
+        You are OptionsTrader-INDIA v1, a senior options-buyer specializing in Indian NSE weekly expiries for NIFTY, BANKNIFTY, FINNIFTY and SENSEX.
 
-          OBJECTIVE
-          Decide whether to BUY a single-leg option (CE or PE) intraday with bracketed risk (SL/TP/trail) using confluence of:
-          - Trend: Supertrend (1m trigger, 5m confirm), ADX/DI
-          - Participation: Volume surge vs SMA, OI/ΔOI, option volume
-          - Value: VWAP + Anchored VWAP (from open / IB high-low / last BOS candle)
-          - Structure: SMC-lite (BOS/CHOCH, nearest OB/FVG proximity)
-          - Volatility: IV, IV Rank, VIX, ATR (spot), gamma sensitivity for weeklys
+        OBJECTIVE
+        Decide whether to BUY a single-leg option (CE or PE) intraday with bracketed risk (SL/TP/trail) using confluence of:
+        - Trend: Supertrend (1m trigger, 5m confirm), ADX/DI
+        - Participation: Volume surge vs SMA, OI/ΔOI, option volume
+        - Value: VWAP + Anchored VWAP (from open / IB high-low / last BOS candle)
+        - Structure: SMC-lite (BOS/CHOCH, nearest OB/FVG proximity)
+        - Volatility: IV, IV Rank, VIX, ATR (spot), gamma sensitivity for weeklys
 
-          CONSTRAINTS & STYLE
-          - User trades intraday only; no carry. Realistic targets: ₹25–₹35 per option move, 1:1.2–1.4 RR typical (favor fast scalps).
-          - Avoid first 2 minutes after open; avoid 11:30–13:30 IST unless ADX(5m) ≥ 25 AND volume keeps surging.
-          - Prefer strikes in ±1% ATM window with delta 0.35–0.55 and adequate OI/liquidity. Avoid illiquid strikes.
-          - Use CE when confluence is bullish; PE when bearish. If mixed/weak, return NO_TRADE with reasons.
-          - Risk budget: default 1–2% of capital; never exceed user’s max loss per trade. Bracket orders via DhanHQ SuperOrder.
-          - Respect broker mapping (securityId, exchangeSegment) if provided.
+        CONSTRAINTS & STYLE
+        - User trades intraday only; no carry. Realistic targets: ₹25–₹35 per option move, 1:1.2–1.4 RR typical (favor fast scalps).
+        - Avoid first 2 minutes after open; avoid 11:30–13:30 IST unless ADX(5m) ≥ 25 AND volume keeps surging.
+        - Prefer strikes in ±1% ATM window with delta 0.35–0.55 and adequate OI/liquidity. Avoid illiquid strikes.
+        - Use CE when confluence is bullish; PE when bearish. If mixed/weak, return NO_TRADE with reasons.
+        - Risk budget: default 1–2% of capital; never exceed user’s max loss per trade. Bracket orders via DhanHQ SuperOrder.
+        - Respect broker mapping (securityId, exchangeSegment) if provided.
 
-          OUTPUT STYLE
-          Produce a concise, human-readable trading desk brief that follows any formatting instructions provided in the user prompt (probability bands, PRIMARY/HEDGE lines, CLOSE RANGE, Bias line, closing marker).
-          - Do **not** return JSON or structured data; stick to readable text with short bullets.
-          - Keep recommendations actionable with strikes, entry/SL/TP, and rationale tied to the data in the prompt.
+        OUTPUT STYLE
+        Produce a concise, human-readable trading desk brief that follows any formatting instructions provided in the user prompt (probability bands, PRIMARY/HEDGE lines, CLOSE RANGE, Bias line, closing marker).
+        - Do **not** return JSON or structured data; stick to readable text with short bullets.
+        - Keep recommendations actionable with strikes, entry/SL/TP, and rationale tied to the data in the prompt.
 
-          DECISION RULE (summary)
-          1) Direction (must pass):
-             - Supertrend: 1m trigger aligns with 5m direction
-             - ADX(5m) ≥ 20 and correct DI dominance
-          2) Participation (must pass):
-             - Volume surge ≥ 1.5× volSMA(20) on entry timeframe
-             - OI/ΔOI confirms side (CE for up, PE for down) OR at least not diverging
-          3) Value/Structure (prefer):
-             - Price above VWAP & above relevant AVWAP for CE; below both for PE
-             - Not entering directly into opposite OB/FVG; BOS in intended direction preferred
-          4) Volatility fit (prefer):
-             - IV not extreme vs IVR unless momentum day; VIX rising intraday prefers buying
-          5) Risk packaging:
-             - SL/TP derived via option ATR or spot ATR translated to option ticks; add trailing if trend day
+        DECISION RULE (summary)
+        1) Direction (must pass):
+           - Supertrend: 1m trigger aligns with 5m direction
+           - ADX(5m) ≥ 20 and correct DI dominance
+        2) Participation (must pass):
+           - Volume surge ≥ 1.5× volSMA(20) on entry timeframe
+           - OI/ΔOI confirms side (CE for up, PE for down) OR at least not diverging
+        3) Value/Structure (prefer):
+           - Price above VWAP & above relevant AVWAP for CE; below both for PE
+           - Not entering directly into opposite OB/FVG; BOS in intended direction preferred
+        4) Volatility fit (prefer):
+           - IV not extreme vs IVR unless momentum day; VIX rising intraday prefers buying
+        5) Risk packaging:
+           - SL/TP derived via option ATR or spot ATR translated to option ticks; add trailing if trend day
 
-          Fail any “must pass” → NO_TRADE.
-        PROMPT
+        Fail any “must pass” → NO_TRADE.
+      PROMPT
 
       OPTIONS_BUYING_SYSTEM_PROMPT = MARKET_ANALYSIS_SYSTEM_PROMPT
 
@@ -200,7 +200,7 @@ module Market
       end
 
       def build_options_buying_prompt(md, context = nil)
-        #session_label = format_session_label(md[:session])
+        # session_label = format_session_label(md[:session])
         session_label =
           case md[:session]
           when :pre_open   then '⏰ *Pre-open* session'
@@ -208,19 +208,17 @@ module Market
           when :weekend    then '📅 *Weekend* (markets closed)'
           else                  '🟢 *Live* session'
           end
-        
+
         # Extract key data
         ltp = md[:ltp]
         symbol = md[:symbol]
         expiry = md[:expiry] || 'N/A'
         vix_value = md[:vix] || '–'
-        reg = md[:regime] || {}
-        regime_note = "IV@ATM: #{fmt1(reg[:iv_atm])}% | VIX: #{fmt1(reg[:vix])} (high? #{reg[:vix_high]} / low? #{reg[:vix_low]})"
+        md[:regime] || {}
 
-        
         # Format option chain for buying decisions
         chain = format_options_for_buying(md[:options])
-        
+
         # Analysis context
         extra = context.to_s.strip
         extra_block = extra.empty? ? '' : "\n=== ADDITIONAL CONTEXT ===\n#{extra}\n"
@@ -275,61 +273,41 @@ module Market
           #{chain}
           #{extra_block}
 
-          === CANONICAL RESPONSE SPEC (EXACT) ===
+          === TRADE SETUP REQUIRED ===
+          Provide:
+          1) **Trade Type**: Buy [CE/PE] [Strike] [Expiry]
+          2) **Entry**: ₹[price] (limit near best bid/ask), **Reason**: [delta≈0.5 ATM, OI/IV context]
+          3) **Stop Loss**: [20–30%] of premium or invalidation level; exact ₹ value
+          4) **Take Profit**: [50–100%] premium or at [underlying target zone]
+          5) **Position Sizing**: For ₹50,000 account with 3% risk = [lots] calculation
+          6) **Validity**: [day/IOC]; avoid illiquid spreads
+          7) **Key Levels**: Support/Resistance based on technical + option OI
 
-          [NO_TRADE]
-          Decision: NO_TRADE
-          Instrument: #{symbol}
-          Market Bias: RANGE / UNCLEAR
-          Reason: <one sentence>
-          Risk Note: <one sentence>
-          Re-evaluate When:
-          - <condition 1>
-          - <condition 2>
+          **Analysis Focus:**
+          - Delta around 0.5 for ATM exposure and responsive premium
+          - Use OI/Change in OI to infer support/resistance and sentiment
+          - Consider IV levels - avoid buying during extreme IV unless expecting expansion
+          - Factor in theta decay, especially for weekly expiries
+          - Lot sizes: Nifty 50, Bank Nifty 15, Sensex 10
 
-          [WAIT]
-          Decision: WAIT
-          Instrument: #{symbol}
-          Bias: <e.g. BULLISH (15m) / BEARISH (15m)>
-          No Trade Because:
-          - <reason 1>
-          - <reason 2>
-          Trigger Conditions:
-          - <trigger 1>
-          - <trigger 2>
-          Preferred Option (If Triggered):
-          - Type: CE|PE
-          - Strike Zone: <range>
-          - Expected Premium Zone: <range>
-          Reason: <one sentence>
+          **Risk Management:**
+          - Account: ₹50,000 (adjust as needed)
+          - Risk per trade: 2-5% of capital
+          - Avoid positions >20% of account in single expiry
+          - Time-based exit if no move by 2:30 PM
 
-          [BUY]
-          Decision: BUY
-          Instrument: #{symbol}
-          Bias: BULLISH / BEARISH
-          Option:
-          - Type: CE|PE
-          - Strike: <integer>
-          - Expiry: #{expiry}
-          Execution:
-          - Entry Premium: <number>
-          - Stop Loss Premium: <number>
-          - Target Premium: <number>
-          - Risk Reward: <number>
-          Underlying Context:
-          - Spot Above/Spot Below: <number> (VWAP/BOS reference)
-          - Invalidation Below/Invalidation Above: <number> (15m structure)
-          Exit Rules:
-          - SL Hit on premium
-          - OR Spot closes below/above <number> on 5m
-          - OR VWAP rule using 5m candles
-          Reason: <one sentence>
+          === AVOID-BUYING CHECKS ===
+          If any of the below hold, output: "Decision Gate: AVOID – <reason>"
+          - IV regime likely to compress (IV high and falling or post-event)#{' '}
+          - VIX falling and price range-bound
+          - <48 hours to expiry without momentum; theta risk high (expiry-day scalps allowed if momentum confirmed)
+          - Wide spreads or low OI/volume at chosen strike
+          - No clear directional edge on this timeframe
+          Otherwise output: "Decision Gate: BUY – <reason>"
 
-          ENFORCEMENT:
-          - One decision only.
-          - For BUY: RR >= 1.5 and premium SL < entry < target.
-          - For NO_TRADE: do not include Option/Execution/Exit Rules.
-          - For WAIT: do not include execution prices (no Entry/SL/Target/RR).
+          Decision Gate: BUY/AVOID – <one-line reason referencing IV/VIX/theta/liquidity>
+
+          Format clearly for immediate execution with specific entry/exit levels.
         PROMPT
       end
 
@@ -338,11 +316,11 @@ module Market
         return 'No option-chain data available.' if options.blank?
 
         blocks = []
-        
+
         # Focus on tradeable strikes with good liquidity
         {
           itm_call: 'ITM CALL (Higher Delta)',
-          atm: 'ATM (Balanced Risk/Reward)', 
+          atm: 'ATM (Balanced Risk/Reward)',
           otm_call: 'OTM CALL (Lower Cost)',
           itm_put: 'ITM PUT (Higher Delta)',
           otm_put: 'OTM PUT (Lower Cost)'
@@ -363,7 +341,7 @@ module Market
 
         blocks.join("\n\n")
       end
-   
+
       private
 
       def fmt1(x)
@@ -410,7 +388,7 @@ module Market
 
       def format_technical_indicators(md)
         ohlc = md[:ohlc] || {}
-        
+
         <<~INDICATORS
           *Technical Snapshot*:
           OHLC: O #{ohlc[:open]} H #{ohlc[:high]} L #{ohlc[:low]} C #{ohlc[:close]}
@@ -422,17 +400,17 @@ module Market
 
       def fmt_large(x)
         return '–' if x.nil?
-        
+
         num = x.to_f
         return '–' if num.zero?
-        
+
         case num
         when 0..999 then num.to_i.to_s
-        when 1000..99999 then "#{(num/1000).round(1)}K"
-        when 100000..9999999 then "#{(num/100000).round(1)}L"
-        else "#{(num/10000000).round(1)}Cr"
+        when 1000..99_999 then "#{(num / 1000).round(1)}K"
+        when 100_000..9_999_999 then "#{(num / 100_000).round(1)}L"
+        else "#{(num / 10_000_000).round(1)}Cr"
         end
-      end 
+      end
 
       def dig_any(h, *path)
         h.is_a?(Hash) ? h.dig(*path) : nil

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# Tradable instrument (equity, index, derivative, etc.) with DhanHQ segment and LTP/OHLC helpers.
 class Instrument < ApplicationRecord
   include InstrumentCandleAccessors
 
@@ -17,7 +18,11 @@ class Instrument < ApplicationRecord
   accepts_nested_attributes_for :margin_requirements, allow_destroy: true
   accepts_nested_attributes_for :order_features, allow_destroy: true
 
-  # Enums
+  # Enums (explicit attribute types for Rails 8)
+  attribute :exchange, :string
+  attribute :segment, :string
+  attribute :instrument, :string
+
   enum :exchange, { nse: 'NSE', bse: 'BSE', mcx: 'MCX' }
   enum :segment, { index: 'I', equity: 'E', currency: 'C', derivatives: 'D', commodity: 'M' }, prefix: true
   enum :instrument, {
@@ -35,9 +40,6 @@ class Instrument < ApplicationRecord
 
   # Validations
   validates :security_id, presence: true
-
-  # Scopes
-  scope :expiring_soon, -> { where(expiry_flag: '1') }
 
   # Class Methods
 
@@ -73,16 +75,10 @@ class Instrument < ApplicationRecord
       underlying_seg: exchange_segment,
       expiry: expiry
     )
-    # New API may return different structure - handle both
-    data = response.is_a?(Hash) ? (response['data'] || response) : response
-    return nil unless data
-
-    last_price = data.is_a?(Hash) ? (data['last_price'] || data[:last_price]) : nil
-    oc_data = data.is_a?(Hash) ? (data['oc'] || data[:oc]) : nil
+    last_price, oc_data = option_chain_extract(response)
     return nil unless oc_data
 
     filtered_data = filter_option_chain_data(oc_data)
-
     { last_price: last_price, oc: filtered_data }
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Option Chain for Instrument #{security_id}: #{e.message}")
@@ -90,59 +86,35 @@ class Instrument < ApplicationRecord
   end
 
   def filter_option_chain_data(data)
-    data.select do |_strike, option_data|
-      call_data = option_data.is_a?(Hash) ? (option_data['ce'] || option_data[:ce]) : nil
-      put_data = option_data.is_a?(Hash) ? (option_data['pe'] || option_data[:pe]) : nil
-
-      has_call_values = call_data && call_data.except('implied_volatility', :implied_volatility).values.any? do |v|
-        numeric_value?(v) && v.to_f.positive?
-      end
-      has_put_values = put_data && put_data.except('implied_volatility', :implied_volatility).values.any? do |v|
-        numeric_value?(v) && v.to_f.positive?
-      end
-
-      has_call_values || has_put_values
-    end
+    data.select { |_strike, option_data| option_has_tradable_legs?(option_data) }
   end
 
   def ltp
-    # Use InstrumentHelper's ltp method but add detailed logging for Instrument
     payload = { exchange_segment => [security_id.to_i] }
-    Rails.logger.debug("Fetching LTP for Instrument #{security_id} (#{exchange_segment}) with payload: #{payload.inspect}")
+    Rails.logger.debug { "Fetching LTP for Instrument #{security_id} (#{exchange_segment}) with payload: #{payload.inspect}" }
 
     response = DhanHQ::Models::MarketFeed.ltp(payload)
-    Rails.logger.debug("LTP API response for Instrument #{security_id}: #{response.inspect}")
+    Rails.logger.debug { "LTP API response for Instrument #{security_id}: #{response.inspect}" }
 
-    # Extract last_price from nested response structure
-    # Response format: {"data" => {"EXCHANGE_SEGMENT" => {"security_id" => {"last_price" => value}}}, "status" => "success"}
-    data = response[:data] || response['data'] || response
-    unless data
-      Rails.logger.warn("No data found in LTP response for Instrument #{security_id}: #{response.inspect}")
-      return nil
-    end
+    data = ltp_response_data(response)
+    return nil unless data
 
-    segment_data = data[exchange_segment] || data[exchange_segment.to_sym]
-    unless segment_data
-      Rails.logger.warn("No segment data for #{exchange_segment} in LTP response for Instrument #{security_id}. Available segments: #{data.keys.inspect}")
-      return nil
-    end
+    segment_data = ltp_segment_data(data)
+    return nil unless segment_data
 
-    security_data = segment_data[security_id.to_s] || segment_data[security_id.to_i]
-    unless security_data
-      Rails.logger.warn("No security data for #{security_id} in segment #{exchange_segment}. Available securities: #{segment_data.keys.inspect}")
-      return nil
-    end
+    security_data = ltp_security_data(segment_data)
+    return nil unless security_data
 
-    ltp_value = security_data[:last_price] || security_data['last_price'] || security_data[:ltp] || security_data['ltp']
-    unless ltp_value
-      Rails.logger.warn("No last_price found in security data for Instrument #{security_id}. Available keys: #{security_data.keys.inspect}")
-      return nil
-    end
+    ltp_value = ltp_value_from(security_data)
+    return nil unless ltp_value
 
-    Rails.logger.debug("Successfully fetched LTP for Instrument #{security_id}: #{ltp_value}")
+    Rails.logger.debug { "Successfully fetched LTP for Instrument #{security_id}: #{ltp_value}" }
     ltp_value.to_f
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch LTP for Instrument #{security_id} (#{exchange_segment}): #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+    Rails.logger.error(
+      "Failed to fetch LTP for Instrument #{security_id} (#{exchange_segment}): " \
+      "#{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}"
+    )
     nil
   end
 
@@ -156,7 +128,6 @@ class Instrument < ApplicationRecord
     nil
   end
 
-
   def historical_ohlc(from_date: nil, to_date: nil, oi: false)
     instrument_code = resolve_instrument_code
     params = {
@@ -169,15 +140,17 @@ class Instrument < ApplicationRecord
     }
 
     # Only include expiry_code for derivative instruments (futures/options)
-    # For equity/index instruments, expiry_code is not needed and may cause errors
-    if instrument_code.to_s.match?(/^(FUT|OPT)/)
-      params[:expiry_code] = 0
-    end
+    params[:expiry_code] = 0 if instrument_code.to_s.match?(/^(FUT|OPT)/)
 
-    Rails.logger.debug("Fetching Historical OHLC for Instrument #{security_id} with params: #{params.inspect}")
+    Rails.logger.debug do
+      "Fetching Historical OHLC for Instrument #{security_id} with params: #{params.inspect}"
+    end
     DhanHQ::Models::HistoricalData.daily(params)
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch Historical OHLC for Instrument #{security_id} (#{underlying_symbol}, segment: #{segment}, exchange: #{exchange}): #{e.message}")
+    Rails.logger.error(
+      "Failed to fetch Historical OHLC for Instrument #{security_id} " \
+      "(#{underlying_symbol}, segment: #{segment}, exchange: #{exchange}): #{e.message}"
+    )
     Rails.logger.error("Parameters used: #{params.inspect}") if defined?(params)
     Rails.logger.error("Resolved instrument_code: #{instrument_code.inspect}") if defined?(instrument_code)
     nil
@@ -212,7 +185,7 @@ class Instrument < ApplicationRecord
     instrument_value = instrument_before_type_cast.to_s
 
     # Validate it's one of the allowed values for DhanHQ API
-    allowed = ['INDEX', 'FUTIDX', 'OPTIDX', 'EQUITY', 'FUTSTK', 'OPTSTK', 'FUTCOM', 'OPTFUT', 'FUTCUR', 'OPTCUR']
+    allowed = %w[INDEX FUTIDX OPTIDX EQUITY FUTSTK OPTSTK FUTCOM OPTFUT FUTCUR OPTCUR]
     return instrument_value if allowed.include?(instrument_value)
 
     # Fallback: try to get from enum mapping if instrument is set
@@ -231,7 +204,6 @@ class Instrument < ApplicationRecord
     end
   end
 
-
   # Helper method to check if a value is numeric
   def numeric_value?(value)
     value.is_a?(Numeric) || value.to_s.match?(/\A-?\d+(\.\d+)?\z/)
@@ -244,11 +216,77 @@ class Instrument < ApplicationRecord
     )
   end
 
-
-
   private
 
   def exch_segment_enum
     { exchange_segment => [security_id.to_i] }
+  end
+
+  # --- LTP extraction (reduces complexity of #ltp) ---
+  def ltp_response_data(response)
+    data = response[:data] || response['data'] || response
+    return data if data
+
+    Rails.logger.warn("No data found in LTP response for Instrument #{security_id}: #{response.inspect}")
+    nil
+  end
+
+  def ltp_segment_data(data)
+    segment_data = data[exchange_segment] || data[exchange_segment.to_sym]
+    return segment_data if segment_data
+
+    Rails.logger.warn(
+      "No segment data for #{exchange_segment} in LTP response for Instrument #{security_id}. " \
+      "Available segments: #{data.keys.inspect}"
+    )
+    nil
+  end
+
+  def ltp_security_data(segment_data)
+    security_data = segment_data[security_id.to_s] || segment_data[security_id.to_i]
+    return security_data if security_data
+
+    Rails.logger.warn(
+      "No security data for #{security_id} in segment #{exchange_segment}. " \
+      "Available securities: #{segment_data.keys.inspect}"
+    )
+    nil
+  end
+
+  def ltp_value_from(security_data)
+    value = security_data[:last_price] || security_data['last_price'] ||
+            security_data[:ltp] || security_data['ltp']
+    return value if value
+
+    Rails.logger.warn(
+      "No last_price found in security data for Instrument #{security_id}. " \
+      "Available keys: #{security_data.keys.inspect}"
+    )
+    nil
+  end
+
+  # --- Option chain extraction (reduces complexity of #fetch_option_chain) ---
+  def option_chain_extract(response)
+    data = response.is_a?(Hash) ? (response['data'] || response) : response
+    return [nil, nil] unless data
+
+    last_price = data.is_a?(Hash) ? (data['last_price'] || data[:last_price]) : nil
+    oc_data = data.is_a?(Hash) ? (data['oc'] || data[:oc]) : nil
+    [last_price, oc_data]
+  end
+
+  def option_has_tradable_legs?(option_data)
+    return false unless option_data.is_a?(Hash)
+
+    call_data = option_data['ce'] || option_data[:ce]
+    put_data = option_data['pe'] || option_data[:pe]
+    leg_has_positive_values?(call_data) || leg_has_positive_values?(put_data)
+  end
+
+  def leg_has_positive_values?(leg_data)
+    return false unless leg_data.is_a?(Hash)
+
+    tradable = leg_data.except('implied_volatility', :implied_volatility).values
+    tradable.any? { |v| numeric_value?(v) && v.to_f.positive? }
   end
 end

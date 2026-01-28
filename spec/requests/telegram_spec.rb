@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe 'Telegram', type: :request do
+RSpec.describe 'Telegram' do
   describe 'POST /telegram/webhook' do
     it 'returns a successful response' do
       post '/telegram/webhook'

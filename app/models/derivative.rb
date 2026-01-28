@@ -37,5 +37,4 @@ class Derivative < ApplicationRecord
 
   # Validations
   validates :strike_price, :option_type, :expiry_date, presence: true
-
 end

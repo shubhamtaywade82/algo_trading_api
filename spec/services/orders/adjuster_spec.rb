@@ -18,35 +18,32 @@ RSpec.describe Orders::Adjuster, type: :service do
   let(:params) { { trigger_price: 105.5 } }
 
   context 'when stop loss adjustment is successful' do
+    let(:order_list) do
+      [{
+        'securityId' => 'OPT123',
+        'orderId' => 'ORDER123',
+        'orderStatus' => 'PENDING',
+        'dhanClientId' => 'DUMMY_CLIENT_ID',
+        'orderType' => 'LIMIT',
+        'quantity' => 75,
+        'price' => 110,
+        'legName' => '',
+        'disclosedQuantity' => 0,
+        'validity' => 'DAY'
+      }]
+    end
+
     before do
-      stub_request(:get, 'https://api.dhan.co/orders')
-        .to_return(
-          status: 200,
-          body: [{
-            'securityId' => 'OPT123',
-            'orderId' => 'ORDER123',
-            'orderStatus' => 'PENDING',
-            'dhanClientId' => 'DUMMY_CLIENT_ID',
-            'orderType' => 'LIMIT',
-            'quantity' => 75,
-            'price' => 110,
-            'legName' => '',
-            'disclosedQuantity' => 0,
-            'validity' => 'DAY'
-          }].to_json,
-          headers: { 'Content-Type' => 'application/json' }
-        )
-
-      stub_request(:put, 'https://api.dhan.co/orders/ORDER123')
-        .with(body: hash_including('triggerPrice' => 105.5))
-        .to_return(
-          status: 200,
-          body: { 'orderStatus' => 'PENDING' }.to_json,
-          headers: { 'Content-Type' => 'application/json' }
-        )
-
-      stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage})
-        .to_return(status: 200, body: '{}')
+      allow(DhanHQ::Models::Order).to receive(:all).and_return(order_list)
+      order_obj = double(
+        'DhanHQ::Models::Order',
+        modify: true,
+        order_status: 'PENDING',
+        status: 'PENDING',
+        errors: double(full_messages: [])
+      )
+      allow(DhanHQ::Models::Order).to receive(:find).with('ORDER123').and_return(order_obj)
+      stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
     end
 
     it 'sends an adjustment notification and logs success' do
@@ -57,36 +54,26 @@ RSpec.describe Orders::Adjuster, type: :service do
 
   context 'when stop loss adjustment fails' do
     before do
-      stub_request(:get, 'https://api.dhan.co/orders')
-        .to_return(
-          status: 200,
-          body: [{
-            'securityId' => 'OPT123',
-            'orderId' => 'ORDER123',
-            'orderStatus' => 'PENDING',
-            'dhanClientId' => 'DUMMY_CLIENT_ID',
-            'orderType' => 'LIMIT',
-            'quantity' => 75,
-            'price' => 110,
-            'legName' => '',
-            'disclosedQuantity' => 0,
-            'validity' => 'DAY'
-          }].to_json,
-          headers: { 'Content-Type' => 'application/json' }
-        )
-
-      stub_request(:put, 'https://api.dhan.co/orders/ORDER123')
-        .to_return(
-          status: 200,
-          body: { 'orderStatus' => 'FAILED', 'omsErrorDescription' => 'Some error' }.to_json,
-          headers: { 'Content-Type' => 'application/json' }
-        )
-
+      order_list = [{
+        'securityId' => 'OPT123', 'orderId' => 'ORDER123', 'orderStatus' => 'PENDING',
+        'dhanClientId' => 'DUMMY_CLIENT_ID', 'orderType' => 'LIMIT', 'quantity' => 75,
+        'price' => 110, 'legName' => '', 'disclosedQuantity' => 0, 'validity' => 'DAY'
+      }]
+      allow(DhanHQ::Models::Order).to receive(:all).and_return(order_list)
+      order_obj = double(
+        'DhanHQ::Models::Order',
+        modify: true,
+        order_status: 'FAILED',
+        status: 'FAILED',
+        errors: double(full_messages: ['Some error'])
+      )
+      allow(DhanHQ::Models::Order).to receive(:find).with('ORDER123').and_return(order_obj)
       stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
     end
 
     it 'triggers fallback exit and sends fallback notification' do
-      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
+      msg = '[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE'
+      expect(TelegramNotifier).to receive(:send_message).with(msg)
       expect(Orders::Executor).to receive(:call)
         .with(kind_of(Hash), 'FallbackExit', kind_of(Hash))
 
@@ -96,16 +83,13 @@ RSpec.describe Orders::Adjuster, type: :service do
 
   context 'when there is no active order to modify' do
     before do
-      stub_request(:get, 'https://api.dhan.co/orders')
-        .to_return(
-          status: 200,
-          body: [].to_json, # empty array = no active orders
-          headers: { 'Content-Type' => 'application/json' }
-        )
+      allow(DhanHQ::Models::Order).to receive(:all).and_return([])
+      stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
     end
 
     it 'triggers fallback exit and sends fallback notification' do
-      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
+      msg = '[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE'
+      expect(TelegramNotifier).to receive(:send_message).with(msg)
       expect(Orders::Executor).to receive(:call)
         .with(kind_of(Hash), 'FallbackExit', kind_of(Hash))
 
@@ -115,11 +99,13 @@ RSpec.describe Orders::Adjuster, type: :service do
 
   context 'when an exception is raised' do
     before do
-      stub_request(:get, 'https://api.dhan.co/orders').to_raise(StandardError.new('API Down'))
+      allow(DhanHQ::Models::Order).to receive(:all).and_raise(StandardError.new('API Down'))
+      stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
     end
 
     it 'triggers fallback exit and sends fallback notification' do
-      expect(TelegramNotifier).to receive(:send_message).with('[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE')
+      msg = '[Orders::Adjuster] ⚠️ SL Adjust failed. Fallback exit initiated for NIFTY24JUL17500CE'
+      expect(TelegramNotifier).to receive(:send_message).with(msg)
       expect(Orders::Executor).to receive(:call)
         .with(kind_of(Hash), 'FallbackExit', kind_of(Hash))
 
@@ -127,33 +113,32 @@ RSpec.describe Orders::Adjuster, type: :service do
     end
   end
 
-  context 'when stop loss adjustment is successful' do
+  context 'when stop loss adjustment is successful (v2 API)' do
+    let(:order_list_v2) do
+      [{
+        'securityId' => 'OPT123',
+        'orderId' => 'ORDER123',
+        'orderStatus' => 'PENDING',
+        'orderType' => 'LIMIT',
+        'quantity' => 75,
+        'validity' => 'DAY',
+        'price' => 110,
+        'dhanClientId' => '1104216308',
+        'legName' => nil,
+        'disclosedQuantity' => 0
+      }]
+    end
+
     before do
-      stub_request(:get, 'https://api.dhan.co/orders').to_return(
-        status: 200,
-        body: [{
-          'securityId' => 'OPT123',
-          'orderId' => 'ORDER123',
-          'orderStatus' => 'PENDING',
-          'orderType' => 'LIMIT',
-          'quantity' => 75,
-          'validity' => 'DAY',
-          'price' => 110,
-          'dhanClientId' => '1104216308', # dummy value, matches your header
-          'legName' => nil,
-          'disclosedQuantity' => 0
-        }].to_json,
-        headers: { 'Content-Type' => 'application/json' }
+      allow(DhanHQ::Models::Order).to receive(:all).and_return(order_list_v2)
+      order_obj = double(
+        'DhanHQ::Models::Order',
+        modify: true,
+        order_status: 'PENDING',
+        status: 'PENDING',
+        errors: double(full_messages: [])
       )
-
-      stub_request(:put, 'https://api.dhan.co/orders/ORDER123')
-        .with(body: hash_including('triggerPrice' => 105.5))
-        .to_return(
-          status: 200,
-          body: { 'status' => 'success', 'orderId' => 'ORDER123', 'orderStatus' => 'PENDING' }.to_json,
-          headers: { 'Content-Type' => 'application/json' }
-        )
-
+      allow(DhanHQ::Models::Order).to receive(:find).with('ORDER123').and_return(order_obj)
       stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
     end
 

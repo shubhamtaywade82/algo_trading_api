@@ -222,4 +222,47 @@ RSpec.describe Orders::Manager, type: :service do
   #   expect(Rails.logger).to receive(:error).with(/\[Orders::Manager\] Error.*RM failure/)
   #   expect { described_class.call(position, analysis) }.not_to raise_error
   # end
+
+  # Stub only HTTP/Telegram; real RiskManager (and thus decision logic) runs.
+  context 'integration: stubs only external boundaries' do
+    let(:position_integration) do
+      {
+        'tradingSymbol' => 'NIFTY24JUL17500CE',
+        'securityId' => 'OPT123',
+        'exchangeSegment' => 'NSE_FNO',
+        'buyAvg' => 100,
+        'netQty' => 75,
+        'ltp' => 135,
+        'productType' => 'INTRADAY'
+      }
+    end
+
+    # pnl_pct 35%, take_profit_threshold for option = entry*quantity*0.3 = 2250; net_pnl >= 2250 triggers TP.
+    let(:analysis_integration) do
+      {
+        entry_price: 100,
+        ltp: 135,
+        pnl: 2625,
+        pnl_pct: 35.0,
+        quantity: 75,
+        instrument_type: :option,
+        order_type: 'MARKET'
+      }
+    end
+
+    before do
+      allow(Orders::RiskManager).to receive(:call).and_call_original
+    end
+
+    it 'runs real RiskManager and invokes Executor when take-profit is hit' do
+      expect(Orders::Executor).to receive(:call).with(
+        position_integration,
+        'TakeProfit',
+        hash_including(:pnl, order_type: 'MARKET')
+      )
+      expect(Orders::Adjuster).not_to receive(:call)
+
+      described_class.call(position_integration, analysis_integration)
+    end
+  end
 end

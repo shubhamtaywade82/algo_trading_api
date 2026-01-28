@@ -2,9 +2,9 @@
 
 require 'rails_helper'
 
-RSpec.describe Level, type: :model do
+RSpec.describe Level do
   describe 'associations' do
-    it { should belong_to(:instrument) }
+    it { is_expected.to belong_to(:instrument) }
   end
 
   describe 'factory' do

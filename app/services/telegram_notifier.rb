@@ -48,11 +48,11 @@ class TelegramNotifier
     buf = ''
 
     lines.each do |line|
-      if (buf + "\n" + line).length > MAX_LEN
+      if "#{buf}\n#{line}".length > MAX_LEN
         chunks << buf.strip
         buf = line
       else
-        buf += "\n" + line
+        buf += "\n#{line}"
       end
     end
     chunks << buf.strip unless buf.empty?

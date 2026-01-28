@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe Quote, type: :model do
+RSpec.describe Quote do
   describe 'associations' do
     it { is_expected.to belong_to(:instrument) }
   end
@@ -32,7 +32,7 @@ RSpec.describe Quote, type: :model do
 
     describe '.recent' do
       it 'orders quotes by tick_time descending' do
-        quotes = Quote.recent
+        quotes = described_class.recent
         expect(quotes.first).to eq(recent_quote)
         expect(quotes.last).to eq(old_quote)
       end

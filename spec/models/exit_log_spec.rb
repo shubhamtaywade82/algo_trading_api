@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe ExitLog, type: :model do
+RSpec.describe ExitLog do
   describe 'basic functionality' do
     it 'can be created' do
       exit_log = build(:exit_log)
@@ -10,7 +10,7 @@ RSpec.describe ExitLog, type: :model do
     end
 
     it 'inherits from ApplicationRecord' do
-      expect(ExitLog.superclass).to eq(ApplicationRecord)
+      expect(described_class.superclass).to eq(ApplicationRecord)
     end
   end
 

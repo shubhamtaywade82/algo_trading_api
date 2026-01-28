@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe Position, type: :model do
+RSpec.describe Position do
   describe 'associations' do
     it { is_expected.to belong_to(:instrument) }
   end
@@ -8,7 +8,7 @@ RSpec.describe Position, type: :model do
   describe 'enums' do
     describe 'position_type' do
       it 'has correct position types' do
-        expect(Position.position_types.keys).to match_array(%w[long short closed])
+        expect(described_class.position_types.keys).to match_array(%w[long short closed])
       end
 
       it 'can be set to long' do
@@ -29,7 +29,7 @@ RSpec.describe Position, type: :model do
 
     describe 'product_type' do
       it 'has correct product types' do
-        expect(Position.product_types.keys).to match_array(%w[cnc intraday margin mtf co bo])
+        expect(described_class.product_types.keys).to match_array(%w[cnc intraday margin mtf co bo])
       end
 
       it 'can be set to intraday' do
@@ -50,7 +50,7 @@ RSpec.describe Position, type: :model do
 
     describe 'exchange_segment' do
       it 'has correct exchange segments' do
-        expect(Position.exchange_segments.keys).to match_array(%w[nse_eq nse_fno bse_eq bse_fno mcx_comm])
+        expect(described_class.exchange_segments.keys).to match_array(%w[nse_eq nse_fno bse_eq bse_fno mcx_comm])
       end
 
       it 'can be set to nse_eq' do
@@ -84,18 +84,18 @@ RSpec.describe Position, type: :model do
     let!(:closed_position) { create(:position, position_type: 'closed', security_id: '1333', instrument: instrument3) }
 
     it 'can find long positions' do
-      expect(Position.long).to include(long_position)
-      expect(Position.long).not_to include(short_position, closed_position)
+      expect(described_class.long).to include(long_position)
+      expect(described_class.long).not_to include(short_position, closed_position)
     end
 
     it 'can find short positions' do
-      expect(Position.short).to include(short_position)
-      expect(Position.short).not_to include(long_position, closed_position)
+      expect(described_class.short).to include(short_position)
+      expect(described_class.short).not_to include(long_position, closed_position)
     end
 
     it 'can find closed positions' do
-      expect(Position.closed).to include(closed_position)
-      expect(Position.closed).not_to include(long_position, short_position)
+      expect(described_class.closed).to include(closed_position)
+      expect(described_class.closed).not_to include(long_position, short_position)
     end
   end
 

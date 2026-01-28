@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe UpdateStrategyExamplesJob, type: :job do
+RSpec.describe UpdateStrategyExamplesJob do
   describe '#perform' do
     let(:option_chain) { { 'calls' => [], 'puts' => [] } }
     let(:params) { { symbol: 'NIFTY', expiry: '2024-01-25' } }

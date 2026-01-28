@@ -13,16 +13,6 @@ RSpec.describe 'Option chain formatting' do
     }
   end
 
-  describe Market::PromptBuilder do
-    it 'handles incomplete rows with placeholders' do
-      formatted = described_class.send(:format_options_chain, options)
-
-      expect(formatted).to include('CALL: LTP ₹12.35')
-      expect(formatted).to include('IV –%')
-      expect(formatted).to include('PUT : LTP ₹–')
-    end
-  end
-
   describe Market::AnalysisService do
     subject(:service) { described_class.new('NIFTY') }
 

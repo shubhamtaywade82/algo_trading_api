@@ -82,6 +82,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_07_26_072221) do
     t.boolean "asm_gsm_flag", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "isin"
+    t.string "series"
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_derivatives_unique", unique: true
   end
