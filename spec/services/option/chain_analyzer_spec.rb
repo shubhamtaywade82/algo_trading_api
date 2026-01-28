@@ -33,7 +33,7 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
   end
 
   let(:option_chain) { instrument.fetch_option_chain }
-  let(:expiry)       { (Date.today + 7.days).to_s } # ← FIXED
+  let(:expiry)       { (Time.zone.today + 7.days).to_s } # ← FIXED
   let(:spot)         { option_chain[:last_price] || 22_150.0 }
   let(:iv_rank)      { 0.5 }
 
@@ -67,7 +67,7 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
     it 'returns proceed: false with reason' do
       result = analyzer.analyze(signal_type: :ce, strategy_type: 'intraday')
 
-      expect(result[:proceed]).to eq(false)
+      expect(result[:proceed]).to be(false)
       expect(result[:reason]).to include('IV rank outside range')
     end
   end
@@ -92,14 +92,14 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
 
     it 'returns proceed: false with late-entry reason' do
       result = analyzer.analyze(signal_type: :ce, strategy_type: 'intraday')
-      expect(result[:proceed]).to eq(false)
+      expect(result[:proceed]).to be(false)
       expect(result[:reason]).to include('Late entry, theta risk')
     end
   end
 
   describe 'deep strike classification' do
     let(:option_chain) { { oc: { 100 => {} }, last_price: 100 } }
-    let(:expiry) { Date.today.to_s }
+    let(:expiry) { Time.zone.today.to_s }
     let(:spot) { 100.0 }
     let(:iv_rank) { 0.5 }
 
@@ -153,7 +153,18 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
   end
 
   describe '#get_strike_filter_summary' do
-    let(:expiry) { Date.today.to_s }
+    subject(:analyzer) do
+      described_class.new(
+        option_chain,
+        expiry: expiry,
+        underlying_spot: spot,
+        iv_rank: iv_rank,
+        historical_data: [],
+        strike_step: strike_step
+      )
+    end
+
+    let(:expiry) { Time.zone.today.to_s }
     let(:spot) { 20_000.0 }
     let(:iv_rank) { 0.1 }
     let(:strike_step) { 50 }
@@ -218,25 +229,9 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
       }
     end
 
-    subject(:analyzer) do
-      described_class.new(
-        option_chain,
-        expiry: expiry,
-        underlying_spot: spot,
-        iv_rank: iv_rank,
-        historical_data: [],
-        strike_step: strike_step
-      )
-    end
-
     before do
-      allow(analyzer).to receive(:determine_atm_strike).and_return(atm_strike)
-      allow(analyzer).to receive(:gather_filtered_strikes).and_return([])
+      allow(analyzer).to receive_messages(determine_atm_strike: atm_strike, gather_filtered_strikes: [])
       travel_to(Time.zone.local(2025, 1, 1, 11, 0, 0))
-    end
-
-    after do
-      travel_back
     end
 
     it 'skips inactive and deep strikes when building failure details' do
@@ -248,7 +243,7 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
       expect(detailed_entries.first[:strike_price]).to eq(atm_strike)
       expect(detailed_entries.first[:reasons]).to include(a_string_matching(/Delta low/))
 
-      reported_strikes = detailed_entries.map { |entry| entry[:strike_price] }
+      reported_strikes = detailed_entries.pluck(:strike_price)
       expect(reported_strikes).not_to include(atm_strike + (strike_step * 40))
     end
   end

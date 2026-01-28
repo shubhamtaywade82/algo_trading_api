@@ -12,9 +12,8 @@ RSpec.describe 'Full Exit Flow', type: :integration do
     Rails.cache.clear
     stub_charges(0)
     allow(TelegramNotifier).to     receive(:send_message)
-    allow(Dhanhq::API::Orders).to  receive(:place).and_return('orderStatus' => 'PENDING', 'orderId' => 'OID')
-    allow(Dhanhq::API::Orders).to  receive(:modify).and_return({ 'status' => 'success' })
-    allow(Dhanhq::API::Orders).to  receive(:list).and_return([])
+    allow(Dhanhq::API::Orders).to  receive_messages(place: { 'orderStatus' => 'PENDING', 'orderId' => 'OID' },
+                                                    modify: { 'status' => 'success' }, list: [])
     allow(Rails.logger).to         receive_messages(info: nil, warn: nil, error: nil)
 
     # Unless a spec overrides it we don’t want ChainAnalyzer or MarketCache doing work
@@ -25,11 +24,7 @@ RSpec.describe 'Full Exit Flow', type: :integration do
   def drive_stack(position_hash, analysis_hash)
     # Use real RiskManager via Manager – this is the “full” path
     allow(Orders::Analyzer).to receive(:call).with(position_hash).and_return(analysis_hash)
-    if Positions::Manager
-      Orders::Manager.call(position_hash, analysis_hash)
-    else
-      Orders::Manager.call(position_hash, analysis_hash)
-    end
+    Orders::Manager.call(position_hash, analysis_hash)
   end
 
   # --------------------------------------------------------------------------------------------------------------------

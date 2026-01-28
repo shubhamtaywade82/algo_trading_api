@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe PortfolioInsights::DailyReporterJob, type: :job do
+RSpec.describe PortfolioInsights::DailyReporterJob do
   describe '#perform' do
     let(:holdings) { [{ 'symbol' => 'RELIANCE', 'quantity' => 100, 'ltp' => 2500 }] }
 

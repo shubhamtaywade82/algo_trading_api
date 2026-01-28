@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
+RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
   describe '.symbolize' do
     it 'converts string keys to symbols' do
       result = described_class.symbolize('exchange_segment' => 'NSE_EQ', 'symbol' => 'RELIANCE')
@@ -133,25 +133,25 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
 
       it 'returns error when to_date is not today' do
         err = described_class.validate('get_trade_history', {
-          from_date: (today - 2).to_s,
-          to_date: (today - 1).to_s
-        })
+                                         from_date: (today - 2).to_s,
+                                         to_date: (today - 1).to_s
+                                       })
         expect(err).to eq("to_date must be today (#{today}).")
       end
 
       it 'returns error when from_date is not the last trading day before to_date' do
         err = described_class.validate('get_trade_history', {
-          from_date: (today - 2).to_s,
-          to_date: today.to_s
-        })
+                                         from_date: (today - 2).to_s,
+                                         to_date: today.to_s
+                                       })
         expect(err).to eq("from_date must be the last trading day before to_date (#{last_trading_day}).")
       end
 
       it 'returns nil when to_date is today and from_date is last trading day' do
         expect(described_class.validate('get_trade_history', {
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s
-        })).to be_nil
+                                          from_date: last_trading_day.to_s,
+                                          to_date: today.to_s
+                                        })).to be_nil
       end
 
       it 'returns error for invalid date format' do
@@ -171,19 +171,19 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
 
       it 'returns error when page_number is negative' do
         err = described_class.validate('get_trade_history', {
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s,
-          page_number: -1
-        })
+                                         from_date: last_trading_day.to_s,
+                                         to_date: today.to_s,
+                                         page_number: -1
+                                       })
         expect(err).to eq('page_number must be a non-negative integer.')
       end
 
       it 'returns nil when page_number is 0 or positive' do
         expect(described_class.validate('get_trade_history', {
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s,
-          page_number: 0
-        })).to be_nil
+                                          from_date: last_trading_day.to_s,
+                                          to_date: today.to_s,
+                                          page_number: 0
+                                        })).to be_nil
       end
     end
 
@@ -197,31 +197,31 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
 
       it 'returns error when to_date is not today or from_date is not last trading day' do
         err = described_class.validate('get_historical_daily_data', {
-          exchange_segment: 'NSE_EQ',
-          symbol: 'RELIANCE',
-          from_date: (today - 3).to_s,
-          to_date: today.to_s
-        })
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: (today - 3).to_s,
+                                         to_date: today.to_s
+                                       })
         expect(err).to include('from_date must be the last trading day')
       end
 
       it 'returns error when symbol is blank' do
         err = described_class.validate('get_historical_daily_data', {
-          exchange_segment: 'NSE_EQ',
-          symbol: '',
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s
-        })
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: '',
+                                         from_date: last_trading_day.to_s,
+                                         to_date: today.to_s
+                                       })
         expect(err).to eq('symbol must be non-empty.')
       end
 
       it 'returns nil when segment, symbol and date range are valid' do
         expect(described_class.validate('get_historical_daily_data', {
-          exchange_segment: 'NSE_EQ',
-          symbol: 'RELIANCE',
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s
-        })).to be_nil
+                                          exchange_segment: 'NSE_EQ',
+                                          symbol: 'RELIANCE',
+                                          from_date: last_trading_day.to_s,
+                                          to_date: today.to_s
+                                        })).to be_nil
       end
     end
 
@@ -235,32 +235,32 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
 
       it 'returns error when interval is invalid' do
         err = described_class.validate('get_intraday_minute_data', {
-          exchange_segment: 'NSE_EQ',
-          symbol: 'RELIANCE',
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s,
-          interval: '99'
-        })
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: last_trading_day.to_s,
+                                         to_date: today.to_s,
+                                         interval: '99'
+                                       })
         expect(err).to eq('interval must be one of: 1, 5, 15, 25, 60.')
       end
 
       it 'returns nil when interval is valid' do
         expect(described_class.validate('get_intraday_minute_data', {
-          exchange_segment: 'NSE_EQ',
-          symbol: 'RELIANCE',
-          from_date: last_trading_day.to_s,
-          to_date: today.to_s,
-          interval: '5'
-        })).to be_nil
+                                          exchange_segment: 'NSE_EQ',
+                                          symbol: 'RELIANCE',
+                                          from_date: last_trading_day.to_s,
+                                          to_date: today.to_s,
+                                          interval: '5'
+                                        })).to be_nil
       end
 
       it 'returns error when date range is invalid' do
         err = described_class.validate('get_intraday_minute_data', {
-          exchange_segment: 'NSE_EQ',
-          symbol: 'RELIANCE',
-          from_date: (today - 2).to_s,
-          to_date: today.to_s
-        })
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: (today - 2).to_s,
+                                         to_date: today.to_s
+                                       })
         expect(err).to include('from_date must be the last trading day')
       end
     end
@@ -274,28 +274,28 @@ RSpec.describe DhanMcp::ArgumentValidator, type: :service, mcp: true do
 
       it 'returns error when expiry format is invalid' do
         err = described_class.validate('get_option_chain', {
-          exchange_segment: 'NSE_FNO',
-          symbol: 'NIFTY',
-          expiry: 'invalid'
-        })
+                                         exchange_segment: 'NSE_FNO',
+                                         symbol: 'NIFTY',
+                                         expiry: 'invalid'
+                                       })
         expect(err).to eq('expiry must be YYYY-MM-DD.')
       end
 
       it 'returns error when symbol is blank' do
         err = described_class.validate('get_option_chain', {
-          exchange_segment: 'NSE_FNO',
-          symbol: '  ',
-          expiry: '2025-01-30'
-        })
+                                         exchange_segment: 'NSE_FNO',
+                                         symbol: '  ',
+                                         expiry: '2025-01-30'
+                                       })
         expect(err).to eq('symbol must be non-empty.')
       end
 
       it 'returns nil when all args are valid' do
         expect(described_class.validate('get_option_chain', {
-          exchange_segment: 'NSE_FNO',
-          symbol: 'NIFTY',
-          expiry: '2025-01-30'
-        })).to be_nil
+                                          exchange_segment: 'NSE_FNO',
+                                          symbol: 'NIFTY',
+                                          expiry: '2025-01-30'
+                                        })).to be_nil
       end
     end
 

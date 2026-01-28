@@ -27,6 +27,7 @@ module PortfolioInsights
       # answer
     rescue StandardError => e
       raise if dhan_auth_error?(e)
+
       log_error(e.message)
       notify("❌ Portfolio AI failed: #{e.message}", tag: 'PORTFOLIO_AI_ERR')
       nil
@@ -74,6 +75,7 @@ module PortfolioInsights
       rescue StandardError => e
         Rails.logger.error "[Analyzer] ❌ Batch LTP fetch failed: #{e.class} - #{e.message}"
         raise if dhan_auth_error?(e)
+
         rows.each { |h| h['ltp'] ||= 0.0 }
       end
     end

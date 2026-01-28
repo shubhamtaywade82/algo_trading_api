@@ -20,7 +20,8 @@ RSpec.describe InstrumentsImporter, type: :service do
 
       it 'returns a summary hash' do
         summary = described_class.import(mock_csv_path)
-        expect(summary).to include(:instrument_rows, :derivative_rows, :instrument_upserts, :derivative_upserts, :instrument_total, :derivative_total)
+        expect(summary).to include(:instrument_rows, :derivative_rows, :instrument_upserts, :derivative_upserts, :instrument_total,
+                                   :derivative_total)
       end
     end
 

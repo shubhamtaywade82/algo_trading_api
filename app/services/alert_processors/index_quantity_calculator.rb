@@ -44,9 +44,7 @@ module AlertProcessors
 
       lots = [max_lots_by_alloc, max_lots_by_risk, max_lots_by_afford].min
 
-      if lots.zero? && per_lot_cost <= balance && per_lot_risk <= risk_cap
-        lots = 1
-      end
+      lots = 1 if lots.zero? && per_lot_cost <= balance && per_lot_risk <= risk_cap
 
       if lots.zero?
         details = { quantity: 0, alloc_cap: alloc_cap, risk_cap: risk_cap, per_lot_cost: per_lot_cost, per_lot_risk: per_lot_risk }
@@ -55,7 +53,8 @@ module AlertProcessors
 
       qty = lots * lot_size
       if return_details
-        { quantity: qty, lots: lots, alloc_cap: alloc_cap, risk_cap: risk_cap, per_lot_cost: per_lot_cost, per_lot_risk: per_lot_risk, sl_pct: sl_pct }
+        { quantity: qty, lots: lots, alloc_cap: alloc_cap, risk_cap: risk_cap, per_lot_cost: per_lot_cost, per_lot_risk: per_lot_risk,
+          sl_pct: sl_pct }
       else
         qty
       end

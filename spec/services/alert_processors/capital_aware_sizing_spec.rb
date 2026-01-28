@@ -11,9 +11,7 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
     let(:processor) { described_class.new(alert) }
 
     before do
-      allow(processor).to receive(:available_balance).and_return(balance)
-      allow(processor).to receive(:instrument).and_return(instrument)
-      allow(processor).to receive(:current_atr_pct).and_return(nil) # Mock ATR to avoid DB issues
+      allow(processor).to receive_messages(available_balance: balance, instrument: instrument, current_atr_pct: nil) # Mock ATR to avoid DB issues
     end
 
     describe '#deployment_policy' do
@@ -164,12 +162,11 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
       let(:balance) { 100_000 }
 
       before do
-        allow(processor).to receive(:daily_loss_today).and_return(daily_loss)
-        allow(processor).to receive(:deployment_policy).and_return({
-                                                                     alloc_pct: 0.25,
-                                                                     risk_per_trade_pct: 0.035,
-                                                                     daily_max_loss_pct: 0.060
-                                                                   })
+        allow(processor).to receive_messages(daily_loss_today: daily_loss, deployment_policy: {
+                                               alloc_pct: 0.25,
+                                               risk_per_trade_pct: 0.035,
+                                               daily_max_loss_pct: 0.060
+                                             })
       end
 
       context 'when daily loss is within limits' do
@@ -208,9 +205,7 @@ RSpec.describe 'Capital-Aware Position Sizing', type: :service do
     let(:processor) { described_class.new(alert) }
 
     before do
-      allow(processor).to receive(:available_balance).and_return(balance)
-      allow(processor).to receive(:ltp).and_return(ltp)
-      allow(processor).to receive(:min_lot_by_price).and_return(min_lot)
+      allow(processor).to receive_messages(available_balance: balance, ltp: ltp, min_lot_by_price: min_lot)
     end
 
     describe '#calculate_quantity!' do

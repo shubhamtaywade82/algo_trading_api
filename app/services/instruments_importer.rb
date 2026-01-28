@@ -13,7 +13,7 @@ class InstrumentsImporter
   CACHE_PATH    = Rails.root.join('tmp/dhan_scrip_master.csv')
   CACHE_MAX_AGE = 24.hours
   VALID_EXCHANGES = %w[NSE BSE MCX].freeze
-  BATCH_SIZE    = 1_000
+  BATCH_SIZE = 1_000
 
   class << self
     def import_from_url
@@ -22,15 +22,14 @@ class InstrumentsImporter
       summary    = import_from_csv(csv_text)
       summary[:started_at]  = started_at
       summary[:finished_at] = Time.current
-      summary[:duration]   = summary[:finished_at] - started_at
+      summary[:duration] = summary[:finished_at] - started_at
       record_success!(summary)
       summary
     end
 
     def fetch_csv_with_cache
-      if CACHE_PATH.exist? && (Time.current - CACHE_PATH.mtime) < CACHE_MAX_AGE
-        return CACHE_PATH.read
-      end
+      return CACHE_PATH.read if CACHE_PATH.exist? && (Time.current - CACHE_PATH.mtime) < CACHE_MAX_AGE
+
       csv_text = URI.open(CSV_URL, &:read)
       CACHE_PATH.dirname.mkpath
       File.write(CACHE_PATH, csv_text)
@@ -132,7 +131,8 @@ class InstrumentsImporter
         batch_size: BATCH_SIZE,
         on_duplicate_key_update: {
           conflict_target: %i[security_id symbol_name exchange segment],
-          columns: %i[display_name isin instrument instrument_type underlying_symbol series lot_size tick_size asm_gsm_flag asm_gsm_category mtf_leverage updated_at]
+          columns: %i[display_name isin instrument instrument_type underlying_symbol series lot_size tick_size asm_gsm_flag
+                      asm_gsm_category mtf_leverage updated_at]
         }
       )
     end
@@ -150,7 +150,8 @@ class InstrumentsImporter
         batch_size: BATCH_SIZE,
         on_duplicate_key_update: {
           conflict_target: %i[security_id symbol_name exchange segment],
-          columns: %i[display_name isin instrument instrument_type underlying_symbol underlying_security_id series expiry_date strike_price option_type lot_size expiry_flag tick_size asm_gsm_flag instrument_id updated_at]
+          columns: %i[display_name isin instrument instrument_type underlying_symbol underlying_security_id series expiry_date strike_price
+                      option_type lot_size expiry_flag tick_size asm_gsm_flag instrument_id updated_at]
         }
       )
     end

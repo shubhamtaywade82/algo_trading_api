@@ -414,8 +414,8 @@ module AlertProcessors
     def effective_sl_pct(entry_price = nil)
       rr = rrules_for(entry_price || 100) # entry price not strictly needed for pct
       # Convert price targets back to % if needed, else just return defaults when ATR missing.
-      if rr && (entry_price && entry_price.to_f.positive?)
-        sl_pct = 1.0 - (rr[:stop_loss].to_f / entry_price.to_f)
+      if rr && entry_price&.to_f&.positive?
+        sl_pct = 1.0 - (rr[:stop_loss].to_f / entry_price)
         return sl_pct.clamp(0.02, 0.35) if sl_pct.finite? && sl_pct.positive?
       end
       DEFAULT_STOP_LOSS_PCT # 0.18 by default
@@ -475,12 +475,12 @@ module AlertProcessors
         log_insufficient_margin(strike_info, sizing[:per_lot_cost], sizing[:balance])
       else
         log :warn, "🚫 Sizing → No size fits constraints. alloc_cap=₹#{PriceMath.round_tick(sizing[:alloc_cap])}, " \
-                  "risk_cap=₹#{PriceMath.round_tick(sizing[:risk_cap])}, per_lot_cost=₹#{PriceMath.round_tick(sizing[:per_lot_cost])}, " \
-                  "per_lot_risk=₹#{PriceMath.round_tick(sizing[:per_lot_risk])}"
+                   "risk_cap=₹#{PriceMath.round_tick(sizing[:risk_cap])}, per_lot_cost=₹#{PriceMath.round_tick(sizing[:per_lot_cost])}, " \
+                   "per_lot_risk=₹#{PriceMath.round_tick(sizing[:per_lot_risk])}"
       end
     end
 
-    def log_sizing_success(strike, lot_size, sizing)
+    def log_sizing_success(_strike, lot_size, sizing)
       lots = sizing[:lots]
       total_cost = lots * sizing[:per_lot_cost]
       total_risk = lots * sizing[:per_lot_risk]
@@ -664,6 +664,5 @@ module AlertProcessors
           "🚫 Insufficient margin. (#{strike_info}) Required for 1 lot: ₹#{PriceMath.round_tick(per_lot_cost)}, " \
           "Available: ₹#{PriceMath.round_tick(available_balance)}, Shortfall: ₹#{PriceMath.round_tick(shortfall)}. No order placed."
     end
-
   end
 end

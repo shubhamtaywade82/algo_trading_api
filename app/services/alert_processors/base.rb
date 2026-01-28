@@ -16,7 +16,7 @@ module AlertProcessors
     def ltp
       @ltp ||= begin
         fetched = instrument.ltp
-        unless fetched.present?
+        if fetched.blank?
           Rails.logger.error("Failed to fetch LTP from Dhan for instrument: #{instrument.id} (#{instrument.underlying_symbol}, security_id: #{instrument.security_id}, segment: #{instrument.exchange_segment})")
           raise 'Failed to fetch LTP from Dhan'
         end

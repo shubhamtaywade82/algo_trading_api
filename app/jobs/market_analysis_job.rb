@@ -13,7 +13,7 @@ class MarketAnalysisJob < ApplicationJob
     end
   rescue StandardError => e
     Rails.logger.error "[MarketAnalysisJob] ❌ #{e.class} – #{e.message}"
-    msg = dhan_related_error?(e) ? "🔐 Dhan session or data access issue. Refresh your token or subscribe to Data APIs, then try again." : "🚨 Error running analysis – #{e.message}"
+    msg = dhan_related_error?(e) ? '🔐 Dhan session or data access issue. Refresh your token or subscribe to Data APIs, then try again.' : "🚨 Error running analysis – #{e.message}"
     TelegramNotifier.send_message(msg, chat_id: chat_id)
   end
 

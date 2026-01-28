@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe 'MCP', type: :request, mcp: true do
+RSpec.describe 'MCP', :mcp do
   describe 'POST /mcp' do
     context 'when body is empty' do
       it 'returns 400 with JSON-RPC parse error' do

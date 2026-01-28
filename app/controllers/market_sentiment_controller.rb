@@ -60,7 +60,6 @@ class MarketSentimentController < ApplicationController
 
   private
 
-
   def resolve_strategy_type
     params[:strategy_type].presence || 'intraday'
   end

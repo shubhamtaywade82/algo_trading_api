@@ -4,7 +4,7 @@ require 'rails_helper'
 
 RSpec.describe Market::SentimentAnalysis do
   let(:option_chain) { { oc: { '20000.0' => {} }, last_price: 20_000 } }
-  let(:expiry) { Date.today.to_s }
+  let(:expiry) { Time.zone.today.to_s }
   let(:spot) { 20_000 }
   let(:iv_rank) { 0.35 }
   let(:historical_data) { [] }

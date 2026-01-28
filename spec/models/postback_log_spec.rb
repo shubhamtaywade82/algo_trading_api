@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe PostbackLog, type: :model do
+RSpec.describe PostbackLog do
   describe 'basic functionality' do
     it 'can be created' do
       postback_log = build(:postback_log)
@@ -10,7 +10,7 @@ RSpec.describe PostbackLog, type: :model do
     end
 
     it 'inherits from ApplicationRecord' do
-      expect(PostbackLog.superclass).to eq(ApplicationRecord)
+      expect(described_class.superclass).to eq(ApplicationRecord)
     end
   end
 

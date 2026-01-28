@@ -122,7 +122,7 @@ module Dhan
         when 50
           Rails.logger.warn "[WS] ✖ Disconnection for SID=#{packet[:security_id]} Code=#{packet[:disconnection_code]}"
         else
-          Rails.logger.debug "[WS] Ignored packet type: #{packet[:feed_response_code]}"
+          Rails.logger.debug { "[WS] Ignored packet type: #{packet[:feed_response_code]}" }
         end
       rescue StandardError => e
         Rails.logger.error "[WS] ❌ Parse/Dispatch Error: #{e.class} - #{e.message}"
@@ -178,7 +178,7 @@ module Dhan
 
         name = instrument&.symbol_name || key
 
-        Rails.logger.debug "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}"
+        Rails.logger.debug { "[WS] 🔄 #{name} LTP changed: #{prev_ltp} → #{new_ltp}" }
       end
     end
   end

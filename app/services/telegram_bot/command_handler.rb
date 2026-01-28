@@ -47,7 +47,7 @@ module TelegramBot
     end
 
     def notify_analysis_error(e)
-      msg = dhan_auth_error?(e) ? "🔐 Dhan session expired or invalid. Please refresh your token or re-link your account." : "🚨 Error running analysis – #{e.message}"
+      msg = dhan_auth_error?(e) ? '🔐 Dhan session expired or invalid. Please refresh your token or re-link your account.' : "🚨 Error running analysis – #{e.message}"
       TelegramNotifier.send_message(msg, chat_id: @cid)
     end
 
@@ -94,8 +94,9 @@ module TelegramBot
       typing_ping
       holdings = Dhanhq::API::Portfolio.holdings
       if holdings.blank?
-        return TelegramNotifier.send_message("📭 No holdings found. Add positions to get a portfolio summary.", chat_id: @cid)
+        return TelegramNotifier.send_message('📭 No holdings found. Add positions to get a portfolio summary.', chat_id: @cid)
       end
+
       result = PortfolioInsights::Analyzer.call(
         dhan_holdings: holdings,
         interactive: true
@@ -128,7 +129,7 @@ module TelegramBot
       typing_ping
       holdings = Dhanhq::API::Portfolio.holdings
       if holdings.blank?
-        return TelegramNotifier.send_message("📭 No holdings found. Add positions to get a full portfolio analysis.", chat_id: @cid)
+        return TelegramNotifier.send_message('📭 No holdings found. Add positions to get a full portfolio analysis.', chat_id: @cid)
       end
 
       balance   = Dhanhq::API::Funds.balance
@@ -150,9 +151,8 @@ module TelegramBot
     def positions_brief
       typing_ping
       positions = Dhanhq::API::Portfolio.positions
-      if positions.blank?
-        return TelegramNotifier.send_message("📭 No open positions. Add positions to get a brief.", chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('📭 No open positions. Add positions to get a brief.', chat_id: @cid) if positions.blank?
+
       result = PositionInsights::Analyzer.call(
         dhan_positions: positions,
         interactive: true

@@ -36,7 +36,9 @@ module AlertProcessors
       parts = []
       parts << "Trend: #{tm_info[:trend][:current_trend]} (Signal: #{tm_info[:trend][:signal_type]})" if tm_info[:trend]
       parts << "Momentum: #{tm_info[:momentum][:current_momentum]} (Signal: #{tm_info[:momentum][:signal_type]})" if tm_info[:momentum]
-      parts << "Trend Mismatch: #{tm_info[:trend_mismatch][:signal_type]} vs #{tm_info[:trend_mismatch][:current_trend]}" if tm_info[:trend_mismatch]
+      if tm_info[:trend_mismatch]
+        parts << "Trend Mismatch: #{tm_info[:trend_mismatch][:signal_type]} vs #{tm_info[:trend_mismatch][:current_trend]}"
+      end
       parts
     end
 

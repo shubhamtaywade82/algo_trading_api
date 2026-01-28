@@ -28,9 +28,7 @@ RSpec.describe AlertProcessors::Stock, type: :service do
 
     allow(Dhanhq::API::Orders).to receive(:place)
       .and_return('orderId' => 'OID', 'orderStatus' => 'PENDING')
-    allow(Dhanhq::API::EDIS).to receive(:status)
-      .and_return('status' => 'SUCCESS', 'aprvdQty' => 1_000)
-    allow(Dhanhq::API::EDIS).to receive(:mark).and_return(true)
+    allow(Dhanhq::API::EDIS).to receive_messages(status: { 'status' => 'SUCCESS', 'aprvdQty' => 1_000 }, mark: true)
   end
 
   # ------------------------------------------------------------------
@@ -76,7 +74,7 @@ RSpec.describe AlertProcessors::Stock, type: :service do
   describe '#signal_guard?' do
     it 'skips short_entry for long-only strategies' do
       pr = processor(strategy_type: 'long_term', signal_type: 'short_entry')
-      expect(pr.signal_guard?).to be_falsey
+      expect(pr).not_to be_signal_guard
     end
 
     it 'allows long_entry while flat' do
@@ -85,7 +83,7 @@ RSpec.describe AlertProcessors::Stock, type: :service do
 
     it 'rejects long_exit when flat' do
       pr = processor(signal_type: 'long_exit')
-      expect(pr.signal_guard?).to be_falsey
+      expect(pr).not_to be_signal_guard
     end
   end
 

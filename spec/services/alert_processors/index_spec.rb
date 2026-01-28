@@ -90,22 +90,14 @@ RSpec.describe AlertProcessors::Index, type: :service do
   end
 
   before do
-    allow(processor).to receive(:available_balance).and_return(100_000.0)
-    allow(processor).to receive(:dhan_positions).and_return([])
-    allow(processor).to receive(:daily_loss_guard_ok?).and_return(true)
-    allow(processor).to receive(:current_atr_pct).and_return(nil)
-    allow(processor).to receive(:instrument).and_return(instrument)
-    allow(instrument).to receive(:expiry_list).and_return([expiry_date])
-    allow(instrument).to receive(:fetch_option_chain).and_return(option_chain_data)
+    allow(instrument).to receive_messages(expiry_list: [expiry_date], fetch_option_chain: option_chain_data)
 
-    allow(Option::ChainAnalyzer).to receive(:estimate_iv_rank).and_return(0.5)
     allow(Option::HistoricalDataFetcher).to receive(:for_strategy).and_return([])
-    analyzer_double = instance_double('Option::ChainAnalyzer', analyze: analyzer_result)
-    allow(Option::ChainAnalyzer).to receive(:new).and_return(analyzer_double)
+    analyzer_double = instance_double(Option::ChainAnalyzer, analyze: analyzer_result)
+    allow(Option::ChainAnalyzer).to receive_messages(estimate_iv_rank: 0.5, new: analyzer_double)
 
-    allow(processor).to receive(:fetch_derivative).and_return(derivative)
-    allow(processor).to receive(:place_order!).and_return(true)
-    allow(processor).to receive(:option_ltp).and_return(100.0)
+    allow(processor).to receive_messages(available_balance: 100_000.0, dhan_positions: [], daily_loss_guard_ok?: true,
+                                         current_atr_pct: nil, instrument: instrument, fetch_derivative: derivative, place_order!: true, option_ltp: 100.0)
     allow(processor).to receive(:notify)
     allow(Rails.logger).to receive(:info)
     allow(Rails.logger).to receive(:error)
@@ -124,8 +116,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
 
     context 'when analysis returns no viable strike' do
       before do
-        allow(instrument).to receive(:expiry_list).and_return([expiry_date])
-        allow(instrument).to receive(:fetch_option_chain).and_return(option_chain_data)
+        allow(instrument).to receive_messages(expiry_list: [expiry_date], fetch_option_chain: option_chain_data)
 
         analyzer_double = instance_double(
           Option::ChainAnalyzer,
@@ -163,7 +154,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
         allow(processor).to receive(:place_order!) { raise 'should not place' }
         allow(processor).to receive(:place_super_order!) { raise 'should not place' }
         allow(processor).to receive(:dry_run).and_call_original
-        @orig_place_order = ENV['PLACE_ORDER']
+        @orig_place_order = ENV.fetch('PLACE_ORDER', nil)
         ENV['PLACE_ORDER'] = 'false'
       end
 
@@ -180,8 +171,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
     context 'when there is no affordable strike' do
       before do
         # simulate that selected strike is too expensive
-        allow(processor).to receive(:strike_affordable?).and_return(false)
-        allow(processor).to receive(:pick_affordable_strike).and_return(nil)
+        allow(processor).to receive_messages(strike_affordable?: false, pick_affordable_strike: nil)
       end
 
       it 'skips processing and logs a message', vcr: { cassette_name: 'dhan/option_expiry_list' } do

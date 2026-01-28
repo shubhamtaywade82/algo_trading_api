@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe MarketAnalysisJob, type: :job do
+RSpec.describe MarketAnalysisJob do
   describe '#perform' do
     let(:chat_id) { '123456789' }
     let(:symbol) { 'RELIANCE' }

@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe DhanMcpService, type: :service, mcp: true do
+RSpec.describe DhanMcpService, :mcp, type: :service do
   describe '.build_server' do
     it 'returns a server that responds to handle_json' do
       server = described_class.build_server
@@ -15,7 +15,7 @@ RSpec.describe DhanMcpService, type: :service, mcp: true do
       result = server.handle_json(body)
       parsed = JSON.parse(result)
       expect(parsed).to have_key('result')
-      tool_names = parsed.dig('result', 'tools')&.map { |t| t['name'] } || []
+      tool_names = parsed.dig('result', 'tools')&.pluck('name') || []
       expected_tools = %w[
         get_holdings get_positions get_fund_limits get_order_list get_order_by_id
         get_order_by_correlation_id get_trade_book get_trade_history get_instrument

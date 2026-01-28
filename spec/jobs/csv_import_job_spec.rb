@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe CsvImportJob, type: :job do
+RSpec.describe CsvImportJob do
   describe '#perform' do
     let(:file_url) { 'https://example.com/instruments.csv' }
     let(:file_path) { Rails.root.join('tmp/api-scrip-master-detailed.csv') }

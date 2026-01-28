@@ -241,6 +241,7 @@ module Market
 
     def option_chain_regime_flags(options, vix)
       return {} if options.blank?
+
       atm = options[:atm] || {}
       ce_iv = (atm[:ce_iv] || atm.dig(:call, 'implied_volatility')).to_f
       pe_iv = (atm[:pe_iv] || atm.dig(:put,  'implied_volatility')).to_f
@@ -248,11 +249,11 @@ module Market
 
       {
         iv_atm: iv_atm,
-        iv_high: iv_atm >= 18,           # tune thresholds per index
-        iv_low:  iv_atm <= 10,
+        iv_high: iv_atm >= 18, # tune thresholds per index
+        iv_low: iv_atm <= 10,
         vix: vix.to_f,
         vix_high: vix.to_f >= 16,
-        vix_low:  vix.to_f <= 11
+        vix_low: vix.to_f <= 11
       }
     end
 
