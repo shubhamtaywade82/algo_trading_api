@@ -1,42 +1,108 @@
 ---
 name: rspec
-description: RSpec and Rails testing best practices from Better Specs. Use when writing or reviewing RSpec specs, request specs, model specs, or integration tests in Ruby/Rails projects.
+description: RSpec best practices from the RSpec Style Guide and Better Specs. Use when writing or reviewing RSpec specs, request specs, model specs, or integration tests in Ruby/Rails projects.
 ---
 
-# RSpec & Better Specs
+# RSpec Style Guide & Best Practices
 
-This skill applies [Better Specs](https://www.betterspecs.org/) guidelines: Rails testing best practices for clear, maintainable RSpec specs.
+This skill applies the [RSpec Style Guide](https://rspec.rubystyle.guide/) and [Better Specs](https://www.betterspecs.org/). [RuboCop RSpec](https://github.com/rubocop/rubocop-rspec) enforces many of these rules.
 
 Use when writing or reviewing RSpec examples, request specs, model specs, or integration tests.
 
-## Describe Your Methods
+---
 
-Be explicit about what you are describing. Use the Ruby documentation convention: **`.`** (or `::`) for class methods, **`#`** for instance methods.
+## Layout
+
+- **No empty line** after `describe`/`context`/`feature` opening — start the block body immediately.
+- **One empty line** between sibling `describe`/`context` blocks; none after the last block in a group.
+- **One empty line** after `subject`, `let`, and `before`/`after` blocks.
+- **Group** `subject` and `let` blocks together; separate them from `before`/`after` with a blank line.
+- **One empty line** around each `it`/`specify` block to separate expectations from context.
 
 ```ruby
-# BAD
-describe 'the authenticate method for User' do
-describe 'if the user is an admin' do
+# good
+describe Article do
+  subject { FactoryBot.create(:article) }
+  let(:user) { FactoryBot.create(:user) }
 
-# GOOD
-describe '.authenticate' do
-describe '#admin?' do
+  before do
+    # ...
+  end
+
+  describe '#summary' do
+    context 'when there is a summary' do
+      it 'returns the summary' do
+        # ...
+      end
+    end
+
+    context 'when there is no summary' do
+      it 'returns nil' do
+        # ...
+      end
+    end
+  end
+end
 ```
+
+---
+
+## Example Group Structure
+
+- **Order:** Declare in this order: `subject`, then `let!`/`let`, then `before`/`after`. Put `subject` first when used.
+- **Contexts:** Use `context` to group examples. Start with **when**, **with**, or **without**. Prefer having a matching negative case (e.g. "when X" and "when not X").
+- **let / let!:** Use `let` for data shared across examples; use `let!` when the value must exist before the example runs (e.g. for scopes). Prefer `let` over instance variables (`@var`).
+- **Shared examples:** Use `shared_examples` / `it_behaves_like` to DRY repeated behavior. Don’t over-DRY early; duplication in specs is acceptable for clarity.
+- **Hooks:** Don’t specify `:each` (it’s the default). Use `:context` instead of `:all` when you need scope; avoid `before(:context)` when possible (state leakage).
+- **No `it` in iterators:** Don’t generate examples in a loop; write each `describe`/`it` explicitly so changes are localized.
+
+```ruby
+# bad
+[:new, :show, :index].each do |action|
+  it 'returns 200' do
+    get action
+    expect(response).to be_ok
+  end
+end
+
+# good – separate describe per action
+describe 'GET new' do
+  it 'returns 200' do
+    get :new
+    expect(response).to be_ok
+  end
+end
+```
+
+---
+
+## Describe Your Methods
+
+Use the Ruby documentation convention: **`.`** (or `::`) for class methods, **`#`** for instance methods.
+
+```ruby
+# bad
+describe 'the authenticate method for User'
+describe 'if the user is an admin'
+
+# good
+describe '.authenticate'
+describe '#admin?'
+```
+
+---
 
 ## Use Contexts
 
-Use `context` to group examples. Start context descriptions with **when**, **with**, or **without**.
+Group with `context`; full example names (all block descriptions concatenated) should read as a sentence.
 
 ```ruby
-# BAD
+# bad
 it 'has 200 status code if logged in' do
   expect(response).to respond_with 200
 end
-it 'has 401 status code if not logged in' do
-  expect(response).to respond_with 401
-end
 
-# GOOD
+# good
 context 'when logged in' do
   it { is_expected.to respond_with 200 }
 end
@@ -45,94 +111,70 @@ context 'when logged out' do
 end
 ```
 
-## Keep Descriptions Short
+---
 
-A spec description should stay under ~40 characters. Split with contexts and use `is_expected` where it helps.
+## Subject
+
+- Use **`subject`** when several examples relate to the same object under test.
+- Prefer **named subject** when you reference it: `subject(:article) { ... }` and `expect(article).to ...`. Use anonymous `subject` only when you use `is_expected` and never reference the subject by name.
+- In nested contexts, if you reassign subject with different data, give it a different name (e.g. `guest_article`) so intent is clear.
+- **Don’t stub the subject:** If you stub methods on the object under test, fix the design (e.g. inject dependencies or use a different subject) instead.
 
 ```ruby
-# BAD
-it 'has 422 status code if an unexpected params will be added' do
+# good – named subject
+describe Article do
+  subject(:article) { FactoryBot.create(:article) }
+  it 'is not published on creation' do
+    expect(article).not_to be_published
+  end
+end
 
-# GOOD
+# good – anonymous when using is_expected
 context 'when not valid' do
   it { is_expected.to respond_with 422 }
 end
 ```
 
-## Single Expectation (Isolated Unit Specs)
+---
 
-In isolated unit specs, prefer **one assertion per example**. Multiple expectations often mean multiple behaviors.
+## Example Structure
 
-```ruby
-# GOOD (isolated)
-it { is_expected.to respond_with_content_type(:json) }
-it { is_expected.to assign_to(:resource) }
-```
-
-In **non-isolated** tests (DB, HTTP, integration), multiple expectations in one example are acceptable to avoid repeating heavy setup.
+- **Expectation per example:** In isolated unit specs, prefer one expectation per example. For non-isolated specs (DB, HTTP, integration), multiple expectations in one example are acceptable; consider `:aggregate_failures` when you have several.
+- **Example descriptions:** Don’t end with a conditional (e.g. "returns X if Y"); put the condition in a `context` and keep the example description about the outcome. Keep descriptions under ~60 characters; use `context` to split.
+- **No "should" in descriptions:** Use third person, present tense. Don’t start with "should" or "should not".
 
 ```ruby
-# GOOD (not isolated)
-it 'creates a resource' do
-  expect(response).to respond_with_content_type(:json)
-  expect(response).to assign_to(:resource)
-end
-```
+# bad
+it 'should return the summary'
+it 'returns the summary if it is present'
 
-## Test All Possible Cases
-
-Cover **valid**, **edge**, and **invalid** cases. Think through all meaningful inputs and outcomes.
-
-```ruby
-# BAD
-it 'shows the resource'
-
-# GOOD
-describe '#destroy' do
-  context 'when resource is found' do
-    it 'responds with 200'
-    it 'shows the resource'
-  end
-  context 'when resource is not found' do
-    it 'responds with 404'
-  end
-  context 'when resource is not owned' do
-    it 'responds with 404'
+# good
+context 'when display name is present' do
+  it 'returns the display name' do
+    # ...
   end
 end
+it 'returns the summary'
+it 'does not change timings'
 ```
 
-## Expect vs Should
+---
 
-Use the **`expect`** syntax only. Do not use `should`.
+## Expect Syntax
+
+Use **`expect`** only; never `should`. For one-liners with implicit subject, use **`is_expected.to`**.
 
 ```ruby
-# BAD
-it 'creates a resource' do
-  response.should respond_with_content_type(:json)
-end
+# bad
+response.should respond_with_content_type(:json)
+it { should respond_with 422 }
 
-# GOOD
-it 'creates a resource' do
-  expect(response).to respond_with_content_type(:json)
-end
+# good
+expect(response).to respond_with_content_type(:json)
+it { is_expected.to respond_with 422 }
 ```
 
-For one-line expectations with implicit subject, use **`is_expected.to`**:
-
-```ruby
-# BAD
-context 'when not valid' do
-  it { should respond_with 422 }
-end
-
-# GOOD
-context 'when not valid' do
-  it { is_expected.to respond_with 422 }
-end
-```
-
-Configure RSpec to enforce the expect syntax:
+Configure RSpec to enforce expect syntax:
 
 ```ruby
 # spec_helper.rb or rails_helper.rb
@@ -143,172 +185,96 @@ RSpec.configure do |config|
 end
 ```
 
-## Use subject
+---
 
-Use `subject { }` to DRY repeated setup when several examples target the same subject.
+## let and let!
 
-```ruby
-# BAD
-it { expect(assigns('message')).to match(/it was born in Belville/) }
-
-# GOOD
-subject { assigns('message') }
-it { is_expected.to match(/it was born in Billville/) }
-```
-
-Named subject when you need to reference it:
+Prefer **`let`** over `before { @var = ... }`. Use **`let!`** when the value must exist before the example (e.g. testing scopes or queries). Don’t overuse `let` for trivial primitives; balance reuse vs. clarity.
 
 ```ruby
-subject(:hero) { Hero.first }
-it "carries a sword" do
-  expect(hero.equipment).to include "sword"
-end
+# bad
+before { @resource = FactoryBot.create(:device) }
+
+# good
+let(:resource) { FactoryBot.create(:device) }
+let!(:user) { FactoryBot.create(:user) }  # when you need it loaded before the example
 ```
 
-## Use let and let!
+---
 
-Prefer **`let`** over `before { @var = ... }`. `let` is lazy and cached per example.
+## Matchers
+
+- **Predicate matchers:** Prefer RSpec’s predicate matchers: `expect(article).to be_published` instead of `expect(article.published?).to be true`.
+- **Built-in matchers:** Use built-in matchers (e.g. `include`, `eq`) instead of hand-rolled expectations.
+- **Avoid bare `be`:** Don’t use `expect(x).to be`; use `be_truthy`, `be_nil`, or a specific matcher (e.g. `be_an(Author)`).
+- **Custom matchers:** Extract repeated expectation logic into custom matchers (or use libraries like Shoulda Matchers).
+- **No `any_instance_of`:** Avoid `allow_any_instance_of` / `expect_any_instance_of`; stub or inject the dependency instead.
+- **Block expectations:** Prefer explicit block form: `expect { do_something }.to change(something).to(new_value)` over implicit subject with a lambda.
 
 ```ruby
-# BAD
-describe '#type_id' do
-  before { @resource = FactoryBot.create :device }
-  before { @type = Type.find @resource.type_id }
-  it 'sets the type_id field' do
-    expect(@resource.type_id).to eq(@type.id)
-  end
-end
+# bad
+expect(article.published?).to be true
+expect(article.author).to be
 
-# GOOD
-describe '#type_id' do
-  let(:resource) { FactoryBot.create :device }
-  let(:type)     { Type.find resource.type_id }
-  it 'sets the type_id field' do
-    expect(resource.type_id).to eq(type.id)
-  end
-end
+# good
+expect(article).to be_published
+expect(article.author).to be_truthy
+expect(article.author).to be_an(Author)
 ```
 
-Use **`let!`** when the value must be created before the example runs (e.g. to test queries or scopes).
+---
 
-## Mock or Not to Mock
+## Doubles and Stubbing
 
-Prefer testing **real behavior** when possible. Use mocks to isolate external dependencies (DB, HTTP, etc.), not to replace every collaborator.
+- **Verifying doubles:** Prefer `instance_double`, `object_double`, `class_double`, and verifying partial doubles over non-verifying doubles. Keep `verify_partial_doubles` enabled.
+- **Don’t stub subject:** Don’t stub methods on the object under test; fix design or use a different subject (e.g. a presenter that receives the collaborator).
+- **Mock sparingly:** Prefer real behavior when possible; use doubles to isolate external dependencies (DB, HTTP). If stubbing could hide a real bug, you’ve gone too far.
+- **Constants:** Don’t define classes/modules/constants inside example groups (they leak). Use `stub_const` or anonymous `Class.new` and assign to a `let`.
 
-```ruby
-# Example: stub only when simulating a specific scenario
-context "when not found" do
-  before do
-    allow(Resource).to receive(:where).with(created_from: params[:id]).and_return(false)
-  end
-  it { is_expected.to respond_with 404 }
-end
-```
+---
 
-## Create Only the Data You Need
+## Time and HTTP
 
-Avoid loading or creating more data than the example needs. If you think you need dozens of records, question the design of the test or the code.
+- **Time:** Use **Timecop** (or `ActiveSupport::Testing::TimeHelpers#freeze_time`) instead of stubbing `Time.now` / `Date`.
+- **HTTP:** Stub external HTTP (e.g. **WebMock**, **VCR**) so specs don’t hit real services.
 
-```ruby
-# GOOD
-describe ".top" do
-  before { FactoryBot.create_list(:user, 3) }
-  it { expect(User.top(2)).to have(2).items }
-end
-```
+---
 
-## Use Factories, Not Fixtures
+## Data and Factories
 
-Use **Factory Bot** (or similar) instead of fixtures. Factories are easier to control and keep specs readable.
+- **Needed data only:** Create only the data the example needs. Avoid dozens of records unless the test truly needs them.
+- **Factories over fixtures:** Use **Factory Bot** (or similar), not fixtures. In unit tests, prefer minimal setup or objects built in the spec.
+- **Incidental state:** Avoid depending on incidental state (e.g. "there are exactly 2 articles"); use `change(Article, :count).by(1)` or similar so the example is self-contained.
 
-```ruby
-# BAD
-user = User.create(name: 'Genoveffa', surname: 'Piccolina', city: 'Billyville', ...)
+---
 
-# GOOD
-user = FactoryBot.create :user
-```
+## Rails: Integration, Controllers, Models, Views, Mailers
 
-For pure unit tests, prefer objects built in the spec or minimal factories over large factory graphs.
+- **Integration over controller specs:** Prefer integration/request specs that test behavior; don’t add controller specs just for coverage if integration tests suffice.
+- **Controllers:** Mock models and stub their methods; test only controller responsibility (assigns, redirects, template, status). Use contexts for success vs. failure (e.g. "when the article saves" / "when the article fails to save").
+- **Models:** Don’t mock the model under test. Use `FactoryBot.create` or a new instance. Add an example that the factory-built model is valid. For validations, use `expect(model.errors[:attr].size).to eq(1)` (or a matcher) so the right attribute is validated. Name the other object in uniqueness specs `another_article` (or similar).
+- **Views:** Mock models in view specs. Use `assign` for instance variables. Prefer Capybara negative selectors (`have_no_selector`) over `not_to have_selector`. Stub helpers on `template` when the view uses them.
+- **Mailers:** Mock the model; verify subject, from, to, and body content.
 
-## Easy-to-Read Matchers
-
-Use clear matchers and standard RSpec form.
-
-```ruby
-# BAD
-lambda { model.save! }.to raise_error Mongoid::Errors::DocumentNotFound
-
-# GOOD
-expect { model.save! }.to raise_error(Mongoid::Errors::DocumentNotFound)
-```
-
-## Shared Examples
-
-Use **shared examples** to DRY repeated behavior (e.g. across controllers or resources).
-
-```ruby
-# GOOD
-describe 'GET /devices' do
-  let!(:resource) { FactoryBot.create :device, created_from: user.id }
-  let!(:uri)      { '/devices' }
-
-  it_behaves_like 'a listable resource'
-  it_behaves_like 'a paginable resource'
-  it_behaves_like 'a searchable resource'
-end
-```
-
-## Test What You See
-
-Focus on **models and application behavior** (integration/request specs). Prefer integration tests over controller specs when they give the same confidence. Test behavior and outcomes, not implementation.
-
-## Don't Use "should" in Descriptions
-
-Describe behavior in third person, present tense. Do not start examples with "should".
-
-```ruby
-# BAD
-it 'should not change timings' do
-  consumption.occur_at.should == valid.occur_at
-end
-
-# GOOD
-it 'does not change timings' do
-  expect(consumption.occur_at).to eq(valid.occur_at)
-end
-```
-
-## Stubbing HTTP
-
-Stub external HTTP in specs (e.g. with **WebMock** or **VCR**) so specs are fast and deterministic.
-
-```ruby
-context "with unauthorized access" do
-  let(:uri) { 'http://api.example.com/types' }
-  before    { stub_request(:get, uri).to_return(status: 401, body: fixture('401.json')) }
-
-  it "gets a not authorized notification" do
-    page.driver.get uri
-    expect(page).to have_content 'Access denied'
-  end
-end
-```
+---
 
 ## Summary Checklist
 
-- [ ] Describe with `.method` or `#method`
-- [ ] Use `context 'when/with/without ...'`
-- [ ] Short descriptions; split with context
-- [ ] One expectation per example in unit specs
-- [ ] Cover valid, edge, and invalid cases
-- [ ] Use `expect` only; never `should`
-- [ ] Use `subject`, `let`, `let!` appropriately
-- [ ] Prefer real behavior; mock external deps only
-- [ ] Create minimal data; use factories, not fixtures
-- [ ] Use shared examples to DRY
-- [ ] No "should" in example descriptions
+- [ ] Layout: no empty line after describe/context; one between sibling groups; blank after let/subject/before; one around each it
+- [ ] Order: subject, then let/let!, then before/after
+- [ ] Describe with `.method` or `#method`; context with when/with/without
+- [ ] Short example descriptions; no "should"; no conditional in the it string (use context)
+- [ ] One expectation per example in unit specs; use expect / is_expected only
+- [ ] Named subject when referenced; don’t stub subject
+- [ ] Prefer verifying doubles; no any_instance_of
+- [ ] Time: Timecop/freeze_time; HTTP: WebMock/VCR
+- [ ] Minimal data; factories not fixtures; no it in iterators
+- [ ] Shared examples where they reduce duplication without obscuring intent
 
-## Reference
+---
 
-[RSpec](https://rspec.info/) · [Better Specs](https://www.betterspecs.org/) — Rails testing best practices from Lelylan Labs.
+## References
+
+- [RSpec Style Guide](https://rspec.rubystyle.guide/) — layout, structure, naming, matchers, Rails
+- [Better Specs](https://www.betterspecs.org/) — Rails testing practices (Lelylan Labs)
+- [RSpec](https://rspec.info/) · [RuboCop RSpec](https://github.com/rubocop/rubocop-rspec)
