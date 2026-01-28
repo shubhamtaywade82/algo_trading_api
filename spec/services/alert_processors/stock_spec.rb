@@ -9,26 +9,9 @@ RSpec.describe AlertProcessors::Stock, type: :service do
   # ⬇︎ Per-example stubs ------------------------------------------------
   # ------------------------------------------------------------------
   before do
-    api_mod  = Module.new
-    orders_m = Module.new
-    edis_m   = Module.new
-
-    orders_m.module_eval do
-      def self.place(*);  end
-      def self.modify(*); end
-    end
-
-    edis_m.module_eval do
-      def self.status(*); end
-      def self.mark(*);   end
-    end
-
-    api_mod.const_set(:EDIS, edis_m)
-    stub_const('Dhanhq::API', api_mod, transfer_nested_constants: true, clone: false)
-
+    allow(Dhanhq::API::EDIS).to receive_messages(status: { 'status' => 'SUCCESS', 'aprvdQty' => 1_000 }, mark: true)
     allow(Dhanhq::API::Orders).to receive(:place)
       .and_return('orderId' => 'OID', 'orderStatus' => 'PENDING')
-    allow(Dhanhq::API::EDIS).to receive_messages(status: { 'status' => 'SUCCESS', 'aprvdQty' => 1_000 }, mark: true)
   end
 
   # ------------------------------------------------------------------
