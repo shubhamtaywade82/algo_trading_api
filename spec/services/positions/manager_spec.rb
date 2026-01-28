@@ -38,27 +38,26 @@ RSpec.describe Positions::Manager, type: :service do
 
   context 'with mixed valid/invalid positions' do
     before do
+      # valid_position has unrealizedProfit 1500, netQty 75, buyAvg 100 → estimate_ltp yields 120
       stub_position_models([valid_position, invalid_position])
-      valid_position['ltp'] = 120.0
     end
 
     it 'calls Orders::Manager only for valid positions' do
-      expect(Orders::Analyzer).to receive(:call).with(hash_including(
+      described_class.call
+
+      expect(Orders::Analyzer).to have_received(:call).with(hash_including(
         'netQty' => 75,
         'buyAvg' => 100,
         'securityId' => 'OPT1',
         'ltp' => 120.0
-      )).and_return({ dummy: :data })
-
-      expect(Orders::Manager).to receive(:call).with(hash_including(
+      ))
+      expect(Orders::Manager).to have_received(:call).with(hash_including(
         'netQty' => 75,
         'buyAvg' => 100,
         'securityId' => 'OPT1',
         'ltp' => 120.0
       ), { dummy: :data })
-
-      expect(Orders::Manager).not_to receive(:call).with(invalid_position, anything)
-      described_class.call
+      expect(Orders::Manager).not_to have_received(:call).with(invalid_position, anything)
     end
   end
 

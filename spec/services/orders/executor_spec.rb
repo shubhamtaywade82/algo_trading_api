@@ -26,6 +26,7 @@ RSpec.describe Orders::Executor, type: :service do
   end
 
   it 'creates order and exit log, sends Telegram' do
+    orig_place_order = ENV.fetch('PLACE_ORDER', nil)
     order_double = double(
       'Order',
       save: true,
@@ -38,12 +39,11 @@ RSpec.describe Orders::Executor, type: :service do
     allow(order_class).to receive(:new).and_return(order_double)
     stub_const('DhanHQ::Models::Order', order_class)
     allow(Charges::Calculator).to receive(:call).and_return(0)
-    orig = ENV['PLACE_ORDER']
     ENV['PLACE_ORDER'] = 'true'
 
     expect(TelegramNotifier).to receive(:send_message).once
     described_class.call(position, 'StopLoss_30%', analysis)
   ensure
-    ENV['PLACE_ORDER'] = orig
+    ENV['PLACE_ORDER'] = orig_place_order
   end
 end

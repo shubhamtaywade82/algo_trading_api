@@ -61,12 +61,11 @@ RSpec.describe Orders::RiskManager, type: :service do
   # ④ Trend-Reversal Exit (3 bars against bias)
   # ------------------------------------------------------------
   it 'exits on confirmed trend reversal (3 bearish vs long CE)' do
-    #
-    # Instead of hitting the option-chain we simply stub the helper that
-    # RiskManager uses internally.
-    #
+    # Stub the internal helper so we don't hit the option-chain.
+    # rubocop:disable RSpec/AnyInstance -- RiskManager.call builds a new instance; no public seam to inject.
     allow_any_instance_of(described_class)
       .to receive(:trend_for_position).and_return(:bearish)
+    # rubocop:enable RSpec/AnyInstance
 
     3.times { described_class.call(position, analysis(pnl_pct: 2)) } # warm-up
     result = described_class.call(position, analysis(pnl_pct: 2))
@@ -143,7 +142,7 @@ RSpec.describe Orders::RiskManager, type: :service do
                           underlying_security_id: 'null',
                           series: 'X',
                           lot_size: 1,
-                          tick_size: 0.1e1,
+                          tick_size: 1.0,
                           asm_gsm_flag: 'N',
                           asm_gsm_category: 'NA',
                           mtf_leverage: 0.0,
