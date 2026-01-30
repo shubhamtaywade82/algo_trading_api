@@ -169,23 +169,155 @@ module TelegramBot
     end
 
     def options_avoid_check
-      send_not_implemented('Option buying avoidance (IV/VIX/theta)')
+      typing_ping
+      inst = instrument_for('NIFTY', :nse)
+      vix_inst = Instrument.find_by(security_id: 21)
+      unless inst && vix_inst
+        return TelegramNotifier.send_message('⚠️ Instrument or India VIX not found.', chat_id: @cid)
+      end
+
+      chain = inst.fetch_option_chain(inst.expiry_list&.first)
+      unless chain
+        return TelegramNotifier.send_message('⚠️ Could not fetch option chain for NIFTY.', chat_id: @cid)
+      end
+
+      analyzed = Market::OptionChainAnalyzer.new(chain, inst.ltp.to_f).extract_data
+      vix = vix_inst.ltp.to_f
+      atm = analyzed&.dig(:atm) || {}
+      ce_iv = (atm[:ce_iv] || atm.dig(:call, 'implied_volatility')).to_f
+      pe_iv = (atm[:pe_iv] || atm.dig(:put, 'implied_volatility')).to_f
+      iv_arr = [ce_iv, pe_iv].reject(&:zero?)
+      iv_atm = iv_arr.any? ? (iv_arr.sum / iv_arr.size.to_f).round(2) : 0
+      ce_theta = atm.dig(:call, 'greeks', 'theta') || atm[:ce_theta]
+      pe_theta = atm.dig(:put, 'greeks', 'theta') || atm[:pe_theta]
+      theta_str = [ce_theta, pe_theta].compact.map { |t| t.to_f.round(1) }.join(' / ').presence || '–'
+
+      avoid = vix >= 16 || iv_atm >= 18
+      verdict = avoid ? '⚠️ Avoid buying premium (high IV/VIX)' : '✅ OK to consider buying'
+      msg = <<~TEXT.strip
+        📉 *Options avoid check* (NIFTY nearest expiry)
+        India VIX: #{vix.round(2)}% | ATM IV: #{iv_atm}% | θ CE/PE: #{theta_str}
+        #{verdict}
+      TEXT
+      TelegramNotifier.send_message(msg, chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] options_avoid_check – #{e.class}: #{e.message}"
+      notify_analysis_error(e)
     end
 
     def gift_nifty_analysis
-      send_not_implemented('GIFT Nifty open-gap prediction')
+      # GIFT Nifty (SGX) – not in Dhan index segment; suggest NIFTY analysis
+      TelegramNotifier.send_message(
+        "⏳ GIFT Nifty (SGX) is not configured for this app. Use /nifty_analysis for NIFTY.",
+        chat_id: @cid
+      )
     end
 
     def oi_snapshot
-      send_not_implemented('Option chain OI regime summary')
+      typing_ping
+      inst = instrument_for('NIFTY', :nse)
+      unless inst
+        return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid)
+      end
+
+      chain = inst.fetch_option_chain(inst.expiry_list&.first)
+      unless chain
+        return TelegramNotifier.send_message('⚠️ Could not fetch NIFTY option chain.', chat_id: @cid)
+      end
+
+      analyzed = Market::OptionChainAnalyzer.new(chain, inst.ltp.to_f).extract_data
+      return TelegramNotifier.send_message('⚠️ No option data extracted.', chat_id: @cid) if analyzed.blank?
+
+      atm = analyzed[:atm] || {}
+      ce_oi = (atm[:ce_oi] || atm.dig(:call, 'oi')).to_f
+      pe_oi = (atm[:pe_oi] || atm.dig(:put, 'oi')).to_f
+      ce_iv = (atm[:ce_iv] || atm.dig(:call, 'implied_volatility')).to_f.round(2)
+      pe_iv = (atm[:pe_iv] || atm.dig(:put, 'implied_volatility')).to_f.round(2)
+      strike = atm[:strike] || '–'
+      fmt_oi = ->(x) { x >= 1_000_000 ? "#{(x / 1_000_000).round(1)}M" : (x / 1000).round(1).to_s + 'K' }
+
+      msg = <<~TEXT.strip
+        📊 *OI snapshot* – NIFTY ATM #{strike} (nearest expiry)
+        CE: OI #{fmt_oi.call(ce_oi)} | IV #{ce_iv}%
+        PE: OI #{fmt_oi.call(pe_oi)} | IV #{pe_iv}%
+      TEXT
+      TelegramNotifier.send_message(msg, chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] oi_snapshot – #{e.class}: #{e.message}"
+      notify_analysis_error(e)
     end
 
     def market_summary
-      send_not_implemented('Session index + options + VIX summary')
+      typing_ping
+      vix_inst = Instrument.find_by(security_id: 21)
+      indices = [
+        [ 'NIFTY', :nse ],
+        [ 'BANKNIFTY', :nse ],
+        [ 'SENSEX', :bse ]
+      ]
+      lines = indices.filter_map do |symbol, exchange|
+        inst = instrument_for(symbol, exchange)
+        next unless inst
+
+        ltp = inst.ltp
+        next if ltp.blank?
+
+        "• #{symbol}: ₹#{PriceMath.round_tick(ltp)}"
+      end
+      vix_line = vix_inst ? "• India VIX: #{vix_inst.ltp&.round(2)}%" : nil
+      lines << vix_line if vix_line
+
+      if lines.empty?
+        TelegramNotifier.send_message('⚠️ Could not fetch index LTP or VIX.', chat_id: @cid)
+        return
+      end
+
+      msg = "📈 *Market summary*\n" + lines.join("\n")
+      TelegramNotifier.send_message(msg, chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] market_summary – #{e.class}: #{e.message}"
+      notify_analysis_error(e)
     end
 
     def expiry_roadmap
-      send_not_implemented('Weekly expiry theta/IV roadmap')
+      typing_ping
+      inst = instrument_for('NIFTY', :nse)
+      unless inst
+        return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid)
+      end
+
+      expiries = inst.expiry_list
+      if expiries.blank?
+        return TelegramNotifier.send_message('⚠️ No NIFTY expiries found.', chat_id: @cid)
+      end
+
+      next_four = expiries.first(4).map { |e| e.to_s.sub(/\A(\d{4})-(\d{2})-(\d{2})\z/, '\3-\2-\1') }
+      chain = inst.fetch_option_chain(expiries.first)
+      atm_iv = nil
+      if chain
+        analyzed = Market::OptionChainAnalyzer.new(chain, inst.ltp.to_f).extract_data
+        atm = analyzed&.dig(:atm)
+        if atm
+          ce = (atm[:ce_iv] || atm.dig(:call, 'implied_volatility')).to_f
+          pe = (atm[:pe_iv] || atm.dig(:put, 'implied_volatility')).to_f
+          arr = [ce, pe].reject(&:zero?)
+          atm_iv = arr.any? ? (arr.sum / arr.size.to_f).round(2) : nil
+        end
+      end
+
+      msg = "📅 *Expiry roadmap* – NIFTY\nNext: " + next_four.join(', ')
+      msg += "\nNearest expiry ATM IV: #{atm_iv}%" if atm_iv
+      TelegramNotifier.send_message(msg.strip, chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] expiry_roadmap – #{e.class}: #{e.message}"
+      notify_analysis_error(e)
+    end
+
+    def instrument_for(symbol, exchange)
+      scope = Instrument.where(exchange: exchange)
+      scope.find_by(underlying_symbol: symbol) ||
+        scope.find_by(symbol_name: symbol) ||
+        scope.find_by(trading_symbol: symbol)
     end
 
     def send_not_implemented(description)
