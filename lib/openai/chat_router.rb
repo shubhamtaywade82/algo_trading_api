@@ -14,6 +14,7 @@ module Openai
                   max_tokens: nil,
                   force: false)
       mdl = resolve_model(model, force, "#{system} #{user_prompt}")
+      Rails.logger.info "[Openai] #{backend_label(mdl)}"
       params = {
         model: mdl,
         messages: [
@@ -26,6 +27,15 @@ module Openai
       resp = Client.instance.chat(parameters: params)
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
       resp.dig('choices', 0, 'message', 'content').to_s.strip
+    end
+
+    # Public: so callers can show which backend will be used (e.g. in Telegram).
+    def self.backend_label(resolved_model = nil)
+      if using_ollama?
+        "Ollama (#{resolved_model || ollama_model_from_env})"
+      else
+        "OpenAI (#{resolved_model || LIGHT})"
+      end
     end
 
     # # ------------------------------------------------------------------
@@ -42,10 +52,9 @@ module Openai
       return HEAVY if force
       return explicit_model if explicit_model.present?
 
-      # Environment-based default
-      env_default = Rails.env.production? ? HEAVY : LIGHT
+      return ollama_model_from_env if using_ollama?
 
-      # If you later want token-based switching, uncomment:
+      env_default = Rails.env.production? ? HEAVY : LIGHT
       if Rails.env.production?
         token_estimate(text) > TOKENS_LIMIT ? HEAVY : env_default
       else
@@ -53,6 +62,20 @@ module Openai
       end
     end
     private_class_method :resolve_model
+
+    def self.using_ollama?
+      return false if Rails.env.production?
+
+      base = ENV['OPENAI_URI_BASE'].to_s
+      base.blank? || base.include?('11434')
+    end
+    private_class_method :using_ollama?
+
+    # App-scoped first so .env overrides global OLLAMA_MODEL (e.g. Cursor/shell).
+    def self.ollama_model_from_env
+      ENV['OPENAI_OLLAMA_MODEL'].presence || ENV['OLLAMA_MODEL'].presence || 'llama3.1:8b'
+    end
+    private_class_method :ollama_model_from_env
 
     # Very light-weight fallback when tiktoken isn't installed.
     # A token ≈ 4 characters for English-ish text.

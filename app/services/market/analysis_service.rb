@@ -167,6 +167,7 @@ module Market
       message = <<~TG
         #{TELEGRAM_TAG} – *#{md[:symbol]}*
         LTP ₹#{PriceMath.round_tick(md[:ltp])} · #{md[:ts].strftime('%H:%M')}#{weekend_note} · #{@candle} · Exp #{md[:expiry]}
+        _#{Openai::ChatRouter.backend_label}_
         ───────────────────────────
         #{options_text}
       TG
