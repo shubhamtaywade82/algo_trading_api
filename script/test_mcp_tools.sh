@@ -3,6 +3,7 @@
 # Usage: ./script/test_mcp_tools.sh [base_url]
 # Example: ./script/test_mcp_tools.sh http://localhost:5002
 # Set TO_DATE / FROM_DATE for date-range tools (default: today / yesterday in local TZ).
+# Set SHOW_RESPONSE=1 to print a short preview of each response (default: 1). Set to 0 to hide.
 # Tools that need Dhan credentials may return "Error: ..." in result; we only check HTTP 200 + jsonrpc.
 
 set -e
@@ -49,15 +50,23 @@ if [ -z "$EXPIRY" ]; then
   EXPIRY="${EXPIRY:-2025-02-27}"
 fi
 
+SHOW_RESPONSE="${SHOW_RESPONSE:-1}"
+PREVIEW_LEN="${PREVIEW_LEN:-380}"
+
 run_tool() {
   local name="$1"
   local body="$2"
-  local resp code
+  local resp code body_only
   resp=$(curl -s -w "\n%{http_code}" -X POST "${MCP_URL}" -H "Content-Type: application/json" -d "$body")
   code=$(echo "$resp" | tail -n1)
   body_only=$(echo "$resp" | sed '$d')
   if [ "$code" = "200" ] && echo "$body_only" | grep -q '"jsonrpc":"2.0"'; then
     echo "  OK   $name"
+    if [ "$SHOW_RESPONSE" = "1" ] || [ "$SHOW_RESPONSE" = "yes" ]; then
+      echo "$body_only" | head -c "$PREVIEW_LEN" | sed 's/^/    /'
+      [ "$(echo -n "$body_only" | wc -c)" -gt "$PREVIEW_LEN" ] && echo "    ..."
+      echo ""
+    fi
     return 0
   else
     echo "  FAIL $name (HTTP $code)"
