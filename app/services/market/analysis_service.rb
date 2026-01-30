@@ -161,15 +161,12 @@ module Market
     end
 
     def push_info(md)
-      options_text = format_options_chain(md[:options])
+      options_text = format_options_at_a_glance(md[:options])
       weekend_note = md[:session] == :weekend ? ' (Weekend - Markets Closed)' : ''
 
       message = <<~TG
         #{TELEGRAM_TAG} – *#{md[:symbol]}*
-        LTP  : ₹#{PriceMath.round_tick(md[:ltp])}
-        Time : #{md[:ts].strftime('%H:%M:%S')}#{weekend_note}
-        Frame: #{@candle}
-        Exp  : #{md[:expiry]}
+        LTP ₹#{PriceMath.round_tick(md[:ltp])} · #{md[:ts].strftime('%H:%M')}#{weekend_note} · #{@candle} · Exp #{md[:expiry]}
         ───────────────────────────
         #{options_text}
       TG
@@ -194,6 +191,35 @@ module Market
       end
     end
 
+    # Snapshot for Telegram: ATM only, LTP/IV/Δ/θ so the first message is scannable.
+    def format_options_at_a_glance(options)
+      return 'No option-chain data available.' if options.blank?
+
+      opt = options[:atm]
+      return 'No ATM data.' unless opt
+
+      strike = opt[:strike] || '?'
+      ce = opt[:call] || {}
+      pe = opt[:put] || {}
+
+      ce_ltp = opt[:ce_ltp] || ce['last_price'] || ce[:last_price]
+      ce_iv = opt[:ce_iv] || ce['implied_volatility'] || ce[:implied_volatility]
+      ce_delta = opt[:ce_delta] || dig_any(ce, 'greeks', 'delta')
+      ce_theta = opt[:ce_theta] || dig_any(ce, 'greeks', 'theta')
+
+      pe_ltp = opt[:pe_ltp] || pe['last_price'] || pe[:last_price]
+      pe_iv = opt[:pe_iv] || pe['implied_volatility'] || pe[:implied_volatility]
+      pe_delta = opt[:pe_delta] || dig_any(pe, 'greeks', 'delta')
+      pe_theta = opt[:pe_theta] || dig_any(pe, 'greeks', 'theta')
+
+      <<~STR.strip
+        ATM #{strike}
+        CE ₹#{fmt2(ce_ltp)}  IV #{fmt2(ce_iv)}%  Δ #{fmt2(ce_delta)}  θ #{fmt2(ce_theta)}
+        PE ₹#{fmt2(pe_ltp)}  IV #{fmt2(pe_iv)}%  Δ #{fmt2(pe_delta)}  θ #{fmt2(pe_theta)}
+      STR
+    end
+
+    # Full chain for prompts; kept for any consumer that needs all strikes.
     def format_options_chain(options)
       return 'No option-chain data available.' if options.blank?
 

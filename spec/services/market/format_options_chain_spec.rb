@@ -23,5 +23,16 @@ RSpec.describe 'Option chain formatting' do
       expect(formatted).to include('IV –%')
       expect(formatted).to include('PUT : LTP ₹–')
     end
+
+    it 'at-a-glance shows only ATM with LTP, IV, Δ, θ' do
+      formatted = service.send(:format_options_at_a_glance, options)
+
+      expect(formatted).to include('ATM 12345')
+      expect(formatted).to include('CE ₹12.35')
+      expect(formatted).to include('PE ₹–')
+      expect(formatted).not_to include('OTM CALL')
+      expect(formatted).not_to include('Γ')
+      expect(formatted).not_to include('OI')
+    end
   end
 end

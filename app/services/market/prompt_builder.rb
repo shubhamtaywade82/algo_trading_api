@@ -21,9 +21,10 @@ module Market
         - Respect broker mapping (securityId, exchangeSegment) if provided.
 
         OUTPUT STYLE
-        Produce a concise, human-readable trading desk brief that follows any formatting instructions provided in the user prompt (probability bands, PRIMARY/HEDGE lines, CLOSE RANGE, Bias line, closing marker).
-        - Do **not** return JSON or structured data; stick to readable text with short bullets.
-        - Keep recommendations actionable with strikes, entry/SL/TP, and rationale tied to the data in the prompt.
+        - **At-a-glance first**: Lead with a short "AT A GLANCE" block (5–8 bullets max): Bias, primary strike & entry/SL/T1, optional hedge, time exit. User must get the gist in one read.
+        - **Then details**: Abbreviate probability bands, OI/IV, execution. No long paragraphs. Total response under 300 words.
+        - Follow any formatting in the user prompt (PRIMARY/HEDGE, CLOSE RANGE, Bias line, closing marker).
+        - Do **not** return JSON; use short bullets. Keep recommendations actionable (strikes, entry/SL/TP) tied to the data.
 
         DECISION RULE (summary)
         1) Direction (must pass):
@@ -128,7 +129,7 @@ module Market
           === EXPERT OPTIONS BUYING ANALYST ===
 
           You are an expert financial analyst specializing in the Indian equity & derivatives markets, with a focus on buying **#{md[:symbol]}** index options.
-          NOTE: Please make the text consise and quick readable
+          **Response rule**: Lead with "AT A GLANCE" (5–8 bullets: Bias, strike, entry/SL/T1, hedge, exit). Then a very short details section. Total under 300 words so it fits one quick read.
 
           === CURRENT MARKET DATA ===
           India VIX: #{vix_value}%
@@ -151,6 +152,8 @@ module Market
           #{chain}
           #{extra_block}=== ANALYSIS REQUIREMENTS ===
           **TASK — #{analysis_context_for(md[:session])}**
+
+          **Format (mandatory):** Start with an "AT A GLANCE" block: 5–8 short bullets (Bias · Primary strike & entry/SL/T1 · Hedge if any · Exit time). Then abbreviate the sections below. Keep full response under 300 words.
 
           1) Directional probabilities from the current price (today's close vs now):
              • Strong upside (>0.5%) → CALL buying candidate
@@ -181,20 +184,15 @@ module Market
                Round to nearest 5 points for NIFTY / 10 for BANKNIFTY.
              • **Print exactly this line:**
               `CLOSE RANGE: ₹<low>–₹<high> (<−x% to +y% from LTP>)`
-          5) Output format (concise, trade-desk ready):
-             • Probability bands (≥30 %, ≥50 %, ≥70 %) with one-line rationale
-             • PRIMARY: <strategy, strikes, entry ₹, SL %, T1/T2 ₹, reasoning>
-             • HEDGE:   <strategy, strikes, entry ₹, SL %, T1/T2 ₹, reasoning>
-             • ≤ 4 crisp action bullets for immediate execution
-             • **ONE-LINE BIAS**: Add one final line **exactly** as `Bias: CALLS` or `Bias: PUTS` or `Bias: NEUTRAL`
-               (pick one based on directional probabilities, IV context and Greeks). This line must appear
-               on its own, right before the closing marker below.
-             • **Also include the line above for closing range.**
+          5) Output (abbreviated; total under 300 words):
+             • AT A GLANCE: 5–8 bullets (Bias · Strike & entry/SL/T1 · Hedge · Exit). Then:
+             • Probability bands: one line (e.g. "≥50%: Flat 50%, Down 35%")
+             • PRIMARY / HEDGE: one line each (strike, entry ₹, SL %, T1 ₹)
+             • ≤ 3 action bullets
+             • **Bias:** exactly `Bias: CALLS` or `Bias: PUTS` or `Bias: NEUTRAL`
+             • **CLOSE RANGE:** one line as instructed above
 
-          Finish with an actionable summary:
-            – Exact strike(s) to buy
-            – Suggested stop-loss & target
-          Bias: CALLS/PUTS/NEUTRAL   # ← print one of these three EXACTLY
+          Bias: CALLS/PUTS/NEUTRAL
           — end of brief
         PROMPT
       end
