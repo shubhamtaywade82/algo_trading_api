@@ -31,6 +31,8 @@ module TelegramBot
       when '/nifty_options' then run_options_buying_analysis('NIFTY')
       when '/banknifty_options' then run_options_buying_analysis('BANKNIFTY')
       when '/sensex_options' then run_options_buying_analysis('SENSEX', exchange: :bse)
+      when '/nifty_expiry_range' then run_expiry_range_strategy('NIFTY')
+      when '/sensex_expiry_range' then run_expiry_range_strategy('SENSEX', exchange: :bse)
       else
         handled = try_manual_signal!
         TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid) unless handled
@@ -111,6 +113,15 @@ module TelegramBot
       typing_ping
       MarketAnalysisJob.perform_later(@cid, symbol, exchange: exchange, trade_type: :options_buying)
       TelegramNotifier.send_message("🎯 **#{symbol} Options Buying Setup**", chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
+      notify_analysis_error(e)
+    end
+
+    def run_expiry_range_strategy(symbol, exchange: :nse)
+      typing_ping
+      MarketAnalysisJob.perform_later(@cid, symbol, exchange: exchange, trade_type: :expiry_range_strategy)
+      TelegramNotifier.send_message("🧰 **#{symbol} Expiry Range Strategy**", chat_id: @cid)
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
       notify_analysis_error(e)

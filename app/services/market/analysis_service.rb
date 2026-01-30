@@ -45,16 +45,48 @@ module Market
       md[:vix] = india_vix.ltp
       md[:regime] = option_chain_regime_flags(md[:options], md[:vix])
 
+      if @trade_type.to_sym == :expiry_range_strategy
+        enrich_with_structure_and_value!(md)
+        return run_expiry_range_strategy(md)
+      end
+
+      if @trade_type.to_sym == :options_buying
+        enrich_with_structure_and_value!(md)
+        unless ready_for_options_buying?(md)
+          missing = missing_requirements(md)
+          Rails.logger.warn "[AnalysisService] ⚠️ Missing SMC/AVRZ inputs for options buying: #{missing.join(', ')}"
+          return '⚠️ No valid trade setup found.'
+        end
+      end
+
       prompt = PromptBuilder.build_prompt(md, trade_type: @trade_type)
       Rails.logger.debug prompt
       push_info(md)
-      answer = ask_openai(prompt)
+      answer = ask_llm(prompt)
       typing_ping
 
       Rails.logger.debug answer.length
       # TelegramNotifier.send_message(answer)
       # nil if answer
-      answer
+      return answer unless @trade_type.to_sym == :options_buying
+
+      validated = Market::AiTradeValidator.call!(
+        answer,
+        instrument_symbol: md[:symbol],
+        options_snapshot: md[:options]
+      )
+      Market::AiTradeFormatter.format(validated)
+    rescue Market::AiTradeValidator::ValidationError => e
+      Rails.logger.warn "[AnalysisService] ⚠️ AI trade validation failed: #{e.message}"
+      <<~MSG.strip
+        Decision: NO_TRADE
+        Instrument: #{md[:symbol]}
+        Market Bias: UNCLEAR
+        Reason: No valid trade setup found.
+        Risk Note: No edge for options buying
+        Re-evaluate When:
+        - Wait for clear 15m BOS/CHOCH and 5m confirmation
+      MSG
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
       nil
@@ -109,6 +141,143 @@ module Market
       )
     end
 
+    def enrich_with_structure_and_value!(md)
+      session_date = MarketCalendar.today_or_last_trading_day
+
+      series_5m = instrument.candle_series(interval: '5')
+      series_15m = instrument.candle_series(interval: '15')
+
+      Rails.logger.debug { "[AnalysisService] 5m candles: #{series_5m.candles.size}, 15m candles: #{series_15m.candles.size}" }
+
+      md[:timeframes] = {
+        m5: timeframe_snapshot(series_5m, frame: '5m'),
+        m15: timeframe_snapshot(series_15m, frame: '15m')
+      }
+
+      smc_5m = Market::Structure::SmcAnalyzer.call(series_5m, timeframe_minutes: 5)
+      smc_15m = Market::Structure::SmcAnalyzer.call(series_15m, timeframe_minutes: 15)
+
+      Rails.logger.debug do
+        "[AnalysisService] SMC 5m: #{smc_5m.present? ? 'present' : 'nil'}, " \
+          "swing_high: #{smc_5m&.last_swing_high.present?}, swing_low: #{smc_5m&.last_swing_low.present?}"
+      end
+      Rails.logger.debug do
+        "[AnalysisService] SMC 15m: #{smc_15m.present? ? 'present' : 'nil'}, " \
+          "swing_high: #{smc_15m&.last_swing_high.present?}, swing_low: #{smc_15m&.last_swing_low.present?}"
+      end
+
+      md[:smc] = {
+        m5: smc_5m,
+        m15: smc_15m
+      }
+
+      value_5m = value_snapshot(series_5m, smc: smc_5m, session_date: session_date, vix: md[:vix])
+      value_15m = value_snapshot(series_15m, smc: smc_15m, session_date: session_date, vix: md[:vix])
+
+      Rails.logger.debug do
+        "[AnalysisService] Value 15m - VWAP: #{value_15m[:vwap]}, AVRZ: #{value_15m[:avrz].present? ? 'present' : 'nil'}"
+      end
+
+      md[:value] = {
+        m5: value_5m,
+        m15: value_15m
+      }
+    end
+
+    def run_expiry_range_strategy(md)
+      series_5m = instrument.candle_series(interval: '5')
+      vix_series_5m = india_vix.candle_series(interval: '5')
+      vix_snapshot = Vix::Guard.snapshot(vix_instrument: india_vix, vix_series_5m: vix_series_5m)
+
+      # Use Zeitwerk's autoloading - just reference the constant directly
+      # The file app/strategies/expiry_range_strategy.rb defines Strategies::ExpiryRangeStrategy
+      Strategies::ExpiryRangeStrategy.call(md: md, series_5m: series_5m, vix_snapshot: vix_snapshot)
+    rescue StandardError => e
+      Rails.logger.error "[AnalysisService] ❌ ExpiryRangeStrategy failed: #{e.class} – #{e.message}"
+      nil
+    end
+
+    def timeframe_snapshot(series, frame:)
+      return {} if series.candles.empty?
+
+      {
+        frame: frame,
+        ohlc: {
+          open: PriceMath.round_tick(series.opens.last),
+          high: PriceMath.round_tick(series.highs.last),
+          low: PriceMath.round_tick(series.lows.last),
+          close: PriceMath.round_tick(series.closes.last),
+          volume: series.candles.last.volume
+        },
+        atr: series.atr[:atr].round(2),
+        rsi: series.rsi[:rsi].round(2),
+        macd: series.macd.transform_values { |v| v.round(2) },
+        super: series.supertrend_signal
+      }
+    rescue StandardError => e
+      Rails.logger.warn "[AnalysisService] ⚠️ timeframe_snapshot failed: #{e.class} – #{e.message}"
+      {}
+    end
+
+    def value_snapshot(series, smc:, session_date:, vix:)
+      return {} if series.candles.empty?
+
+      # Use the date of the most recent candle if available, otherwise fall back to session_date
+      # This handles cases where candles are from a previous trading day (e.g., pre-open session)
+      candle_date = series.candles.last&.timestamp&.to_date || session_date
+      effective_session_date = candle_date
+
+      Rails.logger.debug do
+        "[AnalysisService] VWAP calculation - session_date: #{session_date}, candle_date: #{candle_date}, using: #{effective_session_date}"
+      end
+
+      vwap = Market::Value::VwapCalculator.session_vwap(series, session_date: effective_session_date)
+
+      bos_ts = smc&.last_bos&.dig(:ts)
+      avwap_bos =
+        (Market::Value::VwapCalculator.anchored_vwap(series, from_ts: bos_ts, session_date: effective_session_date) if bos_ts)
+
+      atr_points = series.atr[:atr].to_f
+      avrz = Market::Value::AvrzCalculator.call(mid: vwap, atr_points: atr_points, vix: vix)
+
+      {
+        vwap: vwap,
+        avwap_bos: avwap_bos,
+        avrz: avrz
+      }
+    end
+
+    def ready_for_options_buying?(md)
+      smc_15m = md.dig(:smc, :m15)
+      avrz_15m = md.dig(:value, :m15, :avrz)
+      vwap_15m = md.dig(:value, :m15, :vwap)
+
+      smc_15m.present? &&
+        smc_15m.last_swing_high.present? &&
+        smc_15m.last_swing_low.present? &&
+        vwap_15m.present? &&
+        avrz_15m.present? &&
+        avrz_15m[:low].present? &&
+        avrz_15m[:high].present?
+    end
+
+    def missing_requirements(md)
+      missing = []
+      smc_15m = md.dig(:smc, :m15)
+      avrz_15m = md.dig(:value, :m15, :avrz)
+      vwap_15m = md.dig(:value, :m15, :vwap)
+
+      missing << 'SMC_15m' if smc_15m.blank?
+      missing << 'swing_high' if smc_15m.present? && smc_15m.last_swing_high.blank?
+      missing << 'swing_low' if smc_15m.present? && smc_15m.last_swing_low.blank?
+      missing << 'VWAP_15m' if vwap_15m.blank?
+      missing << 'AVRZ_15m' if avrz_15m.blank?
+      missing << 'AVRZ_low' if avrz_15m.present? && avrz_15m[:low].blank?
+      missing << 'AVRZ_high' if avrz_15m.present? && avrz_15m[:high].blank?
+
+      missing
+    end
+
     # ------------------------------------------------------------------------
     # Option-chain preprocessing (unchanged logic moved to its own method)
     # ------------------------------------------------------------------------
@@ -123,8 +292,28 @@ module Market
 
     def previous_daily_ohlc
       Rails.cache.fetch("pd-ohlc:#{instrument.id}", expires_in: 15.minutes) do
-        to_date = MarketCalendar.today_or_last_trading_day
-        from_date = MarketCalendar.last_trading_day(from: to_date - 1)
+        # Get the previous trading day (the day before today, accounting for weekends/holidays)
+        today = Time.zone.today
+        prev_trading_day = MarketCalendar.last_trading_day(from: today - 1)
+
+        # Determine date range based on session state
+        # If pre-open or before market close, don't use today's date
+        if session_state == :pre_open || session_state == :weekend
+          # Use previous trading day as end date, and day before as start date
+          # This ensures we only query completed trading days
+          from_date = MarketCalendar.last_trading_day(from: prev_trading_day - 1)
+          to_date = prev_trading_day
+        else
+          # Post-close or live: can use today if it's a trading day
+          from_date = prev_trading_day
+          to_date = MarketCalendar.trading_day?(today) ? today : prev_trading_day
+        end
+
+        Rails.logger.debug do
+          "[AnalysisService] Previous daily OHLC - today: #{today}, prev: #{prev_trading_day}, " \
+            "from: #{from_date}, to: #{to_date}, session: #{session_state}"
+        end
+
         bars = instrument.historical_ohlc(
           from_date: from_date.to_s,
           to_date: to_date.to_s
@@ -132,12 +321,12 @@ module Market
 
         return nil if bars.blank?
 
-        bar = bars
+        # Extract the single day's OHLC (bars should contain only one day)
         {
-          open: PriceMath.round_tick(bar['open'].last.to_f),
-          high: PriceMath.round_tick(bar['high'].last.to_f),
-          low: PriceMath.round_tick(bar['low'].last.to_f),
-          close: PriceMath.round_tick(bar['close'].last.to_f)
+          open: PriceMath.round_tick(bars['open'].last.to_f),
+          high: PriceMath.round_tick(bars['high'].last.to_f),
+          low: PriceMath.round_tick(bars['low'].last.to_f),
+          close: PriceMath.round_tick(bars['close'].last.to_f)
         }
       end
     end
@@ -177,7 +366,7 @@ module Market
       TelegramNotifier.send_message(message)
     end
 
-    def ask_openai(prompt, retries: 3, backoff: 4)
+    def ask_llm(prompt, retries: 3, backoff: 4)
       attempt = 0
 
       begin
@@ -185,7 +374,11 @@ module Market
           prompt,
           system: Market::PromptBuilder.system_prompt(@trade_type)
         )
-      rescue OpenAI::Error
+      rescue StandardError => e
+        # Retry only for provider/network style failures (avoid masking coding bugs).
+        retryable = e.class.name.match?(/OpenAI|Ollama|Timeout|HTTP/i)
+        raise unless retryable
+
         attempt += 1
         raise if attempt > retries
 

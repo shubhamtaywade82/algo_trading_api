@@ -14,7 +14,7 @@ RSpec.describe MarketAnalysisJob do
     it 'calls Market::AnalysisService with correct parameters' do
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(Market::AnalysisService).to have_received(:call).with(symbol, hash_including(exchange: exchange))
+      expect(Market::AnalysisService).to have_received(:call).with(symbol, exchange: exchange, trade_type: nil)
     end
 
     it 'sends telegram notification when analysis is present' do

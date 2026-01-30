@@ -59,6 +59,9 @@ group :development, :test do
 
   gem 'rubycritic', require: false
   gem 'simplecov', require: false
+
+  # Local/dev LLM provider (Ollama). Loaded on-demand via LLM_PROVIDER=ollama.
+  gem 'ollama-client', git: 'https://github.com/shubhamtaywade82/ollama-client.git', branch: 'main', require: false
 end
 
 group :test do

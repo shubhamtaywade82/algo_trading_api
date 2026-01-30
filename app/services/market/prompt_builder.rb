@@ -223,8 +223,40 @@ module Market
         extra = context.to_s.strip
         extra_block = extra.empty? ? '' : "\n=== ADDITIONAL CONTEXT ===\n#{extra}\n"
 
+        smc_15 = md.dig(:smc, :m15)
+        smc_5 = md.dig(:smc, :m5)
+        val_15 = md.dig(:value, :m15) || {}
+        val_5 = md.dig(:value, :m5) || {}
+
+        structure_block = <<~STRUCT
+          === 15m STRUCTURE (SMC) ===
+          Market Structure: #{smc_15&.market_structure || 'unknown'}
+          Last Swing High: #{fmt2(smc_15&.last_swing_high&.dig(:price))}
+          Last Swing Low: #{fmt2(smc_15&.last_swing_low&.dig(:price))}
+          Last BOS: #{smc_15&.last_bos ? "#{smc_15.last_bos[:direction]} @ #{fmt2(smc_15.last_bos[:level])}" : 'none'}
+
+          === 5m STRUCTURE (SMC) ===
+          Market Structure: #{smc_5&.market_structure || 'unknown'}
+          Last BOS: #{smc_5&.last_bos ? "#{smc_5.last_bos[:direction]} @ #{fmt2(smc_5.last_bos[:level])}" : 'none'}
+        STRUCT
+
+        value_block = <<~VALUE
+          === VALUE ZONES (VWAP/AVWAP/AVRZ) ===
+          15m VWAP: #{fmt2(val_15[:vwap])} | 15m AVWAP(BOS): #{fmt2(val_15[:avwap_bos])}
+          15m AVRZ: low #{fmt2(val_15.dig(:avrz, :low))} | mid #{fmt2(val_15.dig(:avrz, :mid))} | high #{fmt2(val_15.dig(:avrz, :high))} (#{val_15.dig(:avrz, :regime)})
+
+          5m VWAP: #{fmt2(val_5[:vwap])} | 5m AVWAP(BOS): #{fmt2(val_5[:avwap_bos])}
+          5m AVRZ: low #{fmt2(val_5.dig(:avrz, :low))} | mid #{fmt2(val_5.dig(:avrz, :mid))} | high #{fmt2(val_5.dig(:avrz, :high))} (#{val_5.dig(:avrz, :regime)})
+        VALUE
+
         <<~PROMPT
-          Based on the following option-chain snapshot for #{symbol}, suggest an instant options buying trade. Use ATM or slightly ITM strikes guided by delta near ±0.50, evaluate IV, OI/volume shifts, and explain the rationale.
+          You must output exactly ONE decision using the canonical spec below.
+          GLOBAL RULES (NON-NEGOTIABLE):
+          - Exact keys, exact casing.
+          - No prose paragraphs.
+          - No missing fields.
+          - Do NOT invent structure/levels/zones; only use the provided SMC/VWAP/AVRZ and option-chain snapshot.
+          - If uncertain, output NO_TRADE.
 
           === MARKET DATA ===
           #{session_label} – **#{symbol}**
@@ -233,6 +265,9 @@ module Market
           Expiry: #{expiry}
 
           #{format_technical_indicators(md)}
+
+          #{structure_block}
+          #{value_block}
 
           === OPTION CHAIN DATA ===
           #{chain}
