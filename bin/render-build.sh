@@ -5,8 +5,7 @@ set -o errexit
 # Install gems
 echo "📦 Installing dependencies..."
 bundle install
-
-#bundle exec rails g solid_cache:install
+bundle binstubs bundler --force
 
 # Run database migrations
 echo "🛠 Running migrations..."
