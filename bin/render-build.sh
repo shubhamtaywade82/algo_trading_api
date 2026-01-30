@@ -6,9 +6,9 @@ set -o errexit
 echo "📦 Installing dependencies..."
 bundle install
 
-# Run database migrations
+# Run database migrations (use bin/rails to avoid gem binstubs that check bin/bundle on Render)
 echo "🛠 Running migrations..."
-bundle exec rails db:migrate
+ruby bin/rails db:migrate
 
 # Run whenever to update cron jobs (only relevant if using cron-based jobs)
 # Note: Render does NOT support system-level cron, so use a worker instead.
@@ -17,12 +17,12 @@ bundle exec rails db:migrate
 
 # Uncomment below only if needed for fresh deployments
 echo "🌱 Seeding database..."
-bundle exec rails db:seed
+ruby bin/rails db:seed
 
 # Optional data imports (comment if not needed)
 echo "📊 Importing instruments..."
-bundle exec rails import:instruments
-bundle exec rails import:mis_details
+ruby bin/rails import:instruments
+ruby bin/rails import:mis_details
 
 # echo "🔄 Updating levels..."
 # bundle exec rails levels:update
