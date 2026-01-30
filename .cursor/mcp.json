@@ -2,6 +2,9 @@
   "mcpServers": {
     "dhan": {
       "url": "http://localhost:5002/mcp"
+    },
+    "dhan-render": {
+      "url": "https://algo-trading-api.onrender.com/mcp"
     }
   }
 }
