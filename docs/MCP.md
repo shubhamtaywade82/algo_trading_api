@@ -92,7 +92,7 @@ Tools use the app’s Dhan credentials (`CLIENT_ID`, `ACCESS_TOKEN`). No extra a
 
 | Tool | Description | `arguments` |
 |------|-------------|-------------|
-| **get_expiry_list** | Expiry dates for an underlying | `{"exchange_segment": "NSE_FNO", "symbol": "NIFTY"}` |
+| **get_expiry_list** | Expiry dates for an underlying (use underlying segment: IDX_I for indices, NSE_EQ for stocks; not NSE_FNO) | `{"exchange_segment": "IDX_I", "symbol": "NIFTY"}` |
 | **get_option_chain** | Full option chain for an expiry | `{"exchange_segment": "NSE_FNO", "symbol": "NIFTY", "expiry": "2025-01-30"}` |
 
 ### Other
@@ -140,7 +140,7 @@ curl -s -X POST http://localhost:5002/mcp \
 ```bash
 curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_expiry_list","arguments":{"exchange_segment":"NSE_FNO","symbol":"NIFTY"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_expiry_list","arguments":{"exchange_segment":"IDX_I","symbol":"NIFTY"}}}'
 ```
 
 ### Instrument (SENSEX)

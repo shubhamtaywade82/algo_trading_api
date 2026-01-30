@@ -309,11 +309,11 @@ class DhanMcpService
   def define_expiry_list(svc, fmt)
     @server.define_tool(
       name: 'get_expiry_list',
-      description: 'Retrieve expiry dates for an underlying. Uses exchange_segment and symbol.',
+      description: 'Retrieve expiry dates for an underlying. Use underlying exchange segment: IDX_I for indices (NIFTY, SENSEX), NSE_EQ for stocks; not the derivative segment (NSE_FNO).',
       input_schema: {
         properties: {
-          exchange_segment: { type: 'string', description: 'Underlying segment (e.g. NSE_FNO)' },
-          symbol: { type: 'string', description: 'Underlying symbol (e.g. NIFTY, RELIANCE)' }
+          exchange_segment: { type: 'string', description: 'Underlying segment: IDX_I for indices, NSE_EQ for stocks (not NSE_FNO)' },
+          symbol: { type: 'string', description: 'Underlying symbol (e.g. NIFTY, SENSEX, RELIANCE)' }
         },
         required: %w[exchange_segment symbol]
       }
