@@ -31,6 +31,11 @@ module TelegramBot
       when '/nifty_options' then run_options_buying_analysis('NIFTY')
       when '/banknifty_options' then run_options_buying_analysis('BANKNIFTY')
       when '/sensex_options' then run_options_buying_analysis('SENSEX', exchange: :bse)
+      when '/options_avoid_check' then options_avoid_check
+      when '/gift_nifty_analysis' then gift_nifty_analysis
+      when '/oi_snapshot' then oi_snapshot
+      when '/market_summary' then market_summary
+      when '/expiry_roadmap' then expiry_roadmap
       else
         handled = try_manual_signal!
         TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid) unless handled
@@ -161,6 +166,33 @@ module TelegramBot
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ #{e.class} – #{e.message}"
       notify_analysis_error(e)
+    end
+
+    def options_avoid_check
+      send_not_implemented('Option buying avoidance (IV/VIX/theta)')
+    end
+
+    def gift_nifty_analysis
+      send_not_implemented('GIFT Nifty open-gap prediction')
+    end
+
+    def oi_snapshot
+      send_not_implemented('Option chain OI regime summary')
+    end
+
+    def market_summary
+      send_not_implemented('Session index + options + VIX summary')
+    end
+
+    def expiry_roadmap
+      send_not_implemented('Weekly expiry theta/IV roadmap')
+    end
+
+    def send_not_implemented(description)
+      TelegramNotifier.send_message(
+        "⏳ #{description} – not implemented yet.",
+        chat_id: @cid
+      )
     end
   end
 end
