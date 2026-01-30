@@ -5,7 +5,6 @@ set -o errexit
 # Install gems
 echo "📦 Installing dependencies..."
 bundle install
-bundle binstubs bundler --force
 
 # Run database migrations
 echo "🛠 Running migrations..."
