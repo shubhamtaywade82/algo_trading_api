@@ -15,7 +15,7 @@ module Openai
                   force: false)
       case provider
       when 'ollama'
-        ask_ollama!(user_prompt, system: system, model: model, max_tokens: max_tokens)
+        ask_ollama!(user_prompt, system: system, model: model, _max_tokens: max_tokens)
       else
         ask_openai!(user_prompt, system: system, model: model, max_tokens: max_tokens, force: force)
       end
@@ -44,12 +44,12 @@ module Openai
     end
     private_class_method :ask_openai!
 
-    def self.ask_ollama!(user_prompt, system:, model:, max_tokens:)
+    def self.ask_ollama!(user_prompt, system:, model:, _max_tokens: nil)
       require 'ollama_client'
 
       config = Ollama::Config.new
       config.base_url = ENV.fetch('OLLAMA_BASE_URL', 'http://localhost:11434')
-      config.model = (model.presence || ENV.fetch('OLLAMA_MODEL', 'llama3.1')).to_s
+      config.model = (model.presence || ENV.fetch('OLLAMA_MODEL', 'llama3.1:8b')).to_s
       config.timeout = ENV.fetch('OLLAMA_TIMEOUT', '60').to_i
       config.retries = ENV.fetch('OLLAMA_RETRIES', '2').to_i
       config.temperature = ENV.fetch('OLLAMA_TEMPERATURE', '0.2').to_f

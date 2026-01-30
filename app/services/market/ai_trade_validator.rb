@@ -58,7 +58,7 @@ module Market
     def self.parse(text)
       raise ValidationError, 'Empty AI response' if text.blank?
 
-      lines = text.lines.map(&:rstrip).map(&:strip).reject(&:empty?)
+      lines = text.lines.map { |line| line.rstrip.strip }.reject(&:empty?)
       data = {}
       current_section = nil
 

@@ -46,13 +46,16 @@ Lint/UnusedBlockArgument:
   Exclude:
     - 'app/services/dhan_mcp_service.rb'
 
-# Offense count: 30
+# Offense count: 33
 # Configuration parameters: AllowedMethods, AllowedPatterns, CountRepeatedAttributes, Max.
 Metrics/AbcSize:
   Max: 40
   Exclude:
     - 'app/controllers/market_sentiment_controller.rb'
     - 'app/services/alert_processors/index.rb'
+    - 'app/services/backtest/runner.rb'
+    - 'app/services/market/ai_trade_validator.rb'
+    - 'app/services/vix/guard.rb'
     - 'app/services/alert_processors/mcx_commodity.rb'
     - 'app/services/alert_processors/stock.rb'
     - 'app/services/charges/calculator.rb'
@@ -76,23 +79,31 @@ Metrics/BlockLength:
   Max: 50
   Exclude:
     - 'db/queue_schema.rb'
+    - 'lib/tasks/backtest.rake'
 
-# Offense count: 4
+# Offense count: 7
 # Configuration parameters: CountComments, Max, CountAsOne.
 Metrics/ClassLength:
   Max: 300
   Exclude:
     - 'app/services/alert_processors/index.rb'
+    - 'app/services/backtest/runner.rb'
     - 'app/services/dhan_mcp_service.rb'
+    - 'app/services/market/analysis_service.rb'
+    - 'app/services/market/prompt_builder.rb'
     - 'app/services/option/chain_analyzer.rb'
     - 'app/services/option/strategy_suggester.rb'
 
-# Offense count: 33
+# Offense count: 37
 # Configuration parameters: AllowedMethods, AllowedPatterns, Max.
 Metrics/CyclomaticComplexity:
   Max: 10
   Exclude:
     - 'app/controllers/market_sentiment_controller.rb'
+    - 'app/services/backtest/runner.rb'
+    - 'app/services/market/ai_trade_validator.rb'
+    - 'app/services/market/structure/smc_analyzer.rb'
+    - 'app/services/vix/guard.rb'
     - 'app/models/concerns/instrument_helper.rb'
     - 'app/services/alert_processors/index.rb'
     - 'app/services/alert_processors/index_quantity_calculator.rb'
@@ -135,12 +146,16 @@ Metrics/ParameterLists:
   Exclude:
     - 'app/services/alert_processors/index_order_payload_builder.rb'
 
-# Offense count: 21
+# Offense count: 27
 # Configuration parameters: AllowedMethods, AllowedPatterns, Max.
 Metrics/PerceivedComplexity:
   Max: 12
   Exclude:
     - 'app/controllers/market_sentiment_controller.rb'
+    - 'app/services/backtest/runner.rb'
+    - 'app/services/market/ai_trade_validator.rb'
+    - 'app/services/market/structure/smc_analyzer.rb'
+    - 'app/services/vix/guard.rb'
     - 'app/services/alert_processors/index.rb'
     - 'app/services/alert_processors/index_quantity_calculator.rb'
     - 'app/services/dhan_mcp/argument_validator.rb'
@@ -266,11 +281,18 @@ Rails/ThreeStateBooleanColumn:
   Exclude:
     - 'db/migrate/20241225101631_create_derivatives.rb'
 
-# Offense count: 138
+# Offense count: 145
 # Configuration parameters: AllowedConstants.
 Style/Documentation:
   Exclude:
     - 'app/controllers/admin/settings_controller.rb'
+    - 'app/services/backtest/runner.rb'
+    - 'app/services/market/ai_trade_formatter.rb'
+    - 'app/services/market/ai_trade_validator.rb'
+    - 'app/services/market/structure/smc_analyzer.rb'
+    - 'app/services/market/value/avrz_calculator.rb'
+    - 'app/services/market/value/vwap_calculator.rb'
+    - 'app/services/vix/guard.rb'
     - 'app/controllers/application_controller.rb'
     - 'app/controllers/concerns/telegram_notifiable.rb'
     - 'app/controllers/funds_controller.rb'

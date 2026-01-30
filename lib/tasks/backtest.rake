@@ -36,7 +36,7 @@ namespace :backtest do
       puts "   Decisions: BUY=#{summary[:buy]}, WAIT=#{summary[:wait]}, NO_TRADE=#{summary[:no_trade]}"
     end
 
-    if result[:metrics] && result[:metrics].any?
+    if result[:metrics]&.any?
       puts '   Metrics:'
       result[:metrics].each do |key, value|
         puts "      #{key}: #{value}"

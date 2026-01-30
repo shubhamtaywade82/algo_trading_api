@@ -61,7 +61,7 @@ group :development, :test do
   gem 'simplecov', require: false
 
   # Local/dev LLM provider (Ollama). Loaded on-demand via LLM_PROVIDER=ollama.
-  gem 'ollama-client', git: 'https://github.com/shubhamtaywade82/ollama-client.git', branch: 'dhanhq_agent', require: false
+  gem 'ollama-client', git: 'https://github.com/shubhamtaywade82/ollama-client.git', branch: 'main', require: false
 end
 
 group :test do

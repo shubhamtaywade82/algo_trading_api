@@ -1,7 +1,8 @@
 # config/initializers/openai.rb
 #
-# OpenAI is the default provider, but local/dev can switch to Ollama via:
+# OpenAI is the default provider. Local/dev can use Ollama:
 #   LLM_PROVIDER=ollama
+#   OLLAMA_MODEL=llama3.1:8b  # optional; default is llama3.1:8b
 #
 # In that case we must not require/configure OpenAI at boot.
 

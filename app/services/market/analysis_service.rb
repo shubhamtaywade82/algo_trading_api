@@ -158,10 +158,12 @@ module Market
       smc_15m = Market::Structure::SmcAnalyzer.call(series_15m, timeframe_minutes: 15)
 
       Rails.logger.debug do
-        "[AnalysisService] SMC 5m: #{smc_5m.present? ? 'present' : 'nil'}, swing_high: #{smc_5m&.last_swing_high.present?}, swing_low: #{smc_5m&.last_swing_low.present?}"
+        "[AnalysisService] SMC 5m: #{smc_5m.present? ? 'present' : 'nil'}, " \
+          "swing_high: #{smc_5m&.last_swing_high.present?}, swing_low: #{smc_5m&.last_swing_low.present?}"
       end
       Rails.logger.debug do
-        "[AnalysisService] SMC 15m: #{smc_15m.present? ? 'present' : 'nil'}, swing_high: #{smc_15m&.last_swing_high.present?}, swing_low: #{smc_15m&.last_swing_low.present?}"
+        "[AnalysisService] SMC 15m: #{smc_15m.present? ? 'present' : 'nil'}, " \
+          "swing_high: #{smc_15m&.last_swing_high.present?}, swing_low: #{smc_15m&.last_swing_low.present?}"
       end
 
       md[:smc] = {
@@ -265,11 +267,11 @@ module Market
       avrz_15m = md.dig(:value, :m15, :avrz)
       vwap_15m = md.dig(:value, :m15, :vwap)
 
-      missing << 'SMC_15m' unless smc_15m.present?
+      missing << 'SMC_15m' if smc_15m.blank?
       missing << 'swing_high' if smc_15m.present? && smc_15m.last_swing_high.blank?
       missing << 'swing_low' if smc_15m.present? && smc_15m.last_swing_low.blank?
-      missing << 'VWAP_15m' unless vwap_15m.present?
-      missing << 'AVRZ_15m' unless avrz_15m.present?
+      missing << 'VWAP_15m' if vwap_15m.blank?
+      missing << 'AVRZ_15m' if avrz_15m.blank?
       missing << 'AVRZ_low' if avrz_15m.present? && avrz_15m[:low].blank?
       missing << 'AVRZ_high' if avrz_15m.present? && avrz_15m[:high].blank?
 
@@ -308,7 +310,8 @@ module Market
         end
 
         Rails.logger.debug do
-          "[AnalysisService] Previous daily OHLC - today: #{today}, prev_trading_day: #{prev_trading_day}, from_date: #{from_date}, to_date: #{to_date}, session: #{session_state}"
+          "[AnalysisService] Previous daily OHLC - today: #{today}, prev: #{prev_trading_day}, " \
+            "from: #{from_date}, to: #{to_date}, session: #{session_state}"
         end
 
         bars = instrument.historical_ohlc(

@@ -25,7 +25,9 @@ module Backtest
       trading_days = MarketCalendar.trading_days_between(@from_date, @to_date)
       return error_result('No trading days in range') if trading_days.empty?
 
-      Rails.logger.info "[Backtest] Running #{@strategy} for #{@symbol} from #{@from_date} to #{@to_date} (#{trading_days.size} trading days)"
+      Rails.logger.info \
+        "[Backtest] Running #{@strategy} for #{@symbol} from #{@from_date} to #{@to_date} " \
+        "(#{trading_days.size} trading days)"
 
       trading_days.each_with_index do |date, index|
         Rails.logger.info "[Backtest] Processing day #{index + 1}/#{trading_days.size}: #{date}"
@@ -355,11 +357,11 @@ module Backtest
       avrz_15m = md.dig(:value, :m15, :avrz)
       vwap_15m = md.dig(:value, :m15, :vwap)
 
-      missing << 'SMC_15m' unless smc_15m.present?
+      missing << 'SMC_15m' if smc_15m.blank?
       missing << 'swing_high' if smc_15m.present? && smc_15m.last_swing_high.blank?
       missing << 'swing_low' if smc_15m.present? && smc_15m.last_swing_low.blank?
-      missing << 'VWAP_15m' unless vwap_15m.present?
-      missing << 'AVRZ_15m' unless avrz_15m.present?
+      missing << 'VWAP_15m' if vwap_15m.blank?
+      missing << 'AVRZ_15m' if avrz_15m.blank?
       missing << 'AVRZ_low' if avrz_15m.present? && avrz_15m[:low].blank?
       missing << 'AVRZ_high' if avrz_15m.present? && avrz_15m[:high].blank?
 
