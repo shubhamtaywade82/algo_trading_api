@@ -2,16 +2,25 @@
 
 module Auth
   class DhanController < ApplicationController
+    # STEP 1 + redirect to STEP 2: generate consent, send user to Dhan login.
     def login
-      redirect_to dhan_login_url, allow_other_host: true
+      consent_app_id = Dhan::Auth::ConsentGenerator.call
+      redirect_to dhan_consent_login_url(consent_app_id), allow_other_host: true
+    rescue StandardError => e
+      Rails.logger.error("[Auth::DhanController] login failed: #{e.message}")
+      render plain: "Dhan login failed: #{e.message}", status: :unprocessable_entity
     end
 
+    # STEP 3: Dhan redirects here with tokenId; exchange for access token and store.
     def callback
-      token_response = Dhan::Auth::TokenExchanger.call(params[:code])
+      token_id = params[:tokenId]
+      raise ArgumentError, 'missing tokenId' if token_id.blank?
+
+      token_response = Dhan::Auth::ConsentConsumer.call(token_id)
 
       DhanAccessToken.create!(
         access_token: token_response[:access_token],
-        expires_at: Time.current + token_response[:expires_in].seconds
+        expires_at: token_response[:expires_at]
       )
 
       render plain: 'Dhan connected successfully.'
@@ -22,18 +31,8 @@ module Auth
 
     private
 
-    def dhan_login_url
-      query = {
-        client_id: dhan_client_id,
-        redirect_uri: auth_dhan_callback_url,
-        response_type: 'code'
-      }.to_query
-
-      "https://api.dhan.co/v2/login?#{query}"
-    end
-
-    def dhan_client_id
-      ENV.fetch('DHAN_CLIENT_ID', nil) || ENV.fetch('CLIENT_ID', nil)
+    def dhan_consent_login_url(consent_app_id)
+      "https://auth.dhan.co/login/consentApp-login?consentAppId=#{CGI.escape(consent_app_id)}"
     end
   end
 end
