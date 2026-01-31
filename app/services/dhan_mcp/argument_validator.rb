@@ -54,7 +54,7 @@ module DhanMcp
             reject_blank_string(:symbol) ||
             reject_blank_string(:from_date) || reject_date_format(:from_date) ||
             reject_blank_string(:to_date) || reject_date_format(:to_date) ||
-            reject_date_range_today_and_last_trading_day
+            reject_date_range_trading_days
         end
       when 'get_intraday_minute_data'
         validate_required(%i[exchange_segment symbol from_date to_date]) do
@@ -62,7 +62,7 @@ module DhanMcp
             reject_blank_string(:symbol) ||
             reject_blank_string(:from_date) || reject_date_time(:from_date) ||
             reject_blank_string(:to_date) || reject_date_time(:to_date) ||
-            reject_date_range_today_and_last_trading_day ||
+            reject_date_range_trading_days ||
             reject_interval
         end
       when 'get_option_chain'
@@ -151,6 +151,18 @@ module DhanMcp
       return nil if from_d == expected_from
 
       "from_date must be the last trading day before to_date (#{expected_from})."
+    end
+
+    def reject_date_range_trading_days
+      from_d = parse_date(@args[:from_date])
+      to_d = parse_date(@args[:to_date])
+      return nil unless from_d && to_d
+
+      return 'from_date must be before to_date.' unless from_d < to_d
+      return 'from_date must be a trading day (no weekend or market holiday).' unless MarketCalendar.trading_day?(from_d)
+      return 'to_date must be a trading day (no weekend or market holiday).' unless MarketCalendar.trading_day?(to_d)
+
+      nil
     end
 
     def parse_date(val)

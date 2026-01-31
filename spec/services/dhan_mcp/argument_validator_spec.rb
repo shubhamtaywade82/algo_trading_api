@@ -188,80 +188,114 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
     end
 
     describe 'get_historical_daily_data' do
-      let(:today) { Time.zone.today }
-      let(:last_trading_day) { MarketCalendar.last_trading_day(from: today - 1) }
+      let(:monday) { Date.new(2026, 1, 26) }
+      let(:tuesday) { Date.new(2026, 1, 27) }
+      let(:saturday) { Date.new(2026, 1, 31) }
 
       it 'returns error when required args are missing' do
         expect(described_class.validate('get_historical_daily_data', {})).to include('Missing required argument(s)')
       end
 
-      it 'returns error when to_date is not today or from_date is not last trading day' do
+      it 'returns error when from_date >= to_date' do
         err = described_class.validate('get_historical_daily_data', {
                                          exchange_segment: 'NSE_EQ',
                                          symbol: 'RELIANCE',
-                                         from_date: (today - 3).to_s,
-                                         to_date: today.to_s
+                                         from_date: tuesday.to_s,
+                                         to_date: monday.to_s
                                        })
-        expect(err).to include('from_date must be the last trading day')
+        expect(err).to eq('from_date must be before to_date.')
+      end
+
+      it 'returns error when from_date is weekend' do
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: saturday.to_s,
+                                         to_date: tuesday.to_s
+                                       })
+        expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when to_date is weekend' do
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: saturday.to_s
+                                       })
+        expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
       end
 
       it 'returns error when symbol is blank' do
         err = described_class.validate('get_historical_daily_data', {
                                          exchange_segment: 'NSE_EQ',
                                          symbol: '',
-                                         from_date: last_trading_day.to_s,
-                                         to_date: today.to_s
+                                         from_date: monday.to_s,
+                                         to_date: tuesday.to_s
                                        })
         expect(err).to eq('symbol must be non-empty.')
       end
 
-      it 'returns nil when segment, symbol and date range are valid' do
+      it 'returns nil when from_date < to_date and both are trading days' do
         expect(described_class.validate('get_historical_daily_data', {
                                           exchange_segment: 'NSE_EQ',
                                           symbol: 'RELIANCE',
-                                          from_date: last_trading_day.to_s,
-                                          to_date: today.to_s
+                                          from_date: monday.to_s,
+                                          to_date: tuesday.to_s
                                         })).to be_nil
       end
     end
 
     describe 'get_intraday_minute_data' do
-      let(:today) { Time.zone.today }
-      let(:last_trading_day) { MarketCalendar.last_trading_day(from: today - 1) }
+      let(:monday) { Date.new(2026, 1, 26) }
+      let(:tuesday) { Date.new(2026, 1, 27) }
+      let(:saturday) { Date.new(2026, 1, 31) }
 
       it 'returns error when required args are missing' do
         expect(described_class.validate('get_intraday_minute_data', {})).to include('Missing required argument(s)')
+      end
+
+      it 'returns error when from_date >= to_date' do
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: tuesday.to_s,
+                                         to_date: monday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('from_date must be before to_date.')
+      end
+
+      it 'returns error when to_date is weekend' do
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: saturday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
       end
 
       it 'returns error when interval is invalid' do
         err = described_class.validate('get_intraday_minute_data', {
                                          exchange_segment: 'NSE_EQ',
                                          symbol: 'RELIANCE',
-                                         from_date: last_trading_day.to_s,
-                                         to_date: today.to_s,
+                                         from_date: monday.to_s,
+                                         to_date: tuesday.to_s,
                                          interval: '99'
                                        })
         expect(err).to eq('interval must be one of: 1, 5, 15, 25, 60.')
       end
 
-      it 'returns nil when interval is valid' do
+      it 'returns nil when from_date < to_date, both trading days, and interval valid' do
         expect(described_class.validate('get_intraday_minute_data', {
                                           exchange_segment: 'NSE_EQ',
                                           symbol: 'RELIANCE',
-                                          from_date: last_trading_day.to_s,
-                                          to_date: today.to_s,
+                                          from_date: monday.to_s,
+                                          to_date: tuesday.to_s,
                                           interval: '5'
                                         })).to be_nil
-      end
-
-      it 'returns error when date range is invalid' do
-        err = described_class.validate('get_intraday_minute_data', {
-                                         exchange_segment: 'NSE_EQ',
-                                         symbol: 'RELIANCE',
-                                         from_date: (today - 2).to_s,
-                                         to_date: today.to_s
-                                       })
-        expect(err).to include('from_date must be the last trading day')
       end
     end
 
