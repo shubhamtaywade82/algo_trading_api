@@ -164,8 +164,10 @@ module Market
           **TASK — #{analysis_context_for(md[:session])}**
 
           **Bias rule (mandatory):** Your stated Bias (CALLS/PUTS/NEUTRAL) must match the data above: Super-Trend bearish + last candle bearish → PUTS or NEUTRAL; Super-Trend bullish + last candle bullish → CALLS; mixed/neutral → NEUTRAL. Do not say Bullish/CALLS when Super-Trend and last candle are bearish.
+          **Bias → strike (mandatory):** If Bias is PUTS, primary must be a PE (not CE). If Bias is CALLS, primary must be a CE (not PE). Never recommend a CE when Bias is PUTS, or a PE when Bias is CALLS.
 
           **Data rule:** Use only strike and premium values from the *Option-chain snapshot* above. Do not invent numbers. All currency is ₹.
+          **Entry & SL (mandatory):** Use the **exact** entry premium from the chain (e.g. ₹212.9). Use this **same** entry for both SL and T1: SL ₹ = entry × (1 − SL%); T1 ₹ = entry × (1 + T1%). Do not use one entry in one bullet and a different SL ₹ in another; keep one entry, one SL%, one SL ₹ throughout.
 
           **Format (mandatory):** Start with an "AT A GLANCE" block: 5–8 short bullets (Bias · Primary strike & entry/SL/T1 · Hedge if any · Exit time). Then abbreviate the sections below. Keep full response under 300 words. Exactly ONE primary strike, at most ONE hedge; no second primary.
 
@@ -189,8 +191,9 @@ module Market
              b) Fundamentals & flows (if known): Briefly note macro cues (central bank, global futures, major news). If unknown, say "No material fundamental cues observed."
 
           3) Execution plan & risk:
-             • Entry triggers; **stop-loss as % of option premium**: SL ₹ = entry × (1 − SL%). E.g. Entry ₹212.9, SL -10% → 212.9 × 0.90 = ₹191.61. Do not use spot price for option SL.
-             • **T1/T2 in option premium**: T1 ₹ = entry × (1 + T1%). E.g. Entry ₹212.9, T1 +15% → 212.9 × 1.15 = ₹244.84. Use ₹ only; do not mix spot levels with premium targets unless you label "spot target".
+             • Entry triggers; **stop-loss as % of option premium**: SL ₹ = entry × (1 − SL%). E.g. Entry ₹212.9, SL -10% → 212.9 × 0.90 = ₹191.61; SL -8% → 212.9 × 0.92 = ₹195.87. Do not use spot price for option SL.
+             • **T1/T2 in option premium**: T1 ₹ = entry × (1 + T1%). E.g. Entry ₹212.9, T1 +15% → 212.9 × 1.15 = ₹244.84; T1 +50% → 212.9 × 1.50 = ₹319.35. Use ₹ only; do not mix spot levels with premium targets unless you label "spot target".
+             • **Verify before writing:** If you state SL -8%, then SL ₹ must be entry × 0.92 (not 0.90). If you state T1 +15%, then T1 ₹ must be entry × 1.15 (not 1.50). Recompute so the % and ₹ match.
              • Time-based exit if no move (e.g., exit by 14:30 IST)
              • Comment on IV context (avoid paying extreme IV unless expecting expansion)
           4) **Closing range** (mandatory – you must output this line):
@@ -208,7 +211,7 @@ module Market
              • **Bias:** exactly `Bias: CALLS` or `Bias: PUTS` or `Bias: NEUTRAL` (must match Super-Trend + last candle from data)
              • **CLOSE RANGE:** one line as instructed above
 
-          **Check before submitting:** (1) Bias matches Super-Trend and last candle; (2) SL ₹ and T1 ₹ are computed from option entry (entry × (1 ± %)); (3) CLOSE RANGE line present; (4) One primary, one hedge only; (5) All amounts in ₹.
+          **Check before submitting:** (1) Bias matches Super-Trend and last candle; (2) Bias PUTS → primary is PE; Bias CALLS → primary is CE; (3) Entry = exact premium from chain; same entry for SL ₹ and T1 ₹; (4) SL ₹ = entry × (1 − SL%) and T1 ₹ = entry × (1 + T1%) — e.g. -8% ⇒ ×0.92, +15% ⇒ ×1.15; (5) CLOSE RANGE line present; (6) One primary, one hedge only; (7) End with exactly one line: Bias: CALLS or Bias: PUTS or Bias: NEUTRAL.
 
           Bias: CALLS/PUTS/NEUTRAL
           — end of brief

@@ -51,9 +51,8 @@ module Market
       answer = ask_openai(prompt)
       typing_ping
 
+      answer = normalize_response(answer, md) if answer.present?
       Rails.logger.debug answer.length
-      # TelegramNotifier.send_message(answer)
-      # nil if answer
       answer
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
@@ -181,6 +180,10 @@ module Market
       TG
 
       TelegramNotifier.send_message(message)
+    end
+
+    def normalize_response(answer, md)
+      Market::AnalysisResponseNormalizer.new(answer, md).call
     end
 
     def ask_openai(prompt, retries: 3, backoff: 4)
