@@ -16,7 +16,10 @@ module Auth
     # Secured API: returns the latest active Dhan access token (farthest expiry). Requires Bearer token.
     def token
       record = DhanAccessToken.active
-      return render json: { error: 'No valid Dhan token. Re-login at /auth/dhan/login' }, status: :not_found if record.blank?
+      if record.blank?
+        notify_telegram_token_missing_once
+        return render json: { error: 'No valid Dhan token. Re-login at /auth/dhan/login' }, status: :not_found
+      end
 
       render json: {
         access_token: record.access_token,
@@ -60,6 +63,25 @@ module Auth
 
     def dhan_client_id
       ENV.fetch('DHAN_CLIENT_ID', nil) || ENV.fetch('CLIENT_ID', nil)
+    end
+
+    # Rate-limited: at most once per hour when token endpoint returns 404.
+    def notify_telegram_token_missing_once
+      return unless ENV['TELEGRAM_BOT_TOKEN'].present? && ENV['TELEGRAM_CHAT_ID'].present?
+
+      cache_key = 'dhan_token_missing_notified_at'
+      return if Rails.cache.exist?(cache_key)
+
+      login_url = "#{request.base_url}#{Rails.application.routes.url_helpers.auth_dhan_login_path}"
+      opts = { parse_mode: 'Markdown' }
+      opts[:reply_markup] = { inline_keyboard: [[{ text: 'Re-login', url: login_url }]] } if TelegramNotifier.public_url?(login_url)
+      TelegramNotifier.send_message(
+        "🔐 Dhan token missing or expired. [Re-login here](#{login_url}) to restore.",
+        **opts
+      )
+      Rails.cache.write(cache_key, Time.current, expires_in: 1.hour)
+    rescue StandardError => e
+      Rails.logger.warn("[Auth::DhanController] Telegram notify failed: #{e.message}")
     end
 
     def dhan_consent_login_url(consent_app_id)

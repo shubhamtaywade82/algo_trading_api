@@ -24,12 +24,26 @@ class TelegramNotifier
     post('sendChatAction', chat_id: chat_id, action: action)
   end
 
+  # Telegram inline buttons reject localhost; use only for public HTTPS URLs.
+  def self.public_url?(url)
+    return false if url.blank?
+
+    uri = URI(url)
+    uri.scheme == 'https' && uri.host.present? && !%w[localhost 127.0.0.1].include?(uri.host.downcase)
+  rescue URI::InvalidURIError
+    false
+  end
+
   #
   # -- PRIVATE --------------------------------------------------------------
   #
   def self.post(method, **params)
     uri = URI("#{TELEGRAM_API}/bot#{ENV.fetch('TELEGRAM_BOT_TOKEN')}/#{method}")
-    res = Net::HTTP.post_form(uri, params)
+    body = params.transform_keys(&:to_s).to_json
+    req = Net::HTTP::Post.new(uri)
+    req['Content-Type'] = 'application/json'
+    req.body = body
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') { |http| http.request(req) }
 
     Rails.logger.error("Telegram #{method} failed: #{res.body}") unless res.is_a?(Net::HTTPSuccess)
     res
