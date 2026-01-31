@@ -90,7 +90,7 @@ RSpec.describe 'Auth::Dhan', type: :request do
     end
   end
 
-  describe 'GET /auth/dhan/token' do
+  describe 'GET /auth/dhan/token', :no_dhan_token do
     let(:secret) { 'token-api-secret' }
 
     context 'when DHAN_TOKEN_ACCESS_TOKEN is not set' do
@@ -105,7 +105,11 @@ RSpec.describe 'Auth::Dhan', type: :request do
     end
 
     context 'when DHAN_TOKEN_ACCESS_TOKEN is set' do
-      before { allow(ENV).to receive(:fetch).with('DHAN_TOKEN_ACCESS_TOKEN', nil).and_return(secret) }
+      before do
+        allow(ENV).to receive(:fetch).with('DHAN_TOKEN_ACCESS_TOKEN', nil).and_return(secret)
+        allow(ENV).to receive(:fetch).with('DHAN_CLIENT_ID', nil).and_return('client-456')
+        allow(ENV).to receive(:fetch).with('CLIENT_ID', nil).and_return(nil)
+      end
 
       context 'when Authorization Bearer is missing or wrong' do
         it 'returns 401 without header' do
@@ -123,9 +127,12 @@ RSpec.describe 'Auth::Dhan', type: :request do
       end
 
       context 'when Bearer is valid' do
-        before { get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" } }
-
         context 'when no active token exists' do
+          before do
+            DhanAccessToken.delete_all
+            get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+          end
+
           it 'returns 404 with error message' do
             expect(response).to have_http_status(:not_found)
             expect(JSON.parse(response.body)['error']).to include('No valid Dhan token')
@@ -133,16 +140,17 @@ RSpec.describe 'Auth::Dhan', type: :request do
         end
 
         context 'when an active token exists' do
-          let!(:token_record) do
+          before do
+            DhanAccessToken.delete_all
             DhanAccessToken.create!(access_token: 'jwt.here', expires_at: 1.hour.from_now)
+            get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
           end
 
-          it 'returns 200 with access_token and expires_at' do
-            get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
-
+          it 'returns 200 with access_token, client_id and expires_at' do
             expect(response).to have_http_status(:ok)
             body = JSON.parse(response.body)
             expect(body['access_token']).to eq('jwt.here')
+            expect(body['client_id']).to eq('client-456')
             expect(body['expires_at']).to be_present
           end
         end

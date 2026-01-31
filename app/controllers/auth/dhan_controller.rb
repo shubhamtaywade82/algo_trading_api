@@ -20,6 +20,7 @@ module Auth
 
       render json: {
         access_token: record.access_token,
+        client_id: dhan_client_id,
         expires_at: record.expires_at.iso8601
       }
     end
@@ -55,6 +56,10 @@ module Auth
       return if ActiveSupport::SecurityUtils.secure_compare(bearer, expected)
 
       render json: { error: 'Invalid or missing Authorization: Bearer token' }, status: :unauthorized
+    end
+
+    def dhan_client_id
+      ENV.fetch('DHAN_CLIENT_ID', nil) || ENV.fetch('CLIENT_ID', nil)
     end
 
     def dhan_consent_login_url(consent_app_id)

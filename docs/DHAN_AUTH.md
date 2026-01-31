@@ -27,7 +27,7 @@ Dhan uses an **API Key & Secret** flow (auth.dhan.co): the access token is user-
 `GET /auth/dhan/token` returns the **latest active** Dhan access token (the one with the farthest expiry). Use it when another service needs the token without sharing your DB.
 
 - **Auth:** `Authorization: Bearer <secret>` where `<secret>` is `DHAN_TOKEN_ACCESS_TOKEN` in env. If `DHAN_TOKEN_ACCESS_TOKEN` is not set, the endpoint responds with 503.
-- **Success (200):** `{ "access_token": "...", "expires_at": "2026-02-01T12:00:00+05:30" }`
+- **Success (200):** `{ "access_token": "...", "client_id": "...", "expires_at": "2026-02-01T12:00:00+05:30" }`
 - **No valid token (404):** `{ "error": "No valid Dhan token. Re-login at /auth/dhan/login" }`
 - **Unauthorized (401):** missing or wrong Bearer token.
 
