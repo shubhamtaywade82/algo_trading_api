@@ -16,7 +16,11 @@ Dhan uses **OAuth-style auth**: the access token is **user-bound** and is only i
 | `DHAN_CLIENT_ID`     | App client ID (or `CLIENT_ID`)                       |
 | `DHAN_CLIENT_SECRET` | App secret for token exchange (or `DHAN_API_SECRET`) |
 
-**Redirect URI** — Register `https://<your-host>/auth/dhan/callback` in the Dhan developer console. For local dev use `http://localhost:<port>/auth/dhan/callback` where `<port>` is the port your Rails server uses (e.g. 5002 if you run `rails s -p 5002`). Nothing else must be bound to that port, or the callback will hit the wrong app and you may see a 404 (e.g. a “Whitelabel Error Page” from another stack).
+**Redirect URI** — Register the **exact** callback URL in the Dhan developer console (per client_id). If it's missing or different, Dhan returns 404 and a "Whitelabel Error Page" on api.dhan.co.
+
+- **Production (Render):** `https://algo-trading-api.onrender.com/auth/dhan/callback` (no trailing slash)
+- **Local:** `http://localhost:<port>/auth/dhan/callback` where `<port>` is your Rails server port.
+
 
 ## Jobs
 
