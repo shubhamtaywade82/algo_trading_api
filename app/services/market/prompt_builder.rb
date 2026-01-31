@@ -15,10 +15,17 @@ module Market
         CONSTRAINTS & STYLE
         - User trades intraday only; no carry. Realistic targets: ₹25–₹35 per option move, 1:1.2–1.4 RR typical (favor fast scalps).
         - Avoid first 2 minutes after open; avoid 11:30–13:30 IST unless ADX(5m) ≥ 25 AND volume keeps surging.
-        - Prefer strikes in ±1% ATM window with delta 0.35–0.55 and adequate OI/liquidity. Avoid illiquid strikes.
+        - Prefer **ATM** strikes (delta 0.35–0.55); do not suggest ITM for primary directional buy. When trend is **confirmed and strong**: use **ATM+1** for NIFTY (one strike in trend direction); **ATM+1 or ATM+2** for SENSEX. Avoid illiquid strikes.
         - Use CE when confluence is bullish; PE when bearish. If mixed/weak, return NO_TRADE with reasons.
         - Risk budget: default 1–2% of capital; never exceed user’s max loss per trade. Bracket orders via DhanHQ SuperOrder.
         - Respect broker mapping (securityId, exchangeSegment) if provided.
+
+        BIAS RULE (reliability)
+        - **Bias (CALLS/PUTS/NEUTRAL) must align with the data.** If Super-Trend is bearish and last candle is bearish → output PUTS or NEUTRAL. If Super-Trend is bullish and last candle is bullish → CALLS. If mixed or structure neutral → NEUTRAL. Do not output Bullish/CALLS when the data shows bearish; do not output Bearish/PUTS when the data shows bullish unless you state one-line override reason.
+
+        DATA FIDELITY
+        - Use **only** strike prices and premiums from the option-chain snapshot provided. Do not invent premiums or strikes. All currency is **₹ (rupees)**. Do not use € or $.
+        - Recommend **exactly ONE primary** strike and at most ONE hedge. Do not add a second primary (e.g. ATM+1) with a different entry in the same response; stick to one primary and one hedge.
 
         OUTPUT STYLE
         - **At-a-glance first**: Lead with a short "AT A GLANCE" block (5–8 bullets max): Bias, primary strike & entry/SL/T1, optional hedge, time exit. User must get the gist in one read.
@@ -39,7 +46,7 @@ module Market
         4) Volatility fit (prefer):
            - IV not extreme vs IVR unless momentum day; VIX rising intraday prefers buying
         5) Risk packaging:
-           - SL/TP derived via option ATR or spot ATR translated to option ticks; add trailing if trend day
+           - SL/TP in **option premium** terms (e.g. SL -8% → exit when premium drops 8%; quote SL ₹ as entry × (1 − SL%)); do not quote spot price as option SL. Add trailing if trend day.
 
         Fail any “must pass” → NO_TRADE.
       PROMPT
@@ -114,6 +121,8 @@ module Market
         lu     = md[:liq_up] ? 'yes' : 'no'
         ld     = md[:liq_dn] ? 'yes' : 'no'
 
+        smc_pa_block = format_smc_price_action(md)
+
         expiry = md[:expiry] || 'N/A'
         # chain = format_options_chain(md[:options])
         chain = format_options_for_buying(md[:options])
@@ -147,13 +156,18 @@ module Market
           Super-Trend  #{st_sig}
           20-bar range  H #{hi20} / L #{lo20}
           Liquidity grabs  up: #{lu}  down: #{ld}
+          #{smc_pa_block}
 
           *Option-chain snapshot* (exp #{expiry}):
           #{chain}
           #{extra_block}=== ANALYSIS REQUIREMENTS ===
           **TASK — #{analysis_context_for(md[:session])}**
 
-          **Format (mandatory):** Start with an "AT A GLANCE" block: 5–8 short bullets (Bias · Primary strike & entry/SL/T1 · Hedge if any · Exit time). Then abbreviate the sections below. Keep full response under 300 words.
+          **Bias rule (mandatory):** Your stated Bias (CALLS/PUTS/NEUTRAL) must match the data above: Super-Trend bearish + last candle bearish → PUTS or NEUTRAL; Super-Trend bullish + last candle bullish → CALLS; mixed/neutral → NEUTRAL. Do not say Bullish/CALLS when Super-Trend and last candle are bearish.
+
+          **Data rule:** Use only strike and premium values from the *Option-chain snapshot* above. Do not invent numbers. All currency is ₹.
+
+          **Format (mandatory):** Start with an "AT A GLANCE" block: 5–8 short bullets (Bias · Primary strike & entry/SL/T1 · Hedge if any · Exit time). Then abbreviate the sections below. Keep full response under 300 words. Exactly ONE primary strike, at most ONE hedge; no second primary.
 
           1) Directional probabilities from the current price (today's close vs now):
              • Strong upside (>0.5%) → CALL buying candidate
@@ -169,28 +183,32 @@ module Market
           2) Strategy selection & strikes:
              • Pick exactly ONE primary idea + ONE hedge (CE/PE/straddle/strangle)
              • Specify strike(s), current premium range (₹), and Greeks relevance (Δ / Γ / ν / θ)
-             • Prefer delta ≈ 0.35–0.55 for directional buys unless IV regime suggests otherwise
+             • Prefer **ATM** strike (delta ≈ 0.35–0.55); do **not** suggest ITM for primary idea unless hedging. When trend is **confirmed and strong**: **NIFTY** → ATM+1 (e.g. 25350 CE if bullish); **SENSEX** → ATM+1 or ATM+2 in trend direction.
              • Use expiry **#{expiry}** for all options unless stated otherwise.
              a) OI & IV trends: Comment on changes vs prior session/week: rising/flat/falling OI, IV expansion/compression, and implications for strategy selection.
              b) Fundamentals & flows (if known): Briefly note macro cues (central bank, global futures, major news). If unknown, say "No material fundamental cues observed."
 
           3) Execution plan & risk:
-             • Entry triggers, stop-loss (% of premium), T1 & T2 targets
+             • Entry triggers; **stop-loss as % of option premium**: SL ₹ = entry × (1 − SL%). E.g. Entry ₹212.9, SL -10% → 212.9 × 0.90 = ₹191.61. Do not use spot price for option SL.
+             • **T1/T2 in option premium**: T1 ₹ = entry × (1 + T1%). E.g. Entry ₹212.9, T1 +15% → 212.9 × 1.15 = ₹244.84. Use ₹ only; do not mix spot levels with premium targets unless you label "spot target".
              • Time-based exit if no move (e.g., exit by 14:30 IST)
              • Comment on IV context (avoid paying extreme IV unless expecting expansion)
-          4) **Closing range** (mandatory line):
+          4) **Closing range** (mandatory – you must output this line):
              • **Method to use:** Start with mid = Bollinger middle band. Base move = min(ATR-14, 0.75% of LTP).
                Scale by time remaining to close (linear), widen by +20% if India VIX > 14, shrink by −20% if VIX < 10.
                Round to nearest 5 points for NIFTY / 10 for BANKNIFTY.
-             • **Print exactly this line:**
-              `CLOSE RANGE: ₹<low>–₹<high> (<−x% to +y% from LTP>)`
+             • **You must print exactly one line** in this format (replace placeholders with numbers):
+              CLOSE RANGE: ₹<low>–₹<high> (<−x% to +y% from LTP>)
+             • Example: CLOSE RANGE: ₹25200–₹25450 (−0.46% to +0.53% from LTP)
           5) Output (abbreviated; total under 300 words):
              • AT A GLANCE: 5–8 bullets (Bias · Strike & entry/SL/T1 · Hedge · Exit). Then:
              • Probability bands: one line (e.g. "≥50%: Flat 50%, Down 35%")
-             • PRIMARY / HEDGE: one line each (strike, entry ₹, SL %, T1 ₹)
+             • PRIMARY / HEDGE: one line each (strike, entry ₹ premium, SL % of premium / SL ₹, T1 ₹ premium or spot target)
              • ≤ 3 action bullets
-             • **Bias:** exactly `Bias: CALLS` or `Bias: PUTS` or `Bias: NEUTRAL`
+             • **Bias:** exactly `Bias: CALLS` or `Bias: PUTS` or `Bias: NEUTRAL` (must match Super-Trend + last candle from data)
              • **CLOSE RANGE:** one line as instructed above
+
+          **Check before submitting:** (1) Bias matches Super-Trend and last candle; (2) SL ₹ and T1 ₹ are computed from option entry (entry × (1 ± %)); (3) CLOSE RANGE line present; (4) One primary, one hedge only; (5) All amounts in ₹.
 
           Bias: CALLS/PUTS/NEUTRAL
           — end of brief
@@ -222,7 +240,7 @@ module Market
         extra_block = extra.empty? ? '' : "\n=== ADDITIONAL CONTEXT ===\n#{extra}\n"
 
         <<~PROMPT
-          Based on the following option-chain snapshot for #{symbol}, suggest an instant options buying trade. Use ATM or slightly ITM strikes guided by delta near ±0.50, evaluate IV, OI/volume shifts, and explain the rationale.
+          Based on the following option-chain snapshot for #{symbol}, suggest an instant options buying trade. Use **ATM** (delta near ±0.50); do not suggest ITM for primary buy. When trend is **confirmed and strong**: use **ATM+1** for NIFTY; **ATM+1 or ATM+2** for SENSEX (in trend direction). Evaluate IV, OI/volume shifts, and explain the rationale.
 
           === MARKET DATA ===
           #{session_label} – **#{symbol}**
@@ -231,6 +249,7 @@ module Market
           Expiry: #{expiry}
 
           #{format_technical_indicators(md)}
+          #{format_smc_price_action(md)}
 
           === OPTION CHAIN DATA ===
           #{chain}
@@ -247,7 +266,8 @@ module Market
           7) **Key Levels**: Support/Resistance based on technical + option OI
 
           **Analysis Focus:**
-          - Delta around 0.5 for ATM exposure and responsive premium
+          - Bias must match Super-Trend and last candle from the data; use only strike/premium from the chain; all currency ₹; one primary, one hedge.
+          - Prefer ATM (delta ~0.5); avoid ITM for primary buy. Strong confirmed trend: NIFTY → ATM+1; SENSEX → ATM+1 or ATM+2 (in trend direction).
           - Use OI/Change in OI to infer support/resistance and sentiment
           - Consider IV levels - avoid buying during extreme IV unless expecting expansion
           - Factor in theta decay, especially for weekly expiries
@@ -280,13 +300,13 @@ module Market
 
         blocks = []
 
-        # Focus on tradeable strikes with good liquidity
+        # Present ATM first so the model defaults to it; then OTM/ITM for context
         {
-          itm_call: 'ITM CALL (Higher Delta)',
-          atm: 'ATM (Balanced Risk/Reward)',
+          atm: 'ATM (Preferred for directional buy)',
           otm_call: 'OTM CALL (Lower Cost)',
-          itm_put: 'ITM PUT (Higher Delta)',
-          otm_put: 'OTM PUT (Lower Cost)'
+          itm_call: 'ITM CALL (Higher Delta – avoid for primary)',
+          otm_put: 'OTM PUT (Lower Cost)',
+          itm_put: 'ITM PUT (Higher Delta – avoid for primary)'
         }.each do |key, label|
           opt = options[key]
           next unless opt
@@ -359,6 +379,36 @@ module Market
           Support/Resistance: #{md[:lo20]} / #{md[:hi20]}
           Bollinger: #{fmt1(md.dig(:boll, :lower))} - #{fmt1(md.dig(:boll, :upper))}
         INDICATORS
+      end
+
+      def format_smc_price_action(md)
+        smc = md[:smc] || {}
+        pa = md[:price_action] || {}
+        return '' if smc.blank? && pa.blank?
+
+        bias = smc[:structure_bias] || 'neutral'
+        last_bos = smc[:last_bos] ? "Last BOS: #{smc[:last_bos]}" : 'Last BOS: –'
+        sh = Array(smc[:swing_highs]).join(', ')
+        sl = Array(smc[:swing_lows]).join(', ')
+        fvg_b = smc[:fvg_bullish] ? "Bull FVG: #{smc[:fvg_bullish][:bottom]}–#{smc[:fvg_bullish][:top]}" : 'Bull FVG: –'
+        fvg_s = smc[:fvg_bearish] ? "Bear FVG: #{smc[:fvg_bearish][:bottom]}–#{smc[:fvg_bearish][:top]}" : 'Bear FVG: –'
+        ob_b = smc[:order_block_bullish] ? "Bull OB: #{smc[:order_block_bullish][:low]}–#{smc[:order_block_bullish][:high]}" : 'Bull OB: –'
+        ob_s = smc[:order_block_bearish] ? "Bear OB: #{smc[:order_block_bearish][:low]}–#{smc[:order_block_bearish][:high]}" : 'Bear OB: –'
+        inside = pa[:inside_bar] ? 'yes' : 'no'
+        last_candle = if pa[:last_candle_bullish].nil?
+                        '–'
+                      else
+                        (pa[:last_candle_bullish] ? 'bullish' : 'bearish')
+                      end
+
+        <<~SMC_PA
+          *SMC & Price Action*
+          Structure bias: #{bias}  |  #{last_bos}
+          Swing highs (recent): #{sh.presence || '–'}  |  Swing lows: #{sl.presence || '–'}
+          #{fvg_b}  |  #{fvg_s}
+          #{ob_b}  |  #{ob_s}
+          Inside bar (last): #{inside}  |  Last candle: #{last_candle}
+        SMC_PA
       end
 
       def fmt_large(x)

@@ -104,9 +104,17 @@ module Market
           lo20: series.recent_lows(20)[:lows].min.round(2),
           liq_up: series.liquidity_grab_up?(lookback: 20)[:liquidity_grab_up],
           liq_dn: series.liquidity_grab_down?(lookback: 20)[:liquidity_grab_down],
+          **smc_and_price_action(series),
           options: option_chain_analysis
         }
       )
+    end
+
+    def smc_and_price_action(series)
+      Market::SmcPriceActionAnalyzer.new(series).call
+    rescue StandardError => e
+      Rails.logger.warn { "[AnalysisService] SMC/price-action failed – #{e.message}" }
+      { smc: {}, price_action: {} }
     end
 
     # ------------------------------------------------------------------------
@@ -192,13 +200,32 @@ module Market
       end
     end
 
-    # Snapshot for Telegram: ATM only, LTP/IV/Δ/θ so the first message is scannable.
+    # Snapshot for Telegram: ATM + ATM+1 (OTM CALL) + ATM−1 (OTM PUT strike) so the first message shows key strikes.
     def format_options_at_a_glance(options)
       return 'No option-chain data available.' if options.blank?
 
-      opt = options[:atm]
-      return 'No ATM data.' unless opt
+      blocks = []
 
+      %i[atm otm_call otm_put].each do |key|
+        opt = options[key]
+        next unless opt
+
+        label = case key
+                when :atm then 'ATM'
+                when :otm_call then 'OTM+1 (CALL)'
+                when :otm_put then 'OTM−1 (PUT)'
+                else key.to_s.titleize
+                end
+
+        blocks << format_one_strike_row(opt, label)
+      end
+
+      return 'No option-chain data available.' if blocks.empty?
+
+      blocks.join("\n\n")
+    end
+
+    def format_one_strike_row(opt, label)
       strike = opt[:strike] || '?'
       ce = opt[:call] || {}
       pe = opt[:put] || {}
@@ -214,7 +241,7 @@ module Market
       pe_theta = opt[:pe_theta] || dig_any(pe, 'greeks', 'theta')
 
       <<~STR.strip
-        ATM #{strike}
+        #{label} #{strike}
         CE ₹#{fmt2(ce_ltp)}  IV #{fmt2(ce_iv)}%  Δ #{fmt2(ce_delta)}  θ #{fmt2(ce_theta)}
         PE ₹#{fmt2(pe_ltp)}  IV #{fmt2(pe_iv)}%  Δ #{fmt2(pe_delta)}  θ #{fmt2(pe_theta)}
       STR

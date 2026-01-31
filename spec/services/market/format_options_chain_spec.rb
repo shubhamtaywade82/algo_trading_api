@@ -24,15 +24,26 @@ RSpec.describe 'Option chain formatting' do
       expect(formatted).to include('PUT : LTP ₹–')
     end
 
-    it 'at-a-glance shows only ATM with LTP, IV, Δ, θ' do
+    it 'at-a-glance shows ATM and OTM strikes with LTP, IV, Δ, θ' do
       formatted = service.send(:format_options_at_a_glance, options)
 
       expect(formatted).to include('ATM 12345')
       expect(formatted).to include('CE ₹12.35')
       expect(formatted).to include('PE ₹–')
-      expect(formatted).not_to include('OTM CALL')
       expect(formatted).not_to include('Γ')
       expect(formatted).not_to include('OI')
+    end
+
+    it 'at-a-glance includes OTM+1 and OTM−1 when present in options' do
+      options_with_otm = options.merge(
+        otm_call: { strike: 12_350, call: { 'last_price' => 10 }, put: { 'last_price' => 15 } },
+        otm_put: { strike: 12_340, call: { 'last_price' => 15 }, put: { 'last_price' => 10 } }
+      )
+      formatted = service.send(:format_options_at_a_glance, options_with_otm)
+
+      expect(formatted).to include('ATM 12345')
+      expect(formatted).to include('OTM+1 (CALL) 12350')
+      expect(formatted).to include('OTM−1 (PUT) 12340')
     end
   end
 end
