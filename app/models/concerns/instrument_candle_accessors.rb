@@ -32,13 +32,22 @@ module InstrumentCandleAccessors
   end
 
   class_methods do
-    # Class‑level shortcut:
-    #   Instrument['NIFTY'].candle_series(interval: '15')
-    # Optional security_id allows disambiguation when multiple exchanges list
-    # the same symbol (edge‑case for equities).
-    def [](sym, security_id: nil)
-      find_by(symbol_name: sym, security_id: security_id) ||
+    # Class‑level shortcut. Use segment for symbols that exist in multiple segments (e.g. NIFTY: index vs currency).
+    #   Instrument['NIFTY', segment: :index].candle_series(interval: '15')
+    #   Instrument['RELIANCE', segment: :equity]
+    def [](sym, security_id: nil, segment: nil)
+      base = scope_for_segment(segment)
+      base.find_by(symbol_name: sym, security_id: security_id) ||
+        base.find_by(underlying_symbol: sym, security_id: security_id) ||
         raise(ActiveRecord::RecordNotFound, "Instrument #{sym} not found")
+    end
+
+    def scope_for_segment(segment)
+      case segment
+      when :index, 'index' then segment_index
+      when nil then all
+      else where(segment: segment)
+      end
     end
   end
 

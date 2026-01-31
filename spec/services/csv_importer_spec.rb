@@ -13,7 +13,7 @@ RSpec.describe InstrumentsImporter, type: :service do
     context 'when file_path is provided' do
       it 'imports instruments and derivatives from the CSV file' do
         expect { described_class.import(mock_csv_path) }.to change(Instrument, :count)
-        expect(Instrument.find_by(symbol_name: 'NIFTY')).to be_present
+        expect(Instrument.segment_index.find_by(symbol_name: 'NIFTY')).to be_present
         expect(Instrument.find_by(symbol_name: 'USDINR')).to be_present
         expect(Instrument.find_by(symbol_name: 'GOLD')).to be_present
       end
@@ -44,7 +44,7 @@ RSpec.describe InstrumentsImporter, type: :service do
 
       expect(summary[:instrument_total]).to eq(Instrument.count)
       expect(summary[:derivative_total]).to eq(Derivative.count)
-      expect(Instrument.find_by(symbol_name: 'NIFTY')).to be_present
+      expect(Instrument.segment_index.find_by(symbol_name: 'NIFTY')).to be_present
       expect(Derivative.count).to be >= 0
     end
   end
