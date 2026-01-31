@@ -192,9 +192,9 @@ DATABASE_URL=postgresql://user:password@localhost/algo_trading_api
 # Redis
 REDIS_URL=redis://localhost:6379/0
 
-# Broker API (Dhan)
-DHAN_API_KEY=your_api_key
-ACCESS_TOKEN=your_access_token
+# Broker API (Dhan) — OAuth; one-time login at /auth/dhan/login (see docs/DHAN_AUTH.md)
+DHAN_CLIENT_ID=your_client_id
+DHAN_CLIENT_SECRET=your_client_secret
 
 # Capital Management
 ALLOC_PCT=0.25

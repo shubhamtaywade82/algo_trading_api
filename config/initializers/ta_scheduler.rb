@@ -5,7 +5,7 @@ if ENV['ENABLE_TA_LOOP'] == 'true'
     Thread.new do
       loop do
         # Loads fine because autoloading is finished
-        UpdateTechnicalAnalysisJob.perform_later if Time.zone.now > START_TIME && Time.zone.now < END_TIME
+        UpdateTechnicalAnalysisJob.perform_later if Time.zone.now > START_TIME && Time.zone.now < END_TIME && DhanAccessToken.valid?
         sleep 3.minutes
       end
     end

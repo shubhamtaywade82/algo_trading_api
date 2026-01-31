@@ -47,12 +47,16 @@ class DhanMcpService
   private
 
   def dhan_configured?
-    ENV['CLIENT_ID'].present? && ENV['ACCESS_TOKEN'].present?
+    client_id_present? && DhanAccessToken.valid?
+  end
+
+  def client_id_present?
+    ENV['DHAN_CLIENT_ID'].present? || ENV['CLIENT_ID'].present?
   end
 
   def dhan(fmt)
     unless dhan_configured?
-      return fmt.call({ error: 'Dhan credentials not configured. Set CLIENT_ID and ACCESS_TOKEN (used by DhanHQ.configure_with_env).' })
+      return fmt.call({ error: 'Dhan not connected. Set DHAN_CLIENT_ID (or CLIENT_ID) and complete login at /auth/dhan/login.' })
     end
 
     data = yield

@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 Rails.application.routes.draw do
+  namespace :auth do
+    get 'dhan/login', to: 'dhan#login', as: :dhan_login
+    get 'dhan/callback', to: 'dhan#callback', as: :dhan_callback
+  end
+
   resources :swing_picks
   namespace :options do
     post '/suggest_strategies', to: 'strategy_suggestions#index'

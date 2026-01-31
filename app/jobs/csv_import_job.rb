@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class CsvImportJob < ApplicationJob
+  skip_callback :perform, :before, :ensure_dhan_token!
+
   queue_as :default
 
   require 'open-uri'

@@ -1,14 +1,22 @@
 # frozen_string_literal: true
 
 class ApplicationJob < ActiveJob::Base
-  # Automatically retry jobs that encountered a deadlock
+  before_perform :ensure_dhan_token!
+
+  discard_on Exceptions::DhanTokenExpiredError # No retries; re-login and next schedule will run
+
   retry_on StandardError, attempts: 5, wait: :exponentially_longer
 
-  # Most jobs are safe to ignore if the underlying records are no longer available
-  # discard_on ActiveJob::DeserializationError
-
   rescue_from(StandardError) do |exception|
-    ErrorLogger.log_error('Job failed', exception)
+    ErrorLogger.log_error('Job failed', exception) unless exception.is_a?(Exceptions::DhanTokenExpiredError)
     raise exception
+  end
+
+  private
+
+  def ensure_dhan_token!
+    return if DhanAccessToken.valid?
+
+    raise Exceptions::DhanTokenExpiredError
   end
 end

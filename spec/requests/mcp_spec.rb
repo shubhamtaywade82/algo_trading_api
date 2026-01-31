@@ -4,6 +4,57 @@ require 'rails_helper'
 
 RSpec.describe 'MCP', :mcp do
   describe 'POST /mcp' do
+    context 'when MCP_ACCESS_TOKEN is set' do
+      around do |example|
+        previous = ENV.fetch('MCP_ACCESS_TOKEN', nil)
+        ENV['MCP_ACCESS_TOKEN'] = 'secret-token'
+        example.run
+      ensure
+        ENV['MCP_ACCESS_TOKEN'] = previous
+      end
+
+      it 'returns 401 without Authorization header' do
+        post '/mcp', params: '{"jsonrpc":"2.0","id":1}', headers: { 'Content-Type' => 'application/json' }
+        expect(response).to have_http_status(:unauthorized)
+        json = response.parsed_body
+        expect(json['jsonrpc']).to eq('2.0')
+        expect(json['error']['code']).to eq(-32_001)
+        expect(json['error']['message']).to eq('Unauthorized')
+      end
+
+      it 'returns 401 with wrong Bearer token' do
+        post '/mcp', params: '{"jsonrpc":"2.0","id":1}',
+                     headers: { 'Content-Type' => 'application/json', 'Authorization' => 'Bearer wrong' }
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      it 'forwards to MCP server with valid Bearer token' do
+        mcp_server = instance_double(
+          MCP::Server,
+          handle_json: '{"jsonrpc":"2.0","id":1,"result":{}}'
+        )
+        allow(Rails.application.config.x).to receive(:dhan_mcp_server).and_return(mcp_server)
+        body = { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json
+        post '/mcp', params: body,
+                     headers: { 'Content-Type' => 'application/json', 'Authorization' => 'Bearer secret-token' }
+        expect(response).to have_http_status(:ok)
+        expect(mcp_server).to have_received(:handle_json).with(body)
+      end
+    end
+
+    context 'when body exceeds max size' do
+      before { stub_const('McpController::MCP_MAX_BODY_SIZE', 10) }
+
+      it 'returns 413 with JSON-RPC error' do
+        post '/mcp', params: 'x' * 11, headers: { 'Content-Type' => 'application/json' }
+        expect(response).to have_http_status(:payload_too_large)
+        json = response.parsed_body
+        expect(json['jsonrpc']).to eq('2.0')
+        expect(json['error']['code']).to eq(-32_600)
+        expect(json['error']['data']).to eq('Request body exceeds maximum size')
+      end
+    end
+
     context 'when body is empty' do
       it 'returns 400 with JSON-RPC parse error' do
         post '/mcp', headers: { 'Content-Type' => 'application/json' }

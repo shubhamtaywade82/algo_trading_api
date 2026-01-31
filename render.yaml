@@ -17,10 +17,10 @@ services:
           name: AlgoTradingAPI-DB
           property: connectionString
 
-      # Any other environment variables you need:
-      - key: DHAN_API_KEY
+      # Dhan OAuth (one-time login at /auth/dhan/login; token stored in DB)
+      - key: DHAN_CLIENT_ID
         sync: false
-      - key: DHAN_API_SECRET
+      - key: DHAN_CLIENT_SECRET
         sync: false
 
       # Helps avoid memory issues on free tier
