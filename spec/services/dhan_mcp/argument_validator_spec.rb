@@ -207,11 +207,12 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
       end
 
       it 'returns error when from_date is weekend' do
+        monday_after = Date.new(2026, 2, 2)
         err = described_class.validate('get_historical_daily_data', {
                                          exchange_segment: 'NSE_EQ',
                                          symbol: 'RELIANCE',
                                          from_date: saturday.to_s,
-                                         to_date: tuesday.to_s
+                                         to_date: monday_after.to_s
                                        })
         expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
       end
