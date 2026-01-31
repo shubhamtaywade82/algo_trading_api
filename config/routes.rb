@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   namespace :auth do
     get 'dhan/login', to: 'dhan#login', as: :dhan_login
     get 'dhan/callback', to: 'dhan#callback', as: :dhan_callback
+    get 'dhan/token', to: 'dhan#token', as: :dhan_token
   end
 
   resources :swing_picks

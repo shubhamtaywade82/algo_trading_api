@@ -89,4 +89,64 @@ RSpec.describe 'Auth::Dhan', type: :request do
       end
     end
   end
+
+  describe 'GET /auth/dhan/token' do
+    let(:secret) { 'token-api-secret' }
+
+    context 'when DHAN_TOKEN_ACCESS_TOKEN is not set' do
+      before { allow(ENV).to receive(:fetch).with('DHAN_TOKEN_ACCESS_TOKEN', nil).and_return(nil) }
+
+      it 'returns 503 service unavailable' do
+        get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+
+        expect(response).to have_http_status(:service_unavailable)
+        expect(JSON.parse(response.body)['error']).to eq('Token endpoint not configured')
+      end
+    end
+
+    context 'when DHAN_TOKEN_ACCESS_TOKEN is set' do
+      before { allow(ENV).to receive(:fetch).with('DHAN_TOKEN_ACCESS_TOKEN', nil).and_return(secret) }
+
+      context 'when Authorization Bearer is missing or wrong' do
+        it 'returns 401 without header' do
+          get auth_dhan_token_url
+
+          expect(response).to have_http_status(:unauthorized)
+          expect(JSON.parse(response.body)['error']).to include('Invalid or missing')
+        end
+
+        it 'returns 401 with wrong Bearer' do
+          get auth_dhan_token_url, headers: { 'Authorization' => 'Bearer wrong' }
+
+          expect(response).to have_http_status(:unauthorized)
+        end
+      end
+
+      context 'when Bearer is valid' do
+        before { get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" } }
+
+        context 'when no active token exists' do
+          it 'returns 404 with error message' do
+            expect(response).to have_http_status(:not_found)
+            expect(JSON.parse(response.body)['error']).to include('No valid Dhan token')
+          end
+        end
+
+        context 'when an active token exists' do
+          let!(:token_record) do
+            DhanAccessToken.create!(access_token: 'jwt.here', expires_at: 1.hour.from_now)
+          end
+
+          it 'returns 200 with access_token and expires_at' do
+            get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+
+            expect(response).to have_http_status(:ok)
+            body = JSON.parse(response.body)
+            expect(body['access_token']).to eq('jwt.here')
+            expect(body['expires_at']).to be_present
+          end
+        end
+      end
+    end
+  end
 end
