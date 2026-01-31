@@ -196,7 +196,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_31_100000) do
     t.decimal "sell_bo_profit_range_min_perc"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["requirementable_type", "requirementable_id"], name: "index_margin_requirements_on_requirementable"
+    t.index ["requirementable_type", "requirementable_id"], name: "index_margin_requirements_on_requirementable", unique: true
   end
 
   create_table "mis_details", force: :cascade do |t|
@@ -208,6 +208,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_31_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["instrument_id"], name: "index_mis_details_on_instrument_id"
+  end
+
+  create_table "ohlcv_blobs", force: :cascade do |t|
+    t.string "symbol"
+    t.string "timeframe"
+    t.date "day"
+    t.jsonb "data"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["symbol", "timeframe", "day"], name: "index_ohlcv_blobs_on_symbol_and_timeframe_and_day", unique: true
   end
 
   create_table "order_features", force: :cascade do |t|
