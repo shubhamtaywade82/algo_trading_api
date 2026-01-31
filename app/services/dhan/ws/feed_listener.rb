@@ -8,12 +8,19 @@ require 'set'
 module Dhan
   module Ws
     class FeedListener
-      FEED_URL = [
-        'wss://api-feed.dhan.co?version=2',
-        "token=#{ENV.fetch('ACCESS_TOKEN', nil)}",
-        "clientId=#{ENV.fetch('CLIENT_ID', nil)}",
-        'authType=2'
-      ].join('&').freeze
+      FEED_BASE = 'wss://api-feed.dhan.co?version=2'
+
+      def self.feed_url
+        [FEED_BASE, "token=#{ws_token}", "clientId=#{ws_client_id}", 'authType=2'].join('&')
+      end
+
+      def self.ws_token
+        DhanAccessToken.active&.access_token || ENV.fetch('ACCESS_TOKEN', nil)
+      end
+
+      def self.ws_client_id
+        ENV['DHAN_CLIENT_ID'].presence || ENV['CLIENT_ID'].presence
+      end
 
       @last_subscribed_keys = Set.new
       @instrument_cache ||= {}
@@ -29,8 +36,9 @@ module Dhan
       def self.run
         Positions::ActiveCache.refresh!
         EM.run do
-          Rails.logger.info "[WS] Connecting to #{FEED_URL}"
-          ws = Faye::WebSocket::Client.new(FEED_URL)
+          url = feed_url
+          Rails.logger.info "[WS] Connecting to #{url}"
+          ws = Faye::WebSocket::Client.new(url)
 
           ws.on(:open) do
             Rails.logger.info '[WS] ▶ Connected'

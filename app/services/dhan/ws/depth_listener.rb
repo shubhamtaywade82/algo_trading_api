@@ -8,17 +8,25 @@ require_relative 'depth_packet'
 module Dhan
   module Ws
     class DepthListener
-      DEPTH_URL = [
-        'wss://depth-api-feed.dhan.co/twentydepth?',
-        "token=#{ENV.fetch('ACCESS_TOKEN')}",
-        "clientId=#{ENV.fetch('CLIENT_ID')}",
-        'authType=2'
-      ].join('&').freeze
+      DEPTH_BASE = 'wss://depth-api-feed.dhan.co/twentydepth?'
+
+      def self.depth_url
+        [DEPTH_BASE, "token=#{ws_token}", "clientId=#{ws_client_id}", 'authType=2'].join('&')
+      end
+
+      def self.ws_token
+        DhanAccessToken.active&.access_token || ENV.fetch('ACCESS_TOKEN', nil)
+      end
+
+      def self.ws_client_id
+        ENV['DHAN_CLIENT_ID'].presence || ENV['CLIENT_ID'].presence
+      end
 
       def self.run
         EM.run do
-          Rails.logger.debug { "[Depth] Connecting to #{DEPTH_URL}" }
-          ws = Faye::WebSocket::Client.new(DEPTH_URL)
+          url = depth_url
+          Rails.logger.debug { "[Depth] Connecting to #{url}" }
+          ws = Faye::WebSocket::Client.new(url)
 
           ws.on(:open) do
             Rails.logger.debug '[Depth] ▶ Connected'
