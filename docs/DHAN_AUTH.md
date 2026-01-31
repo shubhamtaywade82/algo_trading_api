@@ -46,5 +46,7 @@ Jobs that use Dhan are guarded by `ensure_dhan_token!` in `ApplicationJob`: if t
 1. Set `DHAN_CLIENT_ID`, `DHAN_API_KEY`, and `DHAN_API_SECRET` in the Render dashboard.
 2. In Dhan (web.dhan.co), set the Redirect URL for your API key to `https://algo-trading-api.onrender.com/auth/dhan/callback`.
 3. Deploy.
-4. Visit `https://<your-app>/auth/dhan/login` once and complete login.
-5. Token is stored in the DB and used until expiry; then re-login as above.
+4. Visit `https://<your-app>/auth/dhan/login` **on production** once and complete login.
+5. Token is stored in the **production** DB and used until expiry; then re-login as above.
+
+**Local vs production:** Each environment has its own database. Logging in at localhost stores the token only in your local DB. For Telegram and jobs on Render to work, you must complete the login flow **on production** (open the production URL in a browser and log in there). One login per environment.
