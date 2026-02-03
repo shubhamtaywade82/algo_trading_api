@@ -94,13 +94,15 @@ module InstrumentCandleAccessors
     int.minutes
   end
 
-  # --------------- Default date helpers --------------------------------------
+  # to_date is always today's date. from_date is 2 trading days back.
   def default_to_date
-    MarketCalendar.today_or_last_trading_day
+    Time.zone.today
   end
 
-  # Last trading day on or before (to_date - 10 calendar days). Avoids weekends/holidays.
+  # from_date = 2 trading days back from today (so range has 2 trading days including today when it's a trading day).
   def default_from_date
-    MarketCalendar.last_trading_day_before(default_to_date, calendar_days: 10)
+    return (Time.zone.today - 2) unless defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days)
+
+    MarketCalendar.from_date_for_last_n_trading_days(Time.zone.today, 2)
   end
 end

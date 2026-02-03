@@ -101,16 +101,19 @@ RSpec.describe MarketCalendar do
   end
 
   describe '.today_or_last_trading_day' do
+    # Canonical "to_date" for market data: always today (calendar) when it is a trading day,
+    # else the most recent trading day (e.g. Friday on weekend).
     context 'when today is a weekday (trading day)' do
-      it 'returns today' do
+      it 'returns today (Date.today)' do
         travel_to tuesday do
+          expect(described_class.today_or_last_trading_day).to eq(Time.zone.today)
           expect(described_class.today_or_last_trading_day).to eq(tuesday)
         end
       end
     end
 
     context 'when today is Saturday' do
-      it 'returns previous Friday' do
+      it 'returns previous Friday (last trading day)' do
         travel_to saturday do
           expect(described_class.today_or_last_trading_day).to eq(friday)
         end
@@ -118,7 +121,7 @@ RSpec.describe MarketCalendar do
     end
 
     context 'when today is Sunday' do
-      it 'returns previous Friday' do
+      it 'returns previous Friday (last trading day)' do
         travel_to sunday do
           expect(described_class.today_or_last_trading_day).to eq(friday)
         end
@@ -129,6 +132,15 @@ RSpec.describe MarketCalendar do
       it 'returns previous trading day' do
         travel_to christmas_2025 do
           expect(described_class.today_or_last_trading_day).to eq(Date.new(2025, 12, 24))
+        end
+      end
+    end
+
+    it 'always returns a trading day (weekday and not in MARKET_HOLIDAYS)' do
+      [tuesday, saturday, sunday, christmas_2025].each do |day|
+        travel_to day do
+          result = described_class.today_or_last_trading_day
+          expect(described_class.trading_day?(result)).to be true
         end
       end
     end

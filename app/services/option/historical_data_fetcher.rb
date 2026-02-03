@@ -13,7 +13,7 @@ module Option
       end
 
       def intraday(instrument, interval: DEFAULT_INTRADAY_INTERVAL, lookback_days: DEFAULT_INTRADAY_LOOKBACK_DAYS)
-        to_date = MarketCalendar.today_or_last_trading_day
+        to_date = Time.zone.today
         from_date = MarketCalendar.from_date_for_last_n_trading_days(to_date, lookback_days)
 
         instrument_code = instrument.respond_to?(:resolve_instrument_code) ? instrument.resolve_instrument_code : instrument.instrument_before_type_cast
@@ -32,8 +32,8 @@ module Option
       end
 
       def daily(instrument, lookback_days: DEFAULT_DAILY_LOOKBACK_DAYS)
-        to_date = MarketCalendar.last_trading_day(from: Time.zone.today - 1)
-        from_date = MarketCalendar.last_trading_day_before(to_date, calendar_days: lookback_days)
+        to_date = Time.zone.today
+        from_date = MarketCalendar.from_date_for_last_n_trading_days(to_date, lookback_days)
 
         instrument_code = instrument.respond_to?(:resolve_instrument_code) ? instrument.resolve_instrument_code : instrument.instrument_before_type_cast
         DhanHQ::Models::HistoricalData.daily(

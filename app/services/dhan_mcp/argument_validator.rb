@@ -139,6 +139,7 @@ module DhanMcp
       "interval must be one of: #{INTRADAY_INTERVALS.join(', ')}."
     end
 
+    # get_trade_history: to_date must be literal today (calendar date).
     def reject_date_range_today_and_last_trading_day
       to_d = parse_date(@args[:to_date])
       from_d = parse_date(@args[:from_date])

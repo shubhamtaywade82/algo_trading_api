@@ -130,13 +130,14 @@ class Instrument < ApplicationRecord
 
   def historical_ohlc(from_date: nil, to_date: nil, oi: false)
     instrument_code = resolve_instrument_code
+    to_date_final = to_date.presence&.to_s || Time.zone.today.to_s
     params = {
       security_id: security_id,
       exchange_segment: exchange_segment,
       instrument: instrument_code,
       oi: oi,
-      from_date: from_date || (Time.zone.today - 365).to_s,
-      to_date: to_date || (Time.zone.today - 1).to_s
+      from_date: from_date.presence&.to_s || (Time.zone.today - 365).to_s,
+      to_date: to_date_final
     }
 
     # Only include expiry_code for derivative instruments (futures/options)
@@ -157,17 +158,14 @@ class Instrument < ApplicationRecord
   end
 
   def intraday_ohlc(interval: '5', oi: false, from_date: nil, to_date: nil, days: 2)
-    to_date_str = to_date.to_s.strip
-    to_date_str = (defined?(MarketCalendar) && MarketCalendar.respond_to?(:today_or_last_trading_day) ? MarketCalendar.today_or_last_trading_day : (Time.zone.today - 1)).to_s if to_date_str.blank?
-    to_d = Date.parse(to_date_str.split(/\s+/).first)
-
-    to_d = MarketCalendar.last_trading_day(from: to_d) unless MarketCalendar.trading_day?(to_d)
-    to_date_final = to_d.to_s
+    today = Time.zone.today
+    to_date_final = to_date.presence&.to_s.strip.presence || today.to_s
+    to_d = Date.parse(to_date_final.split(/\s+/).first)
 
     from_date ||= if defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days)
-                    MarketCalendar.from_date_for_last_n_trading_days(to_d, days).to_s
+                    MarketCalendar.from_date_for_last_n_trading_days(today, days).to_s
                   else
-                    (to_d - days).to_s
+                    (today - days).to_s
                   end
 
     instrument_code = resolve_instrument_code

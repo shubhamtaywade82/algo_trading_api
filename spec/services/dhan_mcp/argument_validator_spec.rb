@@ -145,9 +145,17 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
         expect(described_class.validate('get_trade_history', { from_date: today.to_s })).to include('to_date')
       end
 
-      it 'returns error when to_date is not today' do
+      it 'requires to_date to be literal today (calendar date)' do
         err = described_class.validate('get_trade_history', {
                                          from_date: (today - 2).to_s,
+                                         to_date: (today - 1).to_s
+                                       })
+        expect(err).to eq("to_date must be today (#{today}).")
+      end
+
+      it 'returns error when to_date is yesterday' do
+        err = described_class.validate('get_trade_history', {
+                                         from_date: last_trading_day.to_s,
                                          to_date: (today - 1).to_s
                                        })
         expect(err).to eq("to_date must be today (#{today}).")
