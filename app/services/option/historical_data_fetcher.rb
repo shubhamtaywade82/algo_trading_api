@@ -13,8 +13,8 @@ module Option
       end
 
       def intraday(instrument, interval: DEFAULT_INTRADAY_INTERVAL, lookback_days: DEFAULT_INTRADAY_LOOKBACK_DAYS)
-        to_date = Time.zone.today
-        from_date = lookback_days.days.ago.to_date
+        to_date = MarketCalendar.today_or_last_trading_day
+        from_date = MarketCalendar.from_date_for_last_n_trading_days(to_date, lookback_days)
 
         instrument_code = instrument.respond_to?(:resolve_instrument_code) ? instrument.resolve_instrument_code : instrument.instrument_before_type_cast
         DhanHQ::Models::HistoricalData.intraday(
@@ -22,8 +22,8 @@ module Option
           exchange_segment: instrument.exchange_segment,
           instrument: instrument_code,
           interval: interval,
-          from_date: from_date.iso8601,
-          to_date: to_date.iso8601,
+          from_date: from_date.to_s,
+          to_date: to_date.to_s,
           oi: false
         )
       rescue StandardError => e
@@ -32,8 +32,8 @@ module Option
       end
 
       def daily(instrument, lookback_days: DEFAULT_DAILY_LOOKBACK_DAYS)
-        to_date = Date.yesterday
-        from_date = lookback_days.days.ago.to_date
+        to_date = MarketCalendar.last_trading_day(from: Time.zone.today - 1)
+        from_date = MarketCalendar.last_trading_day_before(to_date, calendar_days: lookback_days)
 
         instrument_code = instrument.respond_to?(:resolve_instrument_code) ? instrument.resolve_instrument_code : instrument.instrument_before_type_cast
         DhanHQ::Models::HistoricalData.daily(

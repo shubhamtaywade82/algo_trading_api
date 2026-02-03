@@ -73,7 +73,7 @@ module Openai
 
     # App-scoped first so .env overrides global OLLAMA_MODEL (e.g. Cursor/shell).
     def self.ollama_model_from_env
-      ENV['OPENAI_OLLAMA_MODEL'].presence || ENV['OLLAMA_MODEL'].presence || 'llama3.1:8b'
+      ENV['OPENAI_OLLAMA_MODEL'].presence || ENV['OLLAMA_MODEL'].presence || 'llama3.1:8b-instruct-q4_K_M'
     end
     private_class_method :ollama_model_from_env
 

@@ -157,12 +157,18 @@ class Instrument < ApplicationRecord
   end
 
   def intraday_ohlc(interval: '5', oi: false, from_date: nil, to_date: nil, days: 2)
-    to_date ||= if defined?(MarketCalendar) && MarketCalendar.respond_to?(:today_or_last_trading_day)
-                  MarketCalendar.today_or_last_trading_day.to_s
-                else
-                  (Time.zone.today - 1).to_s
-                end
-    from_date ||= (Date.parse(to_date) - days).to_s
+    to_date_str = to_date.to_s.strip
+    to_date_str = (defined?(MarketCalendar) && MarketCalendar.respond_to?(:today_or_last_trading_day) ? MarketCalendar.today_or_last_trading_day : (Time.zone.today - 1)).to_s if to_date_str.blank?
+    to_d = Date.parse(to_date_str.split(/\s+/).first)
+
+    to_d = MarketCalendar.last_trading_day(from: to_d) unless MarketCalendar.trading_day?(to_d)
+    to_date_final = to_d.to_s
+
+    from_date ||= if defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days)
+                    MarketCalendar.from_date_for_last_n_trading_days(to_d, days).to_s
+                  else
+                    (to_d - days).to_s
+                  end
 
     instrument_code = resolve_instrument_code
     DhanHQ::Models::HistoricalData.intraday(
@@ -171,8 +177,8 @@ class Instrument < ApplicationRecord
       instrument: instrument_code,
       interval: interval,
       oi: oi,
-      from_date: from_date || (Time.zone.today - days).to_s,
-      to_date: to_date || (Time.zone.today - 1).to_s
+      from_date: from_date,
+      to_date: to_date_final
     )
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Intraday OHLC for #{self.class.name} #{security_id}: #{e.message}")

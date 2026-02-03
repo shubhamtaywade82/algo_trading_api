@@ -99,7 +99,8 @@ module InstrumentCandleAccessors
     MarketCalendar.today_or_last_trading_day
   end
 
+  # Last trading day on or before (to_date - 10 calendar days). Avoids weekends/holidays.
   def default_from_date
-    default_to_date - 10.days
+    MarketCalendar.last_trading_day_before(default_to_date, calendar_days: 10)
   end
 end

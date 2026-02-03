@@ -3,6 +3,14 @@
 require 'rails_helper'
 
 RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
+  # Fixed dates: Jan 2026 — 26=Mon, 27=Tue, 28=Wed, 30=Fri, 31=Sat. Holidays: 2025-12-25, 2026-3-4.
+  let(:monday)   { Date.new(2026, 1, 26) }
+  let(:tuesday)  { Date.new(2026, 1, 27) }
+  let(:wednesday){ Date.new(2026, 1, 28) }
+  let(:friday)   { Date.new(2026, 1, 30) }
+  let(:saturday) { Date.new(2026, 1, 31) }
+  let(:sunday)   { Date.new(2026, 2, 1) }
+  let(:holiday)  { Date.new(2026, 3, 4) } # Holi 2026
   describe '.symbolize' do
     it 'converts string keys to symbols' do
       result = described_class.symbolize('exchange_segment' => 'NSE_EQ', 'symbol' => 'RELIANCE')
@@ -123,6 +131,12 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
     end
 
     describe 'get_trade_history' do
+      around do |ex|
+        travel_to tuesday do
+          ex.run
+        end
+      end
+
       let(:today) { Time.zone.today }
       let(:last_trading_day) { MarketCalendar.last_trading_day(from: today - 1) }
 
@@ -188,10 +202,6 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
     end
 
     describe 'get_historical_daily_data' do
-      let(:monday) { Date.new(2026, 1, 26) }
-      let(:tuesday) { Date.new(2026, 1, 27) }
-      let(:saturday) { Date.new(2026, 1, 31) }
-
       it 'returns error when required args are missing' do
         expect(described_class.validate('get_historical_daily_data', {})).to include('Missing required argument(s)')
       end
@@ -206,7 +216,17 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
         expect(err).to eq('from_date must be before to_date.')
       end
 
-      it 'returns error when from_date is weekend' do
+      it 'returns error when from_date equals to_date' do
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: monday.to_s
+                                       })
+        expect(err).to eq('from_date must be before to_date.')
+      end
+
+      it 'returns error when from_date is Saturday' do
         monday_after = Date.new(2026, 2, 2)
         err = described_class.validate('get_historical_daily_data', {
                                          exchange_segment: 'NSE_EQ',
@@ -217,12 +237,53 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
         expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
       end
 
+      it 'returns error when from_date is Sunday' do
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: sunday.to_s,
+                                         to_date: monday.to_s
+                                       })
+        expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when from_date is a market holiday' do
+        day_after_holiday = Date.new(2026, 3, 5)
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: holiday.to_s,
+                                         to_date: day_after_holiday.to_s
+                                       })
+        expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
+      end
+
       it 'returns error when to_date is weekend' do
         err = described_class.validate('get_historical_daily_data', {
                                          exchange_segment: 'NSE_EQ',
                                          symbol: 'RELIANCE',
                                          from_date: monday.to_s,
                                          to_date: saturday.to_s
+                                       })
+        expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when to_date is Sunday' do
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: sunday.to_s
+                                       })
+        expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when to_date is a market holiday' do
+        err = described_class.validate('get_historical_daily_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: holiday.to_s
                                        })
         expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
       end
@@ -245,13 +306,18 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
                                           to_date: tuesday.to_s
                                         })).to be_nil
       end
+
+      it 'returns nil with YYYY-MM-DD date strings' do
+        expect(described_class.validate('get_historical_daily_data', {
+                                          exchange_segment: 'NSE_EQ',
+                                          symbol: 'RELIANCE',
+                                          from_date: '2026-01-26',
+                                          to_date: '2026-01-27'
+                                        })).to be_nil
+      end
     end
 
     describe 'get_intraday_minute_data' do
-      let(:monday) { Date.new(2026, 1, 26) }
-      let(:tuesday) { Date.new(2026, 1, 27) }
-      let(:saturday) { Date.new(2026, 1, 31) }
-
       it 'returns error when required args are missing' do
         expect(described_class.validate('get_intraday_minute_data', {})).to include('Missing required argument(s)')
       end
@@ -267,12 +333,80 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
         expect(err).to eq('from_date must be before to_date.')
       end
 
+      it 'returns error when from_date equals to_date' do
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: monday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('from_date must be before to_date.')
+      end
+
+      it 'returns error when from_date is weekend' do
+        monday_after = Date.new(2026, 2, 2)
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: saturday.to_s,
+                                         to_date: monday_after.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when from_date is Sunday' do
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: sunday.to_s,
+                                         to_date: monday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when from_date is a market holiday' do
+        day_after_holiday = Date.new(2026, 3, 5)
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: holiday.to_s,
+                                         to_date: day_after_holiday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('from_date must be a trading day (no weekend or market holiday).')
+      end
+
       it 'returns error when to_date is weekend' do
         err = described_class.validate('get_intraday_minute_data', {
                                          exchange_segment: 'NSE_EQ',
                                          symbol: 'RELIANCE',
                                          from_date: monday.to_s,
                                          to_date: saturday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when to_date is Sunday' do
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: sunday.to_s,
+                                         interval: '5'
+                                       })
+        expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
+      end
+
+      it 'returns error when to_date is a market holiday' do
+        err = described_class.validate('get_intraday_minute_data', {
+                                         exchange_segment: 'NSE_EQ',
+                                         symbol: 'RELIANCE',
+                                         from_date: monday.to_s,
+                                         to_date: holiday.to_s,
                                          interval: '5'
                                        })
         expect(err).to eq('to_date must be a trading day (no weekend or market holiday).')
@@ -295,6 +429,16 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
                                           symbol: 'RELIANCE',
                                           from_date: monday.to_s,
                                           to_date: tuesday.to_s,
+                                          interval: '5'
+                                        })).to be_nil
+      end
+
+      it 'accepts datetime strings for from_date and to_date' do
+        expect(described_class.validate('get_intraday_minute_data', {
+                                          exchange_segment: 'NSE_EQ',
+                                          symbol: 'RELIANCE',
+                                          from_date: '2026-01-26 09:15:00',
+                                          to_date: '2026-01-27 15:30:00',
                                           interval: '5'
                                         })).to be_nil
       end
