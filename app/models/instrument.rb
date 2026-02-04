@@ -136,7 +136,7 @@ class Instrument < ApplicationRecord
       exchange_segment: exchange_segment,
       instrument: instrument_code,
       oi: oi,
-      from_date: from_date.presence&.to_s || (Time.zone.today - 365).to_s,
+      from_date: (Time.zone.today - 30).to_s,
       to_date: to_date_final
     }
 
