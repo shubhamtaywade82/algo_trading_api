@@ -146,9 +146,7 @@ class Instrument < ApplicationRecord
     Rails.logger.debug do
       "Fetching Historical OHLC for Instrument #{security_id} with params: #{params.inspect}"
     end
-    response = DhanHQ::Models::HistoricalData.daily(params)
-    pp response
-    response
+    DhanHQ::Models::HistoricalData.daily(params)
   rescue StandardError => e
     Rails.logger.error(
       "Failed to fetch Historical OHLC for Instrument #{security_id} " \
