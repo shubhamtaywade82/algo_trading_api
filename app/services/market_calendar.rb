@@ -42,9 +42,11 @@ module MarketCalendar
   # Weekdays: returns +from+ if it's a trading day, else previous trading day.
   # Weekends/holidays: steps back until a trading day.
   def self.last_trading_day(from: Time.zone.today)
+    return Time.zone.today if from.blank?
     date = from.respond_to?(:to_date) ? from.to_date : from
+    return Time.zone.today if date.blank?
     date -= 1 until trading_day?(date)
-    date
+    date.presence || Time.zone.today
   end
 
   # Today if it's a trading day; otherwise the most recent trading day (e.g. Friday on weekend).
@@ -56,12 +58,18 @@ module MarketCalendar
   # Returns +from_date+ such that the range [from_date, to_date] (inclusive) spans exactly +n+ trading days.
   # When n == 1, returns to_date. Use for intraday/historical "last n trading days".
   def self.from_date_for_last_n_trading_days(to_date, n)
+    return Time.zone.today if to_date.blank?
     to_d = to_date.respond_to?(:to_date) ? to_date.to_date : to_date
+    return Time.zone.today if to_d.blank?
     return to_d if n <= 1
 
     date = to_d
-    (n - 1).times { date = last_trading_day(from: date - 1) }
-    date
+    (n - 1).times do
+      break unless date.respond_to?(:-)
+
+      date = last_trading_day(from: date - 1)
+    end
+    date.presence || Time.zone.today
   end
 
   # Returns the last trading day on or before (reference_date - calendar_days).

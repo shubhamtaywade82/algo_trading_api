@@ -42,7 +42,7 @@ module Market
       md = build_market_snapshot(candle_series)
 
       sleep(1.5)
-      md[:vix] = india_vix.ltp
+      md[:vix] = india_vix&.ltp
       md[:regime] = option_chain_regime_flags(md[:options], md[:vix])
 
       prompt = PromptBuilder.build_prompt(md, trade_type: @trade_type)
@@ -56,6 +56,7 @@ module Market
       answer
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
+      Rails.logger.error e.backtrace.first(8).map { |l| "  #{l}" }.join("\n")
       nil
     end
 
@@ -94,13 +95,13 @@ module Market
           },
           prev_day: prev_day,
           boll: series.bollinger_bands(period: 20),
-          atr: series.atr[:atr].round(2),
-          rsi: series.rsi[:rsi].round(2),
-          macd: series.macd.transform_values { |v| v.round(2) },
-          ema14: series.moving_average(14)[:ema].round(2),
+          atr: round_or_nil(series.atr[:atr]),
+          rsi: round_or_nil(series.rsi[:rsi]),
+          macd: series.macd.transform_values { |v| round_or_nil(v) },
+          ema14: round_or_nil(series.moving_average(14)[:ema]),
           super: series.supertrend_signal,
-          hi20: series.recent_highs(20)[:highs].max.round(2),
-          lo20: series.recent_lows(20)[:lows].min.round(2),
+          hi20: round_or_nil(series.recent_highs(20)[:highs].max),
+          lo20: round_or_nil(series.recent_lows(20)[:lows].min),
           liq_up: series.liquidity_grab_up?(lookback: 20)[:liquidity_grab_up],
           liq_dn: series.liquidity_grab_down?(lookback: 20)[:liquidity_grab_down],
           **smc_and_price_action(series),
@@ -130,23 +131,40 @@ module Market
 
     def previous_daily_ohlc
       Rails.cache.fetch("pd-ohlc:#{instrument.id}", expires_in: 15.minutes) do
-        to_date = Time.zone.today
-        from_date = defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days) ? MarketCalendar.from_date_for_last_n_trading_days(to_date, 2) : (to_date - 2)
+        today = Time.zone.today
+        to_date = (defined?(MarketCalendar) && MarketCalendar.respond_to?(:today_or_last_trading_day) ? MarketCalendar.today_or_last_trading_day : today) || today
+        from_date = safe_from_date_for_prev_ohlc(to_date)
+        from_date = fallback_from_date(to_date) if from_date.blank?
         bars = instrument.historical_ohlc(
           from_date: from_date.to_s,
           to_date: to_date.to_s
         )
 
-        return nil if bars.blank?
+        return nil if bars.blank? || !valid_daily_ohlc_bars?(bars)
 
-        bar = bars
         {
-          open: PriceMath.round_tick(bar['open'].last.to_f),
-          high: PriceMath.round_tick(bar['high'].last.to_f),
-          low: PriceMath.round_tick(bar['low'].last.to_f),
-          close: PriceMath.round_tick(bar['close'].last.to_f)
+          open: PriceMath.round_tick(bars['open'].last.to_f),
+          high: PriceMath.round_tick(bars['high'].last.to_f),
+          low: PriceMath.round_tick(bars['low'].last.to_f),
+          close: PriceMath.round_tick(bars['close'].last.to_f)
         }
       end
+    end
+
+    def safe_from_date_for_prev_ohlc(to_date)
+      ref = to_date.presence || Time.zone.today
+      return Time.zone.today - 2 if ref.nil?
+      return (ref - 2) unless defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days)
+      MarketCalendar.from_date_for_last_n_trading_days(ref, 2)
+    end
+
+    def fallback_from_date(to_date)
+      return Time.zone.today - 2 if to_date.nil? || !to_date.respond_to?(:-)
+      to_date - 2
+    end
+
+    def valid_daily_ohlc_bars?(bars)
+      %w[open high low close].all? { |k| bars[k].is_a?(Array) && bars[k].present? }
     end
 
     def session_state
@@ -329,6 +347,10 @@ module Market
     def log_missing
       Rails.logger.error "[AnalysisService] ⚠️ Instrument not found: #{@symbol}"
       nil
+    end
+
+    def round_or_nil(value)
+      value.nil? ? nil : value.to_f.round(2)
     end
 
     def fmt2(x)

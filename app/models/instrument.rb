@@ -146,7 +146,9 @@ class Instrument < ApplicationRecord
     Rails.logger.debug do
       "Fetching Historical OHLC for Instrument #{security_id} with params: #{params.inspect}"
     end
-    DhanHQ::Models::HistoricalData.daily(params)
+    response = DhanHQ::Models::HistoricalData.daily(params)
+    pp response
+    response
   rescue StandardError => e
     Rails.logger.error(
       "Failed to fetch Historical OHLC for Instrument #{security_id} " \
@@ -157,7 +159,11 @@ class Instrument < ApplicationRecord
     nil
   end
 
-  def intraday_ohlc(interval: '5', oi: false, from_date: nil, to_date: nil, days: 2)
+  # Dhan intraday API requires interval: one of "1", "5", "15", "25", "60" (minutes).
+  INTRADAY_INTERVALS = %w[1 5 15 25 60].freeze
+  DEFAULT_INTRADAY_INTERVAL = "5"
+
+  def intraday_ohlc(interval: DEFAULT_INTRADAY_INTERVAL, oi: false, from_date: nil, to_date: nil, days: 2)
     today = Time.zone.today
     to_date_final = to_date.presence&.to_s.strip.presence || today.to_s
     to_d = Date.parse(to_date_final.split(/\s+/).first)
@@ -168,12 +174,14 @@ class Instrument < ApplicationRecord
                     (today - days).to_s
                   end
 
+    interval_str = interval.to_s.strip.presence || DEFAULT_INTRADAY_INTERVAL
+    interval_str = DEFAULT_INTRADAY_INTERVAL unless INTRADAY_INTERVALS.include?(interval_str)
     instrument_code = resolve_instrument_code
     DhanHQ::Models::HistoricalData.intraday(
       security_id: security_id,
       exchange_segment: exchange_segment,
       instrument: instrument_code,
-      interval: interval,
+      interval: interval_str,
       oi: oi,
       from_date: from_date,
       to_date: to_date_final

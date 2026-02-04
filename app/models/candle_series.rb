@@ -103,14 +103,20 @@ class CandleSeries
   def ema(period = 20) = { ema: RubyTechnicalAnalysis::MovingAverages.new(series: closes, period: period).ema }
 
   def macd(fast_period = 12, slow_period = 26, signal_period = 9)
+    min_length = slow_period + signal_period
+    return empty_macd if closes.size < min_length
+
+    series = closes.map { |c| c.to_f }
     line, signal, hist = RubyTechnicalAnalysis::Macd.new(
-      series: closes,
+      series: series,
       fast_period: fast_period,
       slow_period: slow_period,
       signal_period: signal_period
     ).call
 
     { macd: line, signal: signal, hist: hist }
+  rescue StandardError
+    empty_macd
   end
 
   # Rate of Change – returns an array with nil values for the initial window
@@ -203,15 +209,19 @@ class CandleSeries
   # ---------------------------------------------------------------------------
   private
 
-  # Helper for array‑of‑hashes input
+  def empty_macd
+    { macd: nil, signal: nil, hist: nil }
+  end
+
+  # Helper for array‑of‑hashes input. Coerces OHLC to Float so indicators never see nil.
   def slice_candle(c)
     {
-      open: c[:open]  || c['open'],
-      high: c[:high]  || c['high'],
-      low: c[:low] || c['low'],
-      close: c[:close] || c['close'],
+      open: (c[:open] || c['open']).to_f,
+      high: (c[:high] || c['high']).to_f,
+      low: (c[:low] || c['low']).to_f,
+      close: (c[:close] || c['close']).to_f,
       timestamp: c[:timestamp] || c['timestamp'],
-      volume: c[:volume] || c['volume'] || 0
+      volume: (c[:volume] || c['volume'] || 0).to_i
     }
   end
 

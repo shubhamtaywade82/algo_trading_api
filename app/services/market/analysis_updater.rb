@@ -30,15 +30,16 @@ module Market
 
     # --- Dhan HQ -------------------------------------------------------------
     def fetch_candles(instrument)
-      trade_day = latest_trading_day
+      to_date = latest_trading_day
+      from_date = previous_weekday(to_date)
 
       resp = Dhanhq::API::Historical.intraday(
         securityId: instrument.security_id,
         exchangeSegment: instrument.exchange_segment,
         instrument: 'INDEX',
         interval: INTERVAL,
-        fromDate: trade_day.iso8601,
-        toDate: trade_day.iso8601
+        fromDate: from_date.iso8601,
+        toDate: to_date.iso8601
       )
 
       normalise_candles(resp)
