@@ -84,7 +84,7 @@ module Dhan
       # ===============================
 
       def load_from_db
-        record = DhanAccessToken.first
+        record = DhanAccessToken.active
         return nil unless record
 
         {

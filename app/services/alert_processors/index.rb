@@ -385,7 +385,7 @@ module AlertProcessors
     # Returns nil if no fresh row (<10 min old) exists.
     # ────────────────────────────────────────────────────────────
     def current_atr_pct
-      row = IntradayAnalysis.for_symbol_timeframe(instrument.underlying_symbol, '5m')
+      row = IntradayAnalysis.for_symbol_timeframe(instrument.underlying_symbol, '5m').first
       return nil unless row && row.calculated_at > 10.minutes.ago
 
       row.atr_pct.to_f # eg 0.0082  ( = 0.82 %)
