@@ -6,11 +6,12 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
   # Fixed dates: Jan 2026 — 26=Mon, 27=Tue, 28=Wed, 30=Fri, 31=Sat. Holidays: 2025-12-25, 2026-3-4.
   let(:monday)   { Date.new(2026, 1, 26) }
   let(:tuesday)  { Date.new(2026, 1, 27) }
-  let(:wednesday){ Date.new(2026, 1, 28) }
+  let(:wednesday) { Date.new(2026, 1, 28) }
   let(:friday)   { Date.new(2026, 1, 30) }
   let(:saturday) { Date.new(2026, 1, 31) }
   let(:sunday)   { Date.new(2026, 2, 1) }
   let(:holiday)  { Date.new(2026, 3, 4) } # Holi 2026
+
   describe '.symbolize' do
     it 'converts string keys to symbols' do
       result = described_class.symbolize('exchange_segment' => 'NSE_EQ', 'symbol' => 'RELIANCE')
@@ -131,11 +132,7 @@ RSpec.describe DhanMcp::ArgumentValidator, :mcp, type: :service do
     end
 
     describe 'get_trade_history' do
-      around do |ex|
-        travel_to tuesday do
-          ex.run
-        end
-      end
+      before { travel_to tuesday }
 
       let(:today) { Time.zone.today }
       let(:last_trading_day) { MarketCalendar.last_trading_day(from: today - 1) }

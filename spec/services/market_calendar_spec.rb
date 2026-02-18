@@ -12,7 +12,7 @@ RSpec.describe MarketCalendar do
   let(:sunday)   { Date.new(2026, 2, 1) }
   # Holiday in MARKET_HOLIDAYS
   let(:christmas_2025) { Date.new(2025, 12, 25) }
-  let(:holi_2026)     { Date.new(2026, 3, 4) }
+  let(:holi_2026) { Date.new(2026, 3, 4) }
 
   describe '.trading_day?' do
     context 'on weekdays (no holiday)' do

@@ -106,7 +106,7 @@ class CandleSeries
     min_length = slow_period + signal_period
     return empty_macd if closes.size < min_length
 
-    series = closes.map { |c| c.to_f }
+    series = closes.map(&:to_f)
     line, signal, hist = RubyTechnicalAnalysis::Macd.new(
       series: series,
       fast_period: fast_period,

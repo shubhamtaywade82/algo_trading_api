@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe 'Auth::Dhan', type: :request do
+RSpec.describe 'Auth::Dhan' do
   describe 'GET /auth/dhan/login' do
     let(:consent_url) { %r{https://auth\.dhan\.co/app/generate-consent\?client_id=client-123} }
     let(:consent_response) { { consentAppId: 'consent-abc', consentAppStatus: 'GENERATED', status: 'success' }.to_json }
@@ -100,7 +100,7 @@ RSpec.describe 'Auth::Dhan', type: :request do
         get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
 
         expect(response).to have_http_status(:service_unavailable)
-        expect(JSON.parse(response.body)['error']).to eq('Token endpoint not configured')
+        expect(response.parsed_body['error']).to eq('Token endpoint not configured')
       end
     end
 
@@ -116,7 +116,7 @@ RSpec.describe 'Auth::Dhan', type: :request do
           get auth_dhan_token_url
 
           expect(response).to have_http_status(:unauthorized)
-          expect(JSON.parse(response.body)['error']).to include('Invalid or missing')
+          expect(response.parsed_body['error']).to include('Invalid or missing')
         end
 
         it 'returns 401 with wrong Bearer' do
@@ -135,7 +135,7 @@ RSpec.describe 'Auth::Dhan', type: :request do
 
           it 'returns 404 with error message' do
             expect(response).to have_http_status(:not_found)
-            expect(JSON.parse(response.body)['error']).to include('No valid Dhan token')
+            expect(response.parsed_body['error']).to include('No valid Dhan token')
           end
         end
 
@@ -148,7 +148,7 @@ RSpec.describe 'Auth::Dhan', type: :request do
 
           it 'returns 200 with access_token, client_id and expires_at' do
             expect(response).to have_http_status(:ok)
-            body = JSON.parse(response.body)
+            body = response.parsed_body
             expect(body['access_token']).to eq('jwt.here')
             expect(body['client_id']).to eq('client-456')
             expect(body['expires_at']).to be_present

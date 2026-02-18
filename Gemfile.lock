@@ -1,9 +1,7 @@
-GIT
-  remote: https://github.com/shubhamtaywade82/dhanhq-client.git
-  revision: 79f08b4c36c9c58f87cb84ae58b28c3154f5441e
-  branch: main
+GEM
+  remote: https://rubygems.org/
   specs:
-    DhanHQ (2.2.2)
+    DhanHQ (2.4.0)
       activesupport
       base64
       bindata
@@ -14,10 +12,8 @@ GIT
       faraday
       faraday_middleware
       faye-websocket
-
-GEM
-  remote: https://rubygems.org/
-  specs:
+      rotp
+      zeitwerk
     actioncable (8.0.1)
       actionpack (= 8.0.1)
       activesupport (= 8.0.1)
@@ -170,7 +166,7 @@ GEM
       dry-logic (~> 1.6)
       dry-types (~> 1.8)
       zeitwerk (~> 2.6)
-    dry-types (1.9.0)
+    dry-types (1.9.1)
       bigdecimal (>= 3.0)
       concurrent-ruby (~> 1.0)
       dry-core (~> 1.0)
@@ -197,7 +193,7 @@ GEM
       railties (>= 5.0.0)
     faker (3.5.1)
       i18n (>= 1.8.11, < 2)
-    faraday (1.10.4)
+    faraday (1.10.5)
       faraday-em_http (~> 1.0)
       faraday-em_synchrony (~> 1.0)
       faraday-excon (~> 1.1)
@@ -409,6 +405,7 @@ GEM
       io-console (~> 0.5)
     require_all (3.0.0)
     rexml (3.3.9)
+    rotp (6.3.0)
     rspec-core (3.13.2)
       rspec-support (~> 3.13.0)
     rspec-expectations (3.13.3)
@@ -557,7 +554,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
-  DhanHQ!
+  DhanHQ
   activerecord-import
   benchmark-ips
   bindata

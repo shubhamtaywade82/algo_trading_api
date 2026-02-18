@@ -155,11 +155,13 @@ module Market
       ref = to_date.presence || Time.zone.today
       return Time.zone.today - 2 if ref.nil?
       return (ref - 2) unless defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days)
+
       MarketCalendar.from_date_for_last_n_trading_days(ref, 2)
     end
 
     def fallback_from_date(to_date)
       return Time.zone.today - 2 if to_date.nil? || !to_date.respond_to?(:-)
+
       to_date - 2
     end
 
@@ -350,7 +352,7 @@ module Market
     end
 
     def round_or_nil(value)
-      value.nil? ? nil : value.to_f.round(2)
+      value&.to_f&.round(2)
     end
 
     def fmt2(x)

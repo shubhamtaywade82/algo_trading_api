@@ -29,7 +29,7 @@ class TelegramNotifier
     return false if url.blank?
 
     uri = URI(url)
-    uri.scheme == 'https' && uri.host.present? && !%w[localhost 127.0.0.1].include?(uri.host.downcase)
+    uri.scheme == 'https' && uri.host.present? && %w[localhost 127.0.0.1].exclude?(uri.host.downcase)
   rescue URI::InvalidURIError
     false
   end

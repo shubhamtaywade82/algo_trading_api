@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe DhanAccessToken do
   describe '.active' do
     it 'returns the most recent token that has not expired' do
-      expired = described_class.create!(access_token: 'old', expires_at: 1.hour.ago)
+      described_class.create!(access_token: 'old', expires_at: 1.hour.ago)
       current = described_class.create!(access_token: 'current', expires_at: 1.day.from_now)
 
       expect(described_class.active).to eq(current)

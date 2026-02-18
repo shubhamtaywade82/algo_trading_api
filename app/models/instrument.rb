@@ -159,12 +159,12 @@ class Instrument < ApplicationRecord
 
   # Dhan intraday API requires interval: one of "1", "5", "15", "25", "60" (minutes).
   INTRADAY_INTERVALS = %w[1 5 15 25 60].freeze
-  DEFAULT_INTRADAY_INTERVAL = "5"
+  DEFAULT_INTRADAY_INTERVAL = '5'
 
   def intraday_ohlc(interval: DEFAULT_INTRADAY_INTERVAL, oi: false, from_date: nil, to_date: nil, days: 2)
     today = Time.zone.today
-    to_date_final = to_date.presence&.to_s.strip.presence || today.to_s
-    to_d = Date.parse(to_date_final.split(/\s+/).first)
+    to_date_final = to_date.presence&.to_s&.strip.presence || today.to_s
+    Date.parse(to_date_final.split(/\s+/).first)
 
     from_date ||= if defined?(MarketCalendar) && MarketCalendar.respond_to?(:from_date_for_last_n_trading_days)
                     MarketCalendar.from_date_for_last_n_trading_days(today, days).to_s

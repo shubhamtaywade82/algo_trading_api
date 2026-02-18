@@ -43,8 +43,10 @@ module MarketCalendar
   # Weekends/holidays: steps back until a trading day.
   def self.last_trading_day(from: Time.zone.today)
     return Time.zone.today if from.blank?
+
     date = from.respond_to?(:to_date) ? from.to_date : from
     return Time.zone.today if date.blank?
+
     date -= 1 until trading_day?(date)
     date.presence || Time.zone.today
   end
@@ -59,6 +61,7 @@ module MarketCalendar
   # When n == 1, returns to_date. Use for intraday/historical "last n trading days".
   def self.from_date_for_last_n_trading_days(to_date, n)
     return Time.zone.today if to_date.blank?
+
     to_d = to_date.respond_to?(:to_date) ? to_date.to_date : to_date
     return Time.zone.today if to_d.blank?
     return to_d if n <= 1

@@ -172,14 +172,10 @@ module TelegramBot
       typing_ping
       inst = instrument_for('NIFTY', :nse)
       vix_inst = Instrument.find_by(security_id: 21)
-      unless inst && vix_inst
-        return TelegramNotifier.send_message('⚠️ Instrument or India VIX not found.', chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('⚠️ Instrument or India VIX not found.', chat_id: @cid) unless inst && vix_inst
 
       chain = inst.fetch_option_chain(inst.expiry_list&.first)
-      unless chain
-        return TelegramNotifier.send_message('⚠️ Could not fetch option chain for NIFTY.', chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('⚠️ Could not fetch option chain for NIFTY.', chat_id: @cid) unless chain
 
       analyzed = Market::OptionChainAnalyzer.new(chain, inst.ltp.to_f).extract_data
       vix = vix_inst.ltp.to_f
@@ -208,7 +204,7 @@ module TelegramBot
     def gift_nifty_analysis
       # GIFT Nifty (SGX) – not in Dhan index segment; suggest NIFTY analysis
       TelegramNotifier.send_message(
-        "⏳ GIFT Nifty (SGX) is not configured for this app. Use /nifty_analysis for NIFTY.",
+        '⏳ GIFT Nifty (SGX) is not configured for this app. Use /nifty_analysis for NIFTY.',
         chat_id: @cid
       )
     end
@@ -216,14 +212,10 @@ module TelegramBot
     def oi_snapshot
       typing_ping
       inst = instrument_for('NIFTY', :nse)
-      unless inst
-        return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid) unless inst
 
       chain = inst.fetch_option_chain(inst.expiry_list&.first)
-      unless chain
-        return TelegramNotifier.send_message('⚠️ Could not fetch NIFTY option chain.', chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('⚠️ Could not fetch NIFTY option chain.', chat_id: @cid) unless chain
 
       analyzed = Market::OptionChainAnalyzer.new(chain, inst.ltp.to_f).extract_data
       return TelegramNotifier.send_message('⚠️ No option data extracted.', chat_id: @cid) if analyzed.blank?
@@ -234,7 +226,7 @@ module TelegramBot
       ce_iv = (atm[:ce_iv] || atm.dig(:call, 'implied_volatility')).to_f.round(2)
       pe_iv = (atm[:pe_iv] || atm.dig(:put, 'implied_volatility')).to_f.round(2)
       strike = atm[:strike] || '–'
-      fmt_oi = ->(x) { x >= 1_000_000 ? "#{(x / 1_000_000).round(1)}M" : (x / 1000).round(1).to_s + 'K' }
+      fmt_oi = ->(x) { x >= 1_000_000 ? "#{(x / 1_000_000).round(1)}M" : "#{(x / 1000).round(1)}K" }
 
       msg = <<~TEXT.strip
         📊 *OI snapshot* – NIFTY ATM #{strike} (nearest expiry)
@@ -251,9 +243,9 @@ module TelegramBot
       typing_ping
       vix_inst = Instrument.find_by(security_id: 21)
       indices = [
-        [ 'NIFTY', :nse ],
-        [ 'BANKNIFTY', :nse ],
-        [ 'SENSEX', :bse ]
+        ['NIFTY', :nse],
+        ['BANKNIFTY', :nse],
+        ['SENSEX', :bse]
       ]
       lines = indices.filter_map do |symbol, exchange|
         inst = instrument_for(symbol, exchange)
@@ -272,7 +264,7 @@ module TelegramBot
         return
       end
 
-      msg = "📈 *Market summary*\n" + lines.join("\n")
+      msg = "📈 *Market summary*\n#{lines.join("\n")}"
       TelegramNotifier.send_message(msg, chat_id: @cid)
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] market_summary – #{e.class}: #{e.message}"
@@ -282,14 +274,10 @@ module TelegramBot
     def expiry_roadmap
       typing_ping
       inst = instrument_for('NIFTY', :nse)
-      unless inst
-        return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid) unless inst
 
       expiries = inst.expiry_list
-      if expiries.blank?
-        return TelegramNotifier.send_message('⚠️ No NIFTY expiries found.', chat_id: @cid)
-      end
+      return TelegramNotifier.send_message('⚠️ No NIFTY expiries found.', chat_id: @cid) if expiries.blank?
 
       next_four = expiries.first(4).map { |e| e.to_s.sub(/\A(\d{4})-(\d{2})-(\d{2})\z/, '\3-\2-\1') }
       chain = inst.fetch_option_chain(expiries.first)
@@ -305,7 +293,7 @@ module TelegramBot
         end
       end
 
-      msg = "📅 *Expiry roadmap* – NIFTY\nNext: " + next_four.join(', ')
+      msg = "📅 *Expiry roadmap* – NIFTY\nNext: #{next_four.join(', ')}"
       msg += "\nNearest expiry ATM IV: #{atm_iv}%" if atm_iv
       TelegramNotifier.send_message(msg.strip, chat_id: @cid)
     rescue StandardError => e
