@@ -23,8 +23,8 @@ DhanHQ.configure do |config|
   end
 
   config.on_token_expired = lambda do |error|
-    Rails.logger.warn "[DHAN] Token expired detected: #{error.class}"
-    Dhan::TokenManager.refresh!
+    Rails.logger.warn "[DHAN] Hard auth failure detected: #{error.class}"
+    Dhan::TokenManager.force_refresh!
   end
 end
 
