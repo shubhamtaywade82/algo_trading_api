@@ -15,6 +15,8 @@ module Dhan
         end
 
         token_data[:token]
+      rescue DhanHQ::InvalidTokenError, DhanHQ::TokenExpiredError
+        force_refresh!
       end
 
       def refresh!
@@ -44,7 +46,7 @@ module Dhan
 
       def force_refresh!
         with_advisory_lock do
-          Rails.logger.warn "[DHAN] Force regenerating token due to invalidation..."
+          Rails.logger.warn '[DHAN] Force regenerating token due to invalidation...'
 
           response = DhanHQ::Auth.generate_access_token(
             dhan_client_id: creds[:client_id],
@@ -52,8 +54,8 @@ module Dhan
             totp: generate_totp
           )
 
-          access_token = response["accessToken"]
-          expires_at  = Time.parse(response["expiryTime"])
+          access_token = response['accessToken']
+          expires_at = Time.zone.parse(response['expiryTime'])
 
           persist_token(access_token, expires_at)
           cache_token(access_token, expires_at)
