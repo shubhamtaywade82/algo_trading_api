@@ -7,11 +7,11 @@ module Dhan
 
     class << self
       def current_token!
-        token_data = cached_token
+        token_data = current_token_data
 
         if token_data.nil? || expiring?(token_data)
           refresh!
-          token_data = cached_token
+          token_data = current_token_data
         end
 
         token_data[:token]
@@ -86,18 +86,18 @@ module Dhan
       # In-memory cache (per worker)
       # ===============================
 
-      def cached_token
-        @cached_token ||= load_from_db
+      def current_token_data
+        load_from_db
       end
 
       def cache_token(token, expires_at)
-        @cached_token = {
-          token: token,
-          expires_at: expires_at
-        }
+        # We no longer need in-memory caching as it causes stale token issues
+        # across multi-process workers. The DB + Rails.cache in model layer
+        # is sufficient.
       end
 
       def expiring?(token_data)
+        return true if token_data.nil?
         token_data[:expires_at] <= BUFFER_MINUTES.minutes.from_now
       end
 
