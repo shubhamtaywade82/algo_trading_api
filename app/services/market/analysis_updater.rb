@@ -17,15 +17,23 @@ module Market
     private
 
     def update_symbol(symbol)
-      inst = instrument(symbol, segment: 'index')
+      inst    = instrument(symbol, segment: 'index')
       candles = fetch_candles(inst)
       return if candles.size < 15
 
-      atr     = atr14(candles)
-      close   = candles.last[:close]
+      atr   = atr14(candles)
+      close = candles.last[:close]
       record! symbol, atr, close
+      detect_confluence(symbol, candles)
     rescue StandardError => e
       Rails.logger.error "[TA] #{symbol} – #{e.class}: #{e.message}"
+    end
+
+    def detect_confluence(symbol, candles)
+      signal = Market::ConfluenceDetector.call(symbol: symbol, candles: candles)
+      Market::ConfluenceNotifier.call(signal: signal)
+    rescue StandardError => e
+      Rails.logger.error "[TA] Confluence #{symbol} – #{e.class}: #{e.message}"
     end
 
     # --- Dhan HQ -------------------------------------------------------------
@@ -60,18 +68,24 @@ module Market
       size = resp['high'].size
       (0...size).map do |i|
         {
-          high: resp['high'][i].to_f,
-          low: resp['low'][i].to_f,
-          close: resp['close'][i].to_f
+          open:      resp['open']&.dig(i).to_f,
+          high:      resp['high'][i].to_f,
+          low:       resp['low'][i].to_f,
+          close:     resp['close'][i].to_f,
+          timestamp: resp['timestamp']&.dig(i),
+          volume:    resp['volume']&.dig(i).to_i
         }
       end
     end
 
     def slice_candle(c)
       {
-        high: c['high'].to_f,
-        low: c['low'].to_f,
-        close: c['close'].to_f
+        open:      (c['open']      || c[:open]).to_f,
+        high:      (c['high']      || c[:high]).to_f,
+        low:       (c['low']       || c[:low]).to_f,
+        close:     (c['close']     || c[:close]).to_f,
+        timestamp: c['timestamp']  || c[:timestamp],
+        volume:    (c['volume']    || c[:volume]).to_i
       }
     end
 
