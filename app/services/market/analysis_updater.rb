@@ -22,7 +22,7 @@ module Market
       return if candles.size < 15
 
       atr   = atr14(candles)
-      close = candles.last[:close]
+      close = (candles.last[:close] || candles.last['close']).to_f
       record! symbol, atr, close
       detect_confluence(symbol, candles)
     rescue StandardError => e
@@ -68,24 +68,24 @@ module Market
       size = resp['high'].size
       (0...size).map do |i|
         {
-          open:      resp['open']&.dig(i).to_f,
-          high:      resp['high'][i].to_f,
-          low:       resp['low'][i].to_f,
-          close:     resp['close'][i].to_f,
+          open: resp['open']&.dig(i).to_f,
+          high: resp['high'][i].to_f,
+          low: resp['low'][i].to_f,
+          close: resp['close'][i].to_f,
           timestamp: resp['timestamp']&.dig(i),
-          volume:    resp['volume']&.dig(i).to_i
+          volume: resp['volume']&.dig(i).to_i
         }
       end
     end
 
     def slice_candle(c)
       {
-        open:      (c['open']      || c[:open]).to_f,
-        high:      (c['high']      || c[:high]).to_f,
-        low:       (c['low']       || c[:low]).to_f,
-        close:     (c['close']     || c[:close]).to_f,
-        timestamp: c['timestamp']  || c[:timestamp],
-        volume:    (c['volume']    || c[:volume]).to_i
+        open: (c['open']      || c[:open]).to_f,
+        high: (c['high']      || c[:high]).to_f,
+        low: (c['low'] || c[:low]).to_f,
+        close: (c['close'] || c[:close]).to_f,
+        timestamp: c['timestamp'] || c[:timestamp],
+        volume: (c['volume'] || c[:volume]).to_i
       }
     end
 
