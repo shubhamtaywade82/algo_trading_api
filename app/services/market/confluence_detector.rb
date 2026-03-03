@@ -36,24 +36,24 @@ module Market
 
       return nil if net_score.zero?
 
-      bias  = net_score > 0 ? :bullish : :bearish
+      bias  = net_score.positive? ? :bullish : :bearish
       level = level_for(net_score.abs)
 
       return nil if level == :none
       return nil unless should_alert?(bias, level)
 
-      close = @candles.last[:close].to_f
+      close = candle_float(@candles.last, :close)
       atr   = compute_atr14
 
       signal = ConfluenceSignal.new(
-        symbol:    @symbol,
-        bias:      bias,
+        symbol: @symbol,
+        bias: bias,
         net_score: net_score,
         max_score: MAX_SCORE,
-        level:     level,
-        factors:   factors,
-        close:     close,
-        atr:       atr,
+        level: level,
+        factors: factors,
+        close: close,
+        atr: atr,
         timestamp: candle_timestamp(@candles.last)
       )
 
@@ -69,15 +69,27 @@ module Market
       series = CandleSeries.new(symbol: @symbol, interval: '5')
       @candles.each do |c|
         series.add_candle(Candle.new(
-          ts:     to_time(c[:timestamp] || c['timestamp']),
-          open:   (c[:open]   || c['open']   || 0).to_f,
-          high:   (c[:high]   || c['high']   || 0).to_f,
-          low:    (c[:low]    || c['low']    || 0).to_f,
-          close:  (c[:close]  || c['close']  || 0).to_f,
-          volume: (c[:volume] || c['volume'] || 0).to_i
+          ts: to_time(candle_value(c, :timestamp)),
+          open: candle_float(c, :open),
+          high: candle_float(c, :high),
+          low: candle_float(c, :low),
+          close: candle_float(c, :close),
+          volume: candle_integer(c, :volume)
         ))
       end
       series
+    end
+
+    def candle_value(candle, key)
+      candle[key] || candle[key.to_s]
+    end
+
+    def candle_float(candle, key)
+      candle_value(candle, key).to_f
+    end
+
+    def candle_integer(candle, key)
+      candle_value(candle, key).to_i
     end
 
     # ── Factor computation ──────────────────────────────────────────────────
@@ -121,14 +133,15 @@ module Market
 
     def macd_factor(series)
       data = series.macd
-      line, sig = data[:macd], data[:signal]
+      line = data[:macd]
+      sig = data[:signal]
       return Factor.new(name: 'MACD', value: 0, note: 'Insufficient data') unless line && sig
 
       above = line > sig
       Factor.new(
-        name:  'MACD',
+        name: 'MACD',
         value: above ? 1 : -1,
-        note:  above ? "Above signal (#{line.round(4)})" : "Below signal (#{line.round(4)})"
+        note: above ? "Above signal (#{line.round(4)})" : "Below signal (#{line.round(4)})"
       )
     rescue StandardError
       Factor.new(name: 'MACD', value: 0, note: 'Error')
@@ -140,9 +153,9 @@ module Market
 
       above = val > 50
       Factor.new(
-        name:  'RSI',
+        name: 'RSI',
         value: above ? 1 : -1,
-        note:  "#{val.round(1)} \u2192 #{above ? 'above' : 'below'} 50"
+        note: "#{val.round(1)} \u2192 #{above ? 'above' : 'below'} 50"
       )
     rescue StandardError
       Factor.new(name: 'RSI', value: 0, note: 'Error')
@@ -154,9 +167,9 @@ module Market
 
       above = close > val
       Factor.new(
-        name:  'EMA20',
+        name: 'EMA20',
         value: above ? 1 : -1,
-        note:  "#{above ? 'above' : 'below'} EMA20 (#{val.round(2)})"
+        note: "#{above ? 'above' : 'below'} EMA20 (#{val.round(2)})"
       )
     rescue StandardError
       Factor.new(name: 'EMA20', value: 0, note: 'Error')
@@ -168,9 +181,9 @@ module Market
 
       above = close > val
       Factor.new(
-        name:  'EMA50',
+        name: 'EMA50',
         value: above ? 1 : -1,
-        note:  "#{above ? 'above' : 'below'} EMA50 (#{val.round(2)})"
+        note: "#{above ? 'above' : 'below'} EMA50 (#{val.round(2)})"
       )
     rescue StandardError
       Factor.new(name: 'EMA50', value: 0, note: 'Error')
@@ -261,7 +274,7 @@ module Market
       prev_score_str = Rails.cache.read(score_key)
       prev_level     = Rails.cache.read(level_key) || '0'
       prev_bias      = case prev_score_str.to_i
-                       when 1..Float::INFINITY  then :bullish
+                       when 1..Float::INFINITY then :bullish
                        when -Float::INFINITY..-1 then :bearish
                        end
 
@@ -300,9 +313,9 @@ module Market
 
       trs = @candles.each_cons(2).map do |prev, cur|
         [
-          (cur[:high].to_f  - cur[:low].to_f).abs,
-          (cur[:high].to_f  - prev[:close].to_f).abs,
-          (cur[:low].to_f   - prev[:close].to_f).abs
+          (candle_float(cur, :high) - candle_float(cur, :low)).abs,
+          (candle_float(cur, :high) - candle_float(prev, :close)).abs,
+          (candle_float(cur, :low) - candle_float(prev, :close)).abs
         ].max
       end.last(14)
       trs.sum / 14.0
@@ -316,7 +329,19 @@ module Market
       return Time.current if ts.blank?
       return ts if ts.is_a?(Time)
 
-      Time.zone.at(ts.to_i)
+      if ts.is_a?(Numeric)
+        return Time.zone.at(ts > 9_999_999_999 ? ts / 1000.0 : ts)
+      end
+
+      str = ts.to_s.strip
+      return Time.current if str.empty?
+
+      if str.match?(/\A\d+(?:\.\d+)?\z/)
+        epoch = str.to_f
+        return Time.zone.at(epoch > 9_999_999_999 ? epoch / 1000.0 : epoch)
+      end
+
+      Time.zone.parse(str) || Time.current
     end
 
     def fmt(val)

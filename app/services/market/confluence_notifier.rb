@@ -16,7 +16,7 @@ module Market
 
     def call
       return if @signal.nil?
-      return unless ENV['TELEGRAM_CHAT_ID'].present?
+      return if ENV['TELEGRAM_CHAT_ID'].blank?
 
       msg = format_message
       TelegramNotifier.send_message(msg)
@@ -24,7 +24,7 @@ module Market
 
       return unless @signal.level == :high
 
-      chat_id  = ENV['TELEGRAM_CHAT_ID']
+      chat_id  = ENV.fetch('TELEGRAM_CHAT_ID', nil)
       exchange = SYMBOL_EXCHANGE.fetch(@signal.symbol, :nse)
       MarketAnalysisJob.perform_later(chat_id, @signal.symbol, exchange: exchange)
     rescue StandardError => e
@@ -95,11 +95,11 @@ module Market
       v20 = factor_map['EMA20']&.value || 0
       v50 = factor_map['EMA50']&.value || 0
 
-      note = if v20 > 0 && v50 > 0
+      note = if v20.positive? && v50.positive?
                'above EMA20 & EMA50'
-             elsif v20 < 0 && v50 < 0
+             elsif v20.negative? && v50.negative?
                'below EMA20 & EMA50'
-             elsif v20 > 0
+             elsif v20.positive?
                'above EMA20, below EMA50'
              else
                'above EMA50, below EMA20'
@@ -111,7 +111,7 @@ module Market
     def icon(value)
       if value.zero?
         "\u2B1C"
-      elsif (@signal.bias == :bullish && value > 0) || (@signal.bias == :bearish && value < 0)
+      elsif (@signal.bias == :bullish && value.positive?) || (@signal.bias == :bearish && value.negative?)
         "\u2705"
       else
         "\u274C"
@@ -119,7 +119,7 @@ module Market
     end
 
     def factor_map
-      @factor_map ||= @signal.factors.each_with_object({}) { |f, h| h[f.name] = f }
+      @factor_map ||= @signal.factors.index_by(&:name)
     end
 
     def fmt_price(val)
