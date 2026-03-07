@@ -91,10 +91,10 @@ RSpec.describe 'Auth::Dhan' do
   end
 
   describe 'GET /auth/dhan/token', :no_dhan_token do
-    let(:secret) { 'token-api-secret' }
+    let(:secret) { 'token-api-secret-at-least-24-chars' }
 
-    context 'when DHAN_TOKEN_ACCESS_TOKEN is not set' do
-      before { allow(ENV).to receive(:fetch).with('DHAN_TOKEN_ACCESS_TOKEN', nil).and_return(nil) }
+    context 'when token endpoint secret is not configured' do
+      before { allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(nil) }
 
       it 'returns 503 service unavailable' do
         get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
@@ -102,11 +102,20 @@ RSpec.describe 'Auth::Dhan' do
         expect(response).to have_http_status(:service_unavailable)
         expect(response.parsed_body['error']).to eq('Token endpoint not configured')
       end
+
+      it 'in production suggests minimum length in error message' do
+        allow(Rails.env).to receive(:production?).and_return(true)
+
+        get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+
+        expect(response).to have_http_status(:service_unavailable)
+        expect(response.parsed_body['error']).to include('at least 24 characters')
+      end
     end
 
-    context 'when DHAN_TOKEN_ACCESS_TOKEN is set' do
+    context 'when token endpoint secret is configured' do
       before do
-        allow(ENV).to receive(:fetch).with('DHAN_TOKEN_ACCESS_TOKEN', nil).and_return(secret)
+        allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(secret)
         allow(ENV).to receive(:fetch).with('DHAN_CLIENT_ID', nil).and_return('client-456')
         allow(ENV).to receive(:fetch).with('CLIENT_ID', nil).and_return(nil)
       end

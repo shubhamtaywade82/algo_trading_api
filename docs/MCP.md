@@ -9,18 +9,19 @@ The app exposes a **read-only** DhanHQ MCP server over HTTP. AI assistants (e.g.
 | **Local**    | `http://localhost:5002/mcp` (or `PORT` from `.env`)   |
 | **Deployed** | `https://YOUR_APP_HOST/mcp` (use your app’s base URL) |
 
-- **Method**: `POST`
+- **Method**: `POST` (and `GET` for transport compliance; `GET` returns 405 in stateless mode).
 - **Content-Type**: `application/json`
+- **Accept**: `application/json, text/event-stream` (required by MCP Streamable HTTP; missing it returns **406** Not Acceptable).
 - **Body**: JSON-RPC 2.0 request (see examples below).
 
 Empty or invalid JSON body returns **400** with a JSON-RPC parse error.
 
 ### Production: authentication and limits
 
-- **Authentication** — When `MCP_ACCESS_TOKEN` is set in the environment, the server requires `Authorization: Bearer <token>` on every request. Missing or invalid token returns **401** with a JSON-RPC error. When `MCP_ACCESS_TOKEN` is not set (e.g. local dev), no auth is required.
+- **Authentication** — `MCP_ACCESS_TOKEN` is **required**. Set it in the environment; the server rejects every request with **401** Unauthorized when the `Authorization: Bearer <token>` header is missing or does not match. If `MCP_ACCESS_TOKEN` is not set at all, the server returns **503** Service Unavailable with data `MCP_ACCESS_TOKEN must be set`.
 - **Request body size** — Requests with `Content-Length` greater than 1 MB are rejected with **413** (Payload Too Large) and a JSON-RPC error.
 
-Set `MCP_ACCESS_TOKEN` in production (e.g. Render dashboard → Environment) and configure clients to send the same value as a Bearer token. Use a long, random secret (e.g. `openssl rand -hex 32`).
+Set `MCP_ACCESS_TOKEN` in your environment (e.g. `.env` for local, Render dashboard → Environment for production) and configure every client to send the same value as a Bearer token. Use a long, random secret (e.g. `openssl rand -hex 32`).
 
 ## Argument validation
 
@@ -49,6 +50,7 @@ All requests are JSON-RPC 2.0. To call a tool, use `method: "tools/call"` and pa
 ```bash
 curl -s -X POST http://localhost:5002/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -65,6 +67,7 @@ curl -s -X POST http://localhost:5002/mcp \
 ```bash
 curl -s -X POST https://your-app.example.com/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer YOUR_MCP_ACCESS_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_holdings","arguments":{}}}'
 ```
@@ -75,7 +78,7 @@ Responses include `result.content[].text` (often markdown-wrapped JSON) or `erro
 
 ## Available tools
 
-Tools use the app’s Dhan credentials (`CLIENT_ID`, `ACCESS_TOKEN`). When `MCP_ACCESS_TOKEN` is not set, no extra auth is required; when it is set (production), send `Authorization: Bearer <MCP_ACCESS_TOKEN>`.
+Tools use the app’s Dhan credentials (`CLIENT_ID`, `ACCESS_TOKEN`). **Every request must include** `Authorization: Bearer <MCP_ACCESS_TOKEN>`; see [Production: authentication and limits](#production-authentication-and-limits).
 
 ### Portfolio & funds
 
@@ -178,7 +181,7 @@ This MCP is exposed as a **single HTTP POST endpoint** (JSON-RPC 2.0). Use the U
 | Local       | `http://localhost:5002/mcp` (or your `PORT`)                           |
 | Deployed    | Your app’s base URL + `/mcp` (e.g. `https://your-app.example.com/mcp`) |
 
-Configure your client to use that URL as an **HTTP / Streamable HTTP** MCP server. For production, set `MCP_ACCESS_TOKEN` and send it as `Authorization: Bearer <token>` (see [Production](#production-authentication-and-limits)).
+Configure your client to use that URL as an **HTTP / Streamable HTTP** MCP server. Set `MCP_ACCESS_TOKEN` in the app environment and send it as `Authorization: Bearer <token>` (see [Production](#production-authentication-and-limits)).
 
 | Client             | Where to configure                                     | What to set                                   |
 | ------------------ | ------------------------------------------------------ | --------------------------------------------- |
@@ -220,7 +223,7 @@ Claude supports **remote HTTP MCP servers** via Connectors (Streamable HTTP).
    Set the MCP endpoint (e.g. `http://localhost:5002/mcp` for local, or your deployed app URL + `/mcp`).
 
 3. **Auth**
-   If you set `MCP_ACCESS_TOKEN` in production, set the connector auth to **Bearer** with that token; otherwise leave auth empty.
+   If you set `MCP_ACCESS_TOKEN` in the app environment, set the connector auth to **Bearer** with that token (required for this app).
 
 4. Save and enable the connector. Remote MCP/Connectors are available on **Pro, Max, Team, and Enterprise** plans.
 
@@ -244,7 +247,7 @@ Any client that supports **MCP over HTTP** (Streamable HTTP / JSON-RPC POST to o
 1. Add a new MCP server / connection.
 2. Set transport to **HTTP** or **URL**.
 3. Set the server URL (e.g. `http://localhost:5002/mcp` or your deployed app URL + `/mcp`).
-4. When `MCP_ACCESS_TOKEN` is set, send `Authorization: Bearer <token>`; otherwise no auth is required.
+4. When calling the MCP endpoint, send `Authorization: Bearer <MCP_ACCESS_TOKEN>` (required).
 
 If the client asks for **SSE** or **Streamable HTTP**, use the same URL; this endpoint accepts JSON-RPC `POST` and returns JSON.
 
@@ -252,7 +255,7 @@ If the client asks for **SSE** or **Streamable HTTP**, use the same URL; this en
 
 ## Implementation notes
 
-- **Controller**: `McpController#index` — enforces optional Bearer auth when `MCP_ACCESS_TOKEN` is set, rejects oversized body (1 MB limit), returns 400 when body is blank, otherwise forwards to the MCP server.
+- **Controller**: `McpController#index` — requires `MCP_ACCESS_TOKEN` to be set and validates `Authorization: Bearer <token>` on every request; returns 503 if token is unset, 401 if missing/invalid; rejects oversized body (1 MB limit); forwards valid requests to the MCP transport.
 - **Service**: `DhanMcpService` — builds the `MCP::Server`, defines all tools, and uses the DhanHQ gem under the hood. Each tool that takes arguments runs `DhanMcp::ArgumentValidator.validate(tool_name, args)` before calling Dhan; invalid args return an error string in the usual `Error: …` format.
 - **Validator**: `DhanMcp::ArgumentValidator` — validates required/optional args, `exchange_segment` enum, date formats, `interval`, and `page_number`. Returns `nil` if valid, or a short error message string.
 - **Config**: `config/initializers/dhan_mcp.rb` — builds the server at boot and stores it in `Rails.application.config.x.dhan_mcp_server`.

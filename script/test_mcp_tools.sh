@@ -2,13 +2,27 @@
 # Call each MCP tool and check for 200 + JSON-RPC 2.0 response.
 # Usage: ./script/test_mcp_tools.sh [base_url]
 # Example: ./script/test_mcp_tools.sh http://localhost:5002
+# Streamable HTTP requires: Accept: application/json, text/event-stream
+# Requires MCP_ACCESS_TOKEN (set in .env or export). Script sources .env from project root if present.
 # Set TO_DATE / FROM_DATE for date-range tools (default: today / yesterday in local TZ).
 # Set SHOW_RESPONSE=1 to print a short preview of each response (default: 1). Set to 0 to hide.
 # Tools that need Dhan credentials may return "Error: ..." in result; we only check HTTP 200 + jsonrpc.
-
 set -e
-BASE_URL="${1:-http://localhost:3000}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [ -z "${MCP_ACCESS_TOKEN:-}" ] && [ -f "${ROOT_DIR}/.env" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "${ROOT_DIR}/.env"
+  set +a
+fi
+if [ -z "${MCP_ACCESS_TOKEN:-}" ]; then
+  echo "MCP_ACCESS_TOKEN is not set. Set it in .env or export it before running this script."
+  exit 1
+fi
+BASE_URL="${1:-http://localhost:5002}"
 MCP_URL="${BASE_URL}/mcp"
+MCP_AUTH_HEADER="Authorization: Bearer ${MCP_ACCESS_TOKEN}"
 
 # Dates for get_trade_history, get_historical_daily_data, get_intraday_minute_data
 # App requires to_date=today and from_date=last_trading_day; if wrong, result may contain validation error.
@@ -34,7 +48,7 @@ fi
 EXPIRY_SYMBOL="${EXPIRY_SYMBOL:-NIFTY}"
 EXPIRY_SEGMENT="${EXPIRY_SEGMENT:-IDX_I}"
 if [ -z "$EXPIRY" ]; then
-  expiry_resp=$(curl -s -X POST "${MCP_URL}" -H "Content-Type: application/json" \
+  expiry_resp=$(curl -s -X POST "${MCP_URL}" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "${MCP_AUTH_HEADER}" \
     -d "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"tools/call\",\"params\":{\"name\":\"get_expiry_list\",\"arguments\":{\"exchange_segment\":\"$EXPIRY_SEGMENT\",\"symbol\":\"$EXPIRY_SYMBOL\"}}}")
   if command -v jq >/dev/null 2>&1; then
     raw=$(echo "$expiry_resp" | jq -r '.result.content[0].text // empty')
@@ -57,7 +71,7 @@ run_tool() {
   local name="$1"
   local body="$2"
   local resp code body_only
-  resp=$(curl -s -w "\n%{http_code}" -X POST "${MCP_URL}" -H "Content-Type: application/json" -d "$body")
+  resp=$(curl -s -w "\n%{http_code}" -X POST "${MCP_URL}" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "${MCP_AUTH_HEADER}" -d "$body")
   code=$(echo "$resp" | tail -n1)
   body_only=$(echo "$resp" | sed '$d')
   if [ "$code" = "200" ] && echo "$body_only" | grep -q '"jsonrpc":"2.0"'; then

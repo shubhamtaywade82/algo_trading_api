@@ -59,9 +59,9 @@ module Auth
     private
 
     def authenticate_token_request
-      expected = ENV.fetch('DHAN_TOKEN_ACCESS_TOKEN', nil)
+      expected = Auth::DhanTokenEndpointSecret.configured_secret
       if expected.blank?
-        render json: { error: 'Token endpoint not configured' }, status: :service_unavailable
+        render json: { error: token_endpoint_config_error }, status: :service_unavailable
         return
       end
 
@@ -69,6 +69,13 @@ module Auth
       return if ActiveSupport::SecurityUtils.secure_compare(bearer, expected)
 
       render json: { error: 'Invalid or missing Authorization: Bearer token' }, status: :unauthorized
+    end
+
+    def token_endpoint_config_error
+      return 'Token endpoint not configured' unless Rails.env.production?
+
+      'Token endpoint not configured. Set a secret of at least 24 characters ' \
+        '(ENV DHAN_TOKEN_ACCESS_TOKEN or credentials dhan.token_endpoint_secret).'
     end
 
     def dhan_client_id

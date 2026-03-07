@@ -3,8 +3,11 @@
     "dhan": {
       "url": "http://localhost:5002/mcp"
     },
-    "dhan-render": {
-      "url": "https://algo-trading-api.onrender.com/mcp"
+    "render": {
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_n5ZnLm8bkN1he4OTNU0oDZTcPZxL"
+      }
     }
   }
 }
