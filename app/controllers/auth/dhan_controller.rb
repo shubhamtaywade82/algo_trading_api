@@ -70,7 +70,7 @@ module Auth
       ENV.fetch('DHAN_CLIENT_ID', nil) || ENV.fetch('CLIENT_ID', nil)
     end
 
-    # Rate-limited: at most once per hour when token endpoint returns 404.
+    # Rate-limited: at most once per hour when token endpoint returns 404 or 503 (no/missing token).
     def notify_telegram_token_missing_once
       return unless ENV['TELEGRAM_BOT_TOKEN'].present? && ENV['TELEGRAM_CHAT_ID'].present?
 

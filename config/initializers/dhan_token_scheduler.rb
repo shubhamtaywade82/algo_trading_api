@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'timeout'
+
 # Scheduled token refresh so TokenManager.current_token! runs even when no API calls occur.
 # Without this, when token expires and no jobs/requests hit Dhan, refresh never runs.
 return if Rails.env.test?
@@ -11,7 +13,10 @@ Rails.application.config.after_initialize do
 
   Thread.new do
     loop do
-      Dhan::TokenManager.current_token!
+      Timeout.timeout(60) { Dhan::TokenManager.current_token! }
+      sleep 5.minutes
+    rescue Timeout::Error => e
+      Rails.logger.error "[DHAN] Scheduled refresh timed out: #{e.message}"
       sleep 5.minutes
     rescue StandardError => e
       Rails.logger.error "[DHAN] Scheduled refresh failed: #{e.message}"

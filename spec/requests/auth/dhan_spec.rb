@@ -134,10 +134,10 @@ RSpec.describe 'Auth::Dhan' do
             get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
           end
 
-          it 'returns error and asks to re-login' do
-            expect(response.status).to be_in([503, 500])
-            expect(response.parsed_body['error']).to be_present
-            expect(response.parsed_body['error'].to_s).to match(/Token unavailable|Re-login|Internal server error/)
+          it 'returns 503 and asks to re-login' do
+            expect(response).to have_http_status(:service_unavailable)
+            expect(response.parsed_body['error']).to include('Token unavailable')
+            expect(response.parsed_body['error']).to include('Re-login')
           end
         end
 
