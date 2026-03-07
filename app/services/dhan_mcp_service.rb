@@ -47,7 +47,7 @@ class DhanMcpService
   private
 
   def dhan_configured?
-    client_id_present? && DhanAccessToken.valid?
+    client_id_present?
   end
 
   def client_id_present?

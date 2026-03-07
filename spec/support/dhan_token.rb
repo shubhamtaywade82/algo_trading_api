@@ -5,7 +5,7 @@
 RSpec.configure do |config|
   config.before do |example|
     next if example.metadata[:no_dhan_token]
-    next if DhanAccessToken.valid?
+    next if DhanAccessToken.exists?
 
     DhanAccessToken.create!(
       access_token: 'test-token',

@@ -13,9 +13,10 @@ module Auth
       render plain: "Dhan login failed: #{e.message}", status: :unprocessable_entity
     end
 
-    # Secured API: returns the latest active Dhan access token (farthest expiry). Requires Bearer token.
+    # Secured API: returns the latest Dhan access token. Ensures token via TokenManager (refresh if needed), then serves from DB.
     def token
-      record = DhanAccessToken.active
+      Dhan::TokenManager.current_token!
+      record = DhanAccessToken.first
       if record.blank?
         notify_telegram_token_missing_once
         return render json: { error: 'No valid Dhan token. Re-login at /auth/dhan/login' }, status: :not_found
@@ -26,6 +27,10 @@ module Auth
         client_id: dhan_client_id,
         expires_at: record.expires_at.iso8601
       }
+    rescue StandardError => e
+      Rails.logger.error("[Auth::DhanController] token failed: #{e.message}")
+      notify_telegram_token_missing_once
+      render json: { error: 'Token unavailable. Re-login at /auth/dhan/login' }, status: :service_unavailable
     end
 
     # STEP 3: Dhan redirects here with tokenId; exchange for access token and store.

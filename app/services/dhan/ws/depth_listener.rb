@@ -15,7 +15,9 @@ module Dhan
       end
 
       def self.ws_token
-        DhanAccessToken.active&.access_token || ENV.fetch('ACCESS_TOKEN', nil)
+        Dhan::TokenManager.current_token!
+      rescue StandardError
+        ENV.fetch('ACCESS_TOKEN', nil)
       end
 
       def self.ws_client_id

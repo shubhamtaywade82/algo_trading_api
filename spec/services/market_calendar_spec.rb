@@ -7,6 +7,7 @@ RSpec.describe MarketCalendar do
   let(:monday)    { Date.new(2026, 1, 26) }
   let(:tuesday)   { Date.new(2026, 1, 27) }
   let(:wednesday) { Date.new(2026, 1, 28) }
+  let(:thursday)  { Date.new(2026, 1, 29) }
   let(:friday)   { Date.new(2026, 1, 30) }
   let(:saturday) { Date.new(2026, 1, 31) }
   let(:sunday)   { Date.new(2026, 2, 1) }
@@ -155,11 +156,13 @@ RSpec.describe MarketCalendar do
 
     context 'when n is 2' do
       it 'returns the previous trading day' do
-        expect(described_class.from_date_for_last_n_trading_days(friday, 2)).to eq(wednesday)
+        # Fri 30: last 2 trading days = Thu 29 and Fri 30 => from_date = Thu 29
+        expect(described_class.from_date_for_last_n_trading_days(friday, 2)).to eq(thursday)
       end
 
       it 'when to_date is Monday returns previous Friday' do
-        expect(described_class.from_date_for_last_n_trading_days(monday, 2)).to eq(friday)
+        # Mon 26: last 2 trading days = Fri 23 and Mon 26 => from_date = Fri 23
+        expect(described_class.from_date_for_last_n_trading_days(monday, 2)).to eq(Date.new(2026, 1, 23))
       end
     end
 
@@ -186,8 +189,8 @@ RSpec.describe MarketCalendar do
       end
 
       it 'with calendar_days 2 returns 2 calendar days back, adjusted to trading day' do
-        # Tuesday - 2 = Sunday -> last trading day = Friday
-        expect(described_class.last_trading_day_before(tuesday, calendar_days: 2)).to eq(friday)
+        # Tuesday Jan 27 - 2 = Jan 25 (Sunday) -> last trading day = Fri Jan 23
+        expect(described_class.last_trading_day_before(tuesday, calendar_days: 2)).to eq(Date.new(2026, 1, 23))
       end
 
       it 'with calendar_days 10 returns last trading day on or before (ref - 10)' do

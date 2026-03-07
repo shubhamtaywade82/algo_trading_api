@@ -27,7 +27,7 @@ RSpec.describe Dhan::TokenManager do
   end
 
   describe '.current_token!' do
-    context 'when no token exists in DB' do
+    context 'when no token exists in DB', :no_dhan_token do
       it 'generates a new token via TOTP' do
         expect(DhanHQ::Auth).to receive(:generate_access_token).once
         token = described_class.current_token!
@@ -36,7 +36,7 @@ RSpec.describe Dhan::TokenManager do
       end
     end
 
-    context 'when an expired token exists in DB' do
+    context 'when an expired token exists in DB', :no_dhan_token do
       before do
         DhanAccessToken.create!(access_token: 'expired_token', expires_at: 1.hour.ago)
       end
@@ -48,7 +48,7 @@ RSpec.describe Dhan::TokenManager do
       end
     end
 
-    context 'when a valid token exists in DB but the local memoization is stale (the bug)' do
+    context 'when a valid token exists in DB but the local memoization is stale (the bug)', :no_dhan_token do
       it 'picks up the new token from the database' do
         # 1. First call loads a token into memoization
         DhanAccessToken.create!(access_token: 'valid_token_1', expires_at: 1.hour.from_now)

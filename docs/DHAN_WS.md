@@ -14,7 +14,7 @@ The gem provides:
 
 ### Configuration in this app
 
-- **Token:** `config/initializers/dhanhq.rb` injects `access_token` from `DhanAccessToken.active` (DB). The gem’s WS client calls `resolved_access_token`, which uses that, so **no extra config** for token.
+- **Token:** WS client uses token from `Dhan::TokenManager.current_token!` (via `DhanAccessToken` in DB). The gem’s WS client calls `resolved_access_token`; ensure token is set before connecting.
 - **Client ID:** Same initializer sets `DhanHQ.configuration.client_id` from `DHAN_CLIENT_ID` or `CLIENT_ID`.
 
 So any code that uses `DhanHQ::WS.connect`, `DhanHQ::WS::Orders.connect`, or `DhanHQ::WS::MarketDepth.connect` in this app automatically uses the same token and client_id as the rest of the app.

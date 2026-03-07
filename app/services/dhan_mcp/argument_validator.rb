@@ -159,9 +159,9 @@ module DhanMcp
       to_d = parse_date(@args[:to_date])
       return nil unless from_d && to_d
 
-      return 'from_date must be before to_date.' unless from_d < to_d
       return 'from_date must be a trading day (no weekend or market holiday).' unless MarketCalendar.trading_day?(from_d)
       return 'to_date must be a trading day (no weekend or market holiday).' unless MarketCalendar.trading_day?(to_d)
+      return 'from_date must be before to_date.' unless from_d < to_d
 
       nil
     end

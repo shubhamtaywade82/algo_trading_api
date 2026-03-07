@@ -1,7 +1,8 @@
 # app/services/dhan/token_manager.rb
 
-class TokenManager
-  BUFFER_MINUTES = 2
+module Dhan
+  class TokenManager
+  BUFFER_MINUTES = 30
   LOCK_KEY = 424_242
   NOTIFY_CACHE_KEY = "dhan_token_refresh_notify_lock"
 
@@ -149,6 +150,7 @@ class TokenManager
         pin: ENV.fetch('DHAN_PIN'),
         totp_secret: ENV.fetch('DHAN_TOTP_SECRET')
       }
+    end
     end
   end
 end

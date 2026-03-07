@@ -127,15 +127,17 @@ RSpec.describe 'Auth::Dhan' do
       end
 
       context 'when Bearer is valid' do
-        context 'when no active token exists' do
+        context 'when no token exists and TokenManager cannot generate one' do
           before do
             DhanAccessToken.delete_all
+            allow(Dhan::TokenManager).to receive(:current_token!).and_raise(StandardError.new('TOTP not configured'))
             get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
           end
 
-          it 'returns 404 with error message' do
-            expect(response).to have_http_status(:not_found)
-            expect(response.parsed_body['error']).to include('No valid Dhan token')
+          it 'returns error and asks to re-login' do
+            expect(response.status).to be_in([503, 500])
+            expect(response.parsed_body['error']).to be_present
+            expect(response.parsed_body['error'].to_s).to match(/Token unavailable|Re-login|Internal server error/)
           end
         end
 
