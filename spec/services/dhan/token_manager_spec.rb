@@ -15,11 +15,10 @@ RSpec.describe Dhan::TokenManager do
     allow(ENV).to receive(:fetch).with('DHAN_TOTP_SECRET').and_return(totp_secret)
 
     # Mock DhanHQ API
-    allow(DhanHQ::Auth).to receive(:generate_totp).and_return('123456')
-    allow(DhanHQ::Auth).to receive(:generate_access_token).and_return({
-      'accessToken' => new_token,
-      'expiryTime' => expiry_time
-    })
+    allow(DhanHQ::Auth).to receive_messages(generate_totp: '123456', generate_access_token: {
+                                              'accessToken' => new_token,
+                                              'expiryTime' => expiry_time
+                                            })
 
     # Clear cache and DB
     DhanAccessToken.delete_all

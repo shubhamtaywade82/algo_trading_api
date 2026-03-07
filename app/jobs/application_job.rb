@@ -14,7 +14,7 @@ class ApplicationJob < ActiveJob::Base
 
   def ensure_dhan_token!
     Dhan::TokenManager.current_token!
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error("[DHAN] Token ensure failed: #{e.class} - #{e.message}")
     raise
   end

@@ -56,7 +56,8 @@ module AlertProcessors
     #
     # @return [Float] The current available balance in the trading account.
     def available_balance
-      return 100000 if ENV['PAPER_MODE'] == "1"
+      return 100_000 if ENV['PAPER_MODE'] == '1'
+
       @available_balance ||= begin
         funds = DhanHQ::Models::Funds.fetch
         funds.available_balance.to_f
