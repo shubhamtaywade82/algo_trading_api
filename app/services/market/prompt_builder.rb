@@ -1,5 +1,5 @@
 module Market
-  class PromptBuilder
+  class PromptBuilder # rubocop:disable Metrics/ClassLength
     class << self
       MARKET_ANALYSIS_SYSTEM_PROMPT = <<~PROMPT.freeze
         You are OptionsTrader-INDIA v1, a senior options-buyer specializing in Indian NSE weekly expiries for NIFTY, BANKNIFTY, FINNIFTY and SENSEX.

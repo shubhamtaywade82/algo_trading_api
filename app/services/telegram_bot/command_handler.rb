@@ -168,7 +168,7 @@ module TelegramBot
       notify_analysis_error(e)
     end
 
-    def options_avoid_check
+    def options_avoid_check # rubocop:disable Metrics/AbcSize, Metrics/PerceivedComplexity
       typing_ping
       inst = instrument_for('NIFTY', :nse)
       vix_inst = Instrument.find_by(security_id: 21)
@@ -209,7 +209,7 @@ module TelegramBot
       )
     end
 
-    def oi_snapshot
+    def oi_snapshot # rubocop:disable Metrics/AbcSize, Metrics/PerceivedComplexity
       typing_ping
       inst = instrument_for('NIFTY', :nse)
       return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid) unless inst
@@ -271,7 +271,7 @@ module TelegramBot
       notify_analysis_error(e)
     end
 
-    def expiry_roadmap
+    def expiry_roadmap # rubocop:disable Metrics/AbcSize, Metrics/PerceivedComplexity
       typing_ping
       inst = instrument_for('NIFTY', :nse)
       return TelegramNotifier.send_message('⚠️ NIFTY instrument not found.', chat_id: @cid) unless inst

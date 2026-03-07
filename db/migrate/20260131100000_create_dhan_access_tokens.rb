@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# Creates dhan_access_tokens table for TokenManager persistence.
 class CreateDhanAccessTokens < ActiveRecord::Migration[8.0]
   def change
     create_table :dhan_access_tokens do |t|

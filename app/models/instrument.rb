@@ -128,7 +128,7 @@ class Instrument < ApplicationRecord
     nil
   end
 
-  def historical_ohlc(from_date: nil, to_date: nil, oi: false)
+  def historical_ohlc(_from_date: nil, to_date: nil, oi: false)
     instrument_code = resolve_instrument_code
     to_date_final = to_date.presence&.to_s || Time.zone.today.to_s
     params = {

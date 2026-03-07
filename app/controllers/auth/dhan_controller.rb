@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Auth
+  # Handles Dhan OAuth-style consent flow and token endpoint for API access.
   class DhanController < ApplicationController
     before_action :authenticate_token_request, only: :token
 
@@ -29,7 +30,11 @@ module Auth
       }
     rescue StandardError => e
       Rails.logger.error("[Auth::DhanController] token failed: #{e.message}")
-      notify_telegram_token_missing_once
+      begin
+        notify_telegram_token_missing_once
+      rescue StandardError
+        nil
+      end
       render json: { error: 'Token unavailable. Re-login at /auth/dhan/login' }, status: :service_unavailable
     end
 

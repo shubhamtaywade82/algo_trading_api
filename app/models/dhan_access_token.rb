@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# Stores Dhan API access token and expiry; used by TokenManager and legacy .active/.valid?.
 class DhanAccessToken < ApplicationRecord
   CACHE_KEY = 'dhan_access_token/active'
   CACHE_TTL = 30.seconds

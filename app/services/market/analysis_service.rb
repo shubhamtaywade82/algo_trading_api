@@ -132,7 +132,7 @@ module Market
     def previous_daily_ohlc
       Rails.cache.fetch("pd-ohlc:#{instrument.id}", expires_in: 15.minutes) do
         today = Time.zone.today
-        to_date = (defined?(MarketCalendar) && MarketCalendar.respond_to?(:today_or_last_trading_day) ? MarketCalendar.today_or_last_trading_day : today) || today
+        to_date = (MarketCalendar.respond_to?(:today_or_last_trading_day) ? MarketCalendar.today_or_last_trading_day : today) || today
         from_date = safe_from_date_for_prev_ohlc(to_date)
         from_date = fallback_from_date(to_date) if from_date.blank?
         bars = instrument.historical_ohlc(

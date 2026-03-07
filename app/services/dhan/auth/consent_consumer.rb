@@ -18,7 +18,7 @@ module Dhan
       def call
         raise 'DHAN_API_KEY and DHAN_API_SECRET are required' if app_id.blank? || app_secret.blank?
 
-        response = get_consume_consent
+        response = fetch_consent
         body = JSON.parse(response.body, symbolize_names: true)
 
         raise_consume_error(body) unless response.is_a?(Net::HTTPSuccess)
@@ -33,7 +33,7 @@ module Dhan
 
       attr_reader :token_id
 
-      def get_consume_consent
+      def fetch_consent
         uri = URI("#{BASE}/app/consumeApp-consent?tokenId=#{CGI.escape(token_id)}")
         req = Net::HTTP::Get.new(uri)
         req['app_id'] = app_id

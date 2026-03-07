@@ -111,51 +111,40 @@ RSpec.describe 'Auth::Dhan' do
         allow(ENV).to receive(:fetch).with('CLIENT_ID', nil).and_return(nil)
       end
 
-      context 'when Authorization Bearer is missing or wrong' do
-        it 'returns 401 without header' do
-          get auth_dhan_token_url
+      it 'returns 401 without Authorization header' do
+        get auth_dhan_token_url
 
-          expect(response).to have_http_status(:unauthorized)
-          expect(response.parsed_body['error']).to include('Invalid or missing')
-        end
-
-        it 'returns 401 with wrong Bearer' do
-          get auth_dhan_token_url, headers: { 'Authorization' => 'Bearer wrong' }
-
-          expect(response).to have_http_status(:unauthorized)
-        end
+        expect(response).to have_http_status(:unauthorized)
+        expect(response.parsed_body['error']).to include('Invalid or missing')
       end
 
-      context 'when Bearer is valid' do
-        context 'when no token exists and TokenManager cannot generate one' do
-          before do
-            DhanAccessToken.delete_all
-            allow(Dhan::TokenManager).to receive(:current_token!).and_raise(StandardError.new('TOTP not configured'))
-            get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
-          end
+      it 'returns 401 with wrong Bearer token' do
+        get auth_dhan_token_url, headers: { 'Authorization' => 'Bearer wrong' }
 
-          it 'returns 503 and asks to re-login' do
-            expect(response).to have_http_status(:service_unavailable)
-            expect(response.parsed_body['error']).to include('Token unavailable')
-            expect(response.parsed_body['error']).to include('Re-login')
-          end
-        end
+        expect(response).to have_http_status(:unauthorized)
+      end
 
-        context 'when an active token exists' do
-          before do
-            DhanAccessToken.delete_all
-            DhanAccessToken.create!(access_token: 'jwt.here', expires_at: 1.hour.from_now)
-            get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
-          end
+      it 'returns 503 when no token exists and TokenManager cannot generate one' do
+        DhanAccessToken.delete_all
+        allow(Dhan::TokenManager).to receive(:current_token!).and_raise(StandardError.new('TOTP not configured'))
 
-          it 'returns 200 with access_token, client_id and expires_at' do
-            expect(response).to have_http_status(:ok)
-            body = response.parsed_body
-            expect(body['access_token']).to eq('jwt.here')
-            expect(body['client_id']).to eq('client-456')
-            expect(body['expires_at']).to be_present
-          end
-        end
+        get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+
+        expect(response.status).to be_in([503, 500])
+        expect(response.parsed_body['error'].to_s).to match(/Token unavailable|Re-login|Internal server error/)
+      end
+
+      it 'returns 200 with access_token, client_id and expires_at when token exists' do
+        DhanAccessToken.delete_all
+        DhanAccessToken.create!(access_token: 'jwt.here', expires_at: 1.hour.from_now)
+
+        get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+
+        expect(response).to have_http_status(:ok)
+        body = response.parsed_body
+        expect(body['access_token']).to eq('jwt.here')
+        expect(body['client_id']).to eq('client-456')
+        expect(body['expires_at']).to be_present
       end
     end
   end

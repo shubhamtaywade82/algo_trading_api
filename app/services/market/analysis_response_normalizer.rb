@@ -42,7 +42,7 @@ module Market
       text << "\n\nBias: #{bias}"
     end
 
-    def computed_close_range
+    def computed_close_range # rubocop:disable Metrics/CyclomaticComplexity
       mid = @md.dig(:boll, :middle)&.to_f
       atr = @md[:atr]&.to_f
       ltp = @md[:ltp]&.to_f
@@ -92,7 +92,7 @@ module Market
       text.gsub!(BIAS_CALLS_BEARISH, '**Bias:** PUTS due to super-trend bearish')
     end
 
-    def correct_sl_t1_rupees!(text)
+    def correct_sl_t1_rupees!(text) # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       lines = text.each_line.map do |line|
         has_sl = line.match?(SL_PATTERN)
         has_t1 = line.match?(T1_PATTERN)

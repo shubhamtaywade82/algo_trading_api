@@ -2,6 +2,7 @@
 
 module Dhan
   module Auth
+    # Exchanges OAuth code for Dhan access token (legacy flow).
     class TokenExchanger
       URL = 'https://api.dhan.co/v2/token'
 
