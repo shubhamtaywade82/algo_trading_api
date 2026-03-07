@@ -114,7 +114,7 @@ run_tool "get_instrument" '{"jsonrpc":"2.0","id":10,"method":"tools/call","param
 run_tool "get_instrument NIFTY" '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"get_instrument","arguments":{"exchange_segment":"IDX_I","symbol":"NIFTY"}}}' || ((failed++))
 run_tool "get_market_ohlc" '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"get_market_ohlc","arguments":{"exchange_segment":"NSE_EQ","symbol":"RELIANCE"}}}' || ((failed++))
 run_tool "get_expiry_list" '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"get_expiry_list","arguments":{"exchange_segment":"IDX_I","symbol":"NIFTY"}}}' || ((failed++))
-run_tool "get_option_chain" "{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"tools/call\",\"params\":{\"name\":\"get_option_chain\",\"arguments\":{\"exchange_segment\":\"NSE_FNO\",\"symbol\":\"NIFTY\",\"expiry\":\"$EXPIRY\"}}}" || ((failed++))
+run_tool "get_option_chain" "{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"tools/call\",\"params\":{\"name\":\"get_option_chain\",\"arguments\":{\"exchange_segment\":\"IDX_I\",\"symbol\":\"NIFTY\",\"expiry\":\"$EXPIRY\"}}}" || ((failed++))
 
 # Date-range tools (may return validation error if TO_DATE/FROM_DATE don't match app calendar)
 run_tool "get_historical_daily_data" "{\"jsonrpc\":\"2.0\",\"id\":15,\"method\":\"tools/call\",\"params\":{\"name\":\"get_historical_daily_data\",\"arguments\":{\"exchange_segment\":\"NSE_EQ\",\"symbol\":\"RELIANCE\",\"from_date\":\"$FROM_D\",\"to_date\":\"$TO_D\"}}}" || ((failed++))
