@@ -4,9 +4,13 @@ The Dhan API scrip master CSV is imported by `InstrumentsImporter`. Entry points
 
 - **`bin/rails import:instruments`** — calls `import_from_url` (fetch with 24h cache, import, persist stats to AppSetting).
 - **`InstrumentsImporter.import(file_path)`** — when `file_path` is `nil`, behaves like `import_from_url`; when provided, reads that file and runs `import_from_csv` without recording stats.
-- **`InstrumentsImporter.import_from_csv(csv_content)`** — parses CSV, runs `build_batches` → `import_instruments!` → `import_derivatives!`, returns a summary hash.
+- **`InstrumentsImporter.import_from_csv(csv_content)`** — orchestrates the modular pipeline: `InstrumentsImport::Parser` → `InstrumentsImport::Upserter` (instruments) → `InstrumentsImport::Mapper` (linking) → `InstrumentsImport::Upserter` (derivatives).
 
-**Reference implementation:** `algo_scalper_api` — `app/services/instruments_importer.rb` (import_from_url, import_from_csv, fetch_csv_with_cache, build_batches, attach_instrument_ids via InstrumentTypeMapping.underlying_for). This app keeps column name **`instrument`** (not `instrument_code`), supports NSE/BSE/MCX, and uses a smaller schema (no margin/BO/CO fields). CSV is cached at `tmp/dhan_scrip_master.csv` for 24 hours.
+**Reference implementation:** `algo_scalper_api` — `app/services/instruments_importer.rb`. This app uses a modular pipeline in `app/services/instruments_import/`:
+- `Fetcher`: Handles HTTP fetching and 24h caching.
+- `Parser`: Normalizes CSV rows into attribute hashes.
+- `Mapper`: Resolves `instrument_id` for derivatives using `InstrumentTypeMapping`.
+- `Upserter`: Performs high-speed batch imports using `activerecord-import`.
 
 ## Data model
 

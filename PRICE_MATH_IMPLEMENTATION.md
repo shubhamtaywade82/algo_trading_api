@@ -54,16 +54,21 @@ The module provides the following methods:
    - **Options chain display (LTP, IV, OI, Greeks) - KEPT as .round(2)**
 
 9. **`app/services/market/analysis_updater.rb`**
+   - Refactored to use `Dhan::MarketDataService` and `CandleSeries` for data normalization.
    - **ATR calculations and logging - KEPT as .round(2)**
 
 10. **`app/services/market/prompt_builder.rb`**
     - **Options chain formatting - KEPT as .round(2)**
 
+11. **`app/services/dhan/market_data_service.rb`**
+    - Centralized access point for market data.
+    - LTP and other price values are fetched and potentially rounded here before use in the app.
+
 ### Data Models (DhanHQ API Values)
-11. **`app/models/candle.rb`**
+12. **`app/models/candle.rb`**
     - OHLC initialization - **These are actual price data**
 
-12. **`app/models/quote.rb`**
+13. **`app/models/quote.rb`**
     - LTP display formatting - **This is actual price data**
 
 ### Other Services (DhanHQ API Values)

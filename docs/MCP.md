@@ -221,9 +221,10 @@ If the client asks for **SSE** or **Streamable HTTP**, use the same URL; this en
 ## Implementation notes
 
 - **Controller**: `McpController#handle` — requires `MCP_ACCESS_TOKEN`; validates `Authorization: Bearer <token>`; rejects oversized body (1 MB); parses JSON and dispatches to `Mcp::Dispatcher`.
-- **Dispatcher**: `Mcp::Dispatcher` — routes `initialize`, `notifications/initialized`, `tools/list`, `tools/call`; returns JSON-RPC 2.0 response or `nil` for notifications.
+- **Dispatcher**: `Mcp::Dispatcher` — routes `initialize`, `notifications/initialized`, `tools/list`, `tools/call`.
 - **Handlers**: `Mcp::Handlers::Initialize`, `ListTools`, `CallTool` — lifecycle, tool list, and tool execution.
-- **Tool registry**: `Mcp::ToolRegistry` — lists the 8 tool classes in `app/services/mcp/tools/`.
+- **Tool registry**: `Mcp::ToolRegistry` — orchestrates tool classes in `app/services/mcp/tools/`.
+- **DhanHQ Modular Tools**: The app also contains a modular MCP implementation in `app/services/dhan_mcp/` (Portfolio, Order, Market, Account tools) used for raw broker access via the `mcp` gem.
 - **Route**: `POST /mcp` → `mcp#handle`; `GET /mcp` → 405.
 
 **Running MCP specs:** `bundle exec rspec spec/requests/mcp_spec.rb` (requires local or allowed test DB; see DatabaseCleaner safeguard if using remote DATABASE_URL).

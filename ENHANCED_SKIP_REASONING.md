@@ -137,22 +137,21 @@ Filter Details: 19500 (Delta low, Outside ATM range); 19600 (IV zero, Price zero
 
 ## Technical Implementation
 
-### **Files Modified**
-1. **`app/services/option/chain_analyzer.rb`**
-   - Enhanced `analyze` method
-   - Added `perform_validation_checks`
-   - Added `check_trend_momentum`
-   - Added `get_strike_filter_summary`
+### **Modular Architecture (SOLID Refactor)**
+The `ChainAnalyzer` has been decomposed into specialized modules under `Option::ChainAnalyzerModules` to improve maintainability and cohesion:
 
-2. **`app/services/alert_processors/index.rb`**
-   - Enhanced `build_detailed_skip_reason`
-   - Updated skip logic to use detailed reasons
+1. **`Validations`**: Handles all pre-trade gating checks (IV rank, Theta risk, Trend/ADX confirmation).
+2. **`StrikeFiltering`**: Manages the dynamic logic for filtering tradable strikes based on delta and ATM range.
+3. **`Scoring`**: Encapsulates the algorithmic scoring system for strike selection.
+4. **`TechnicalAnalysis`**: Integrates with historical data and indicator services (e.g., `HolyGrail`).
 
 ### **Key Methods**
-- `perform_validation_checks`: Performs all validation checks
-- `check_trend_momentum`: Validates trend and momentum alignment
-- `get_strike_filter_summary`: Provides strike filtering details
-- `build_detailed_skip_reason`: Builds comprehensive skip messages
+- `perform_validation_checks`: Orchestrated by `Validations` module.
+- `check_trend_momentum`: Co-located in `Validations`.
+- `gather_filtered_strikes`: Managed by `StrikeFiltering`.
+- `score_for`: Core logic in `Scoring` module.
+- `get_strike_filter_summary`: Diagnostics provided by `StrikeFiltering`.
+- `build_detailed_skip_reason`: Used by `AlertProcessors::Index` to communicate failures.
 
 ## Future Enhancements
 

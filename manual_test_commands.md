@@ -2,6 +2,20 @@
 
 ## Quick Test Commands
 
+### 📊 Market Sentiment & Strategy Analysis
+Test the new sentiment orchestration service:
+
+```bash
+# NIFTY intraday analysis
+curl -s "http://localhost:5002/market_sentiment?index=NIFTY&strategy_type=intraday" | jq
+
+# BANKNIFTY swing analysis
+curl -s "http://localhost:5002/market_sentiment?index=BANKNIFTY&strategy_type=swing" | jq
+
+# SENSEX analysis
+curl -s "http://localhost:5002/market_sentiment?index=SENSEX" | jq
+```
+
 ### Test NIFTY with Different Capital Amounts
 
 ```bash
