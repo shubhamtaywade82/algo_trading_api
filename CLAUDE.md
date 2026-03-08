@@ -66,3 +66,11 @@ Override via env: `ALLOC_PCT`, `RISK_PER_TRADE_PCT`, `DAILY_MAX_LOSS_PCT`.
 - Use `after_commit`, never `after_save`, for side effects (emails, queues)
 - `Time.current` everywhere, never `Time.now`
 - `rescue StandardError`, never `rescue Exception`
+
+## Ruby Mastery
+
+Use `ruby_mastery` to understand and monitor the codebase:
+- `ruby_mastery architecture score .`: Project health and domain structure.
+- `ruby_mastery architect .`: Structural summary for refactor planning.
+- `ruby_mastery architecture graph .`: Dependency visualization.
+- `ruby_mastery analyze .`: Static analysis for idioms and violations.
