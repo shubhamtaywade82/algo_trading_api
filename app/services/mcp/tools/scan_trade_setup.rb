@@ -2,6 +2,7 @@
 
 module Mcp
   module Tools
+    # Tool for running the strategy scanner via MCP.
     class ScanTradeSetup
       def self.name
         'scan_trade_setup'
@@ -26,30 +27,49 @@ module Mcp
       end
 
       def self.execute(args)
-        index_symbol = args['index_symbol'] || args[:index_symbol]
-        raise ArgumentError, 'index_symbol is required' if index_symbol.blank?
+        opts = args.with_indifferent_access
+        instrument = resolve_instrument!(opts[:index_symbol])
+        expiry_date = resolve_expiry!(instrument, opts[:expiry_date])
 
-        instrument = Instrument.segment_index.find_by(underlying_symbol: index_symbol.to_s.upcase)
-        raise "Instrument not found: #{index_symbol}" unless instrument
-
-        expiry_date = args['expiry_date'] || args[:expiry_date]
-        expiry_date = instrument.expiry_list.find { |e| e == expiry_date } || instrument.expiry_list.first if expiry_date.present?
-
-        params = {
-          index_symbol: index_symbol,
-          expiry_date: expiry_date,
-          strategy_type: args['strategy_type'] || args[:strategy_type] || 'intraday',
-          instrument_type: args['instrument_type'] || args[:instrument_type]
-        }.compact
+        params = build_params(opts, expiry_date)
 
         strategies = Option::SuggestStrategyService.call(
-          index_symbol: index_symbol,
+          index_symbol: opts[:index_symbol],
           expiry_date: expiry_date,
           params: params
         )
+
         { strategies: strategies }
       rescue StandardError => e
         { error: e.message }
+      end
+
+      class << self
+        private
+
+        def resolve_instrument!(index_symbol)
+          raise ArgumentError, 'index_symbol is required' if index_symbol.blank?
+
+          instrument = Instrument.segment_index.find_by(underlying_symbol: index_symbol.to_s.upcase)
+          raise "Instrument not found: #{index_symbol}" unless instrument
+
+          instrument
+        end
+
+        def resolve_expiry!(instrument, requested_expiry)
+          return instrument.expiry_list.find { |e| e == requested_expiry } || instrument.expiry_list.first if requested_expiry.present?
+
+          nil # Or whatever default logic is appropriate here if expiry is optional and nil means use first somewhere else
+        end
+
+        def build_params(opts, expiry_date)
+          {
+            index_symbol: opts[:index_symbol],
+            expiry_date: expiry_date,
+            strategy_type: opts[:strategy_type] || 'intraday',
+            instrument_type: opts[:instrument_type]
+          }.compact
+        end
       end
     end
   end

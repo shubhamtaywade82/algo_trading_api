@@ -167,14 +167,19 @@ Full docs, argument shapes, and example `curl` calls: **[docs/MCP.md](docs/MCP.m
 ### Core Components
 
 #### Alert Processors
-- **`AlertProcessors::Index`** - Handles NIFTY, BANKNIFTY, SENSEX options trading
+- **`AlertProcessors::Index`** - Handles NIFTY, BANKNIFTY, SENSEX options trading (uses `AlertProcessors::IndexPositionManager` for position handling)
 - **`AlertProcessors::Stock`** - Handles direct equity trading
 - **`AlertProcessors::McxCommodity`** - Handles commodity futures trading
 
-#### Key Services
+### Key Services
+- **`Dhan::MarketDataService`** - Centralized DhanHQ API interaction for all instruments
+- **`Market::SentimentService`** - Orchestrates sentiment analysis and strategy suggestions
+- **`Market::AnalysisUpdater`** - Periodic technical analysis updates for key indices
+- **`Alerts::InstrumentResolver`** - Robust instrument resolution from webhook parameters
+- **`InstrumentsImport::*`** - Modular scrip master import pipeline (Fetcher, Parser, Mapper, Upserter)
 - **Capital-Aware Sizing** - Dynamic position sizing based on account balance
 - **Risk Management** - Stop-loss and daily loss protection
-- **Market Data Processing** - Real-time price and volume analysis
+- **Market Data Processing** - Real-time price and volume analysis (via `CandleSeries` and modular indicators)
 - **Order Execution** - Automated trade execution via broker APIs
 
 ### Database Schema

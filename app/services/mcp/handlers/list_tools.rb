@@ -2,6 +2,7 @@
 
 module Mcp
   module Handlers
+    # Handler for listing available MCP tools.
     class ListTools
       def self.call(req)
         tools = ToolRegistry.tools.map(&:definition)

@@ -2,8 +2,12 @@
 
 ## 🗓️ Latest Updates
 
+* **SOLID Architectural Refactor (2026-03-08)**:
+  * Modularized God classes (`CandleSeries`, `ChainAnalyzer`, `InstrumentsImporter`).
+  * Extracted service objects for market data, sentiment analysis, and instrument resolution.
+  * Modularized MCP tool definitions into specialized toolsets.
+  * Improved stability by resolving initialization errors and achieving 100% RuboCop compliance.
 * Added OptionsTrader-INDIA system prompt to market analysis API calls for consistent NSE weekly options guidance while keeping Telegram briefs textual.
-* Documented the Dhan postback webhook URL (`/webhooks/dhan_postback`) required while generating access tokens so order updates reach the app.
 
 ## 🔧 1. Add Real-Time WebSocket Integration
 
@@ -110,3 +114,19 @@
 ---
 
 AlgoTrading system will operate with near real-time reactivity, intelligent adaptive exits, and institutional safeguards—while staying lightweight and stateless (no Redis, no Sidekiq needed). Let me know which part you want to start implementing first, and I’ll generate complete, production-ready modules for it.
+
+---
+
+## 🧹 Technical Debt & Future Cleanup (Merged from CleanUp.md)
+
+### Redundancies to Address
+* **Order Management**: Merge `Orders::Manager` and `Managers::Orders::Processor` into a unified processor.
+* **Service Consolidation**: Unify `OrdersService` and `OrderService`.
+* **Job Unification**: Combine `PositionsManagerJob` and `AdjustStopLossManagerJob` if logic overlaps.
+* **WebSocket Simplification**: Consolidate `AlgoTrading::OrderManager` and `WebSocketManager`.
+
+### Recommended Improvements
+* **Code Deduplication**: Shared utility methods for fetching instruments and calculating parameters.
+* **Enhanced Error Handling**: Centralized error handler for standardized responses.
+* **Performance**: Optimize WebSocket scalability and reconnection logic.
+* **Database**: Audit for N+1 queries in analysis flows.

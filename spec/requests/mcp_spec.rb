@@ -72,9 +72,9 @@ RSpec.describe 'MCP', :mcp do
         json = response.parsed_body
         expect(json['jsonrpc']).to eq('2.0')
         expect(json['result']['tools']).to be_an(Array)
-        names = json['result']['tools'].map { |t| t['name'] }
+        names = json['result']['tools'].pluck('name')
         expect(names).to include('get_option_chain', 'get_positions', 'get_market_data', 'place_trade', 'close_trade',
-                                'scan_trade_setup', 'backtest_strategy', 'explain_trade')
+                                 'scan_trade_setup', 'backtest_strategy', 'explain_trade')
       end
 
       it 'returns 200 and Method not found for unknown method' do
@@ -122,11 +122,11 @@ RSpec.describe 'MCP', :mcp do
     end
 
     context 'when body is whitespace-only' do
-      it 'returns 400 with Invalid JSON' do
+      it 'returns 400 with Request body is required' do
         post '/mcp', params: "   \n\t  ",
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:bad_request)
-        expect(response.parsed_body['error']['data']).to eq('Invalid JSON')
+        expect(response.parsed_body['error']['data']).to eq('Request body is required')
       end
     end
 
@@ -154,7 +154,7 @@ RSpec.describe 'MCP', :mcp do
         expect(json['jsonrpc']).to eq('2.0')
         expect(json['result']['content']).to be_an(Array)
         expect(json['result']['content'].first['type']).to eq('text')
-        expect(json['result']['isError']).to eq(false)
+        expect(json['result']['isError']).to be(false)
       end
 
       it 'returns 200 with isError true for unknown tool name' do
@@ -166,7 +166,7 @@ RSpec.describe 'MCP', :mcp do
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
-        expect(json['result']['isError']).to eq(true)
+        expect(json['result']['isError']).to be(true)
         text = JSON.parse(json['result']['content'].first['text'])
         expect(text['error']).to include('Unknown tool')
       end

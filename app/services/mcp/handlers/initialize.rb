@@ -2,6 +2,7 @@
 
 module Mcp
   module Handlers
+    # Handler for the MCP initialize request.
     class Initialize
       PROTOCOL_VERSION = '2024-11-05'
       SERVER_NAME     = 'algo-trading-api'

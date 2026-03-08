@@ -2,6 +2,7 @@
 
 module Mcp
   module Handlers
+    # Handler for executing a specific tool via MCP.
     class CallTool
       def self.call(req)
         params = req['params'] || {}

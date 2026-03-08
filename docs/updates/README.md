@@ -12,11 +12,15 @@ This directory tracks progress and changes to the project in markdown files.
 
 | Date       | File            | Summary |
 | ---------- | --------------- | ------- |
+| 2026-03-08 | [2026-03-08.md] | **Major Architectural Refactoring (SOLID & Clean Code)** |
+| 2026-03-03 | [2026-03-03.md] | Fix TA background loop in rake context |
 | 2026-01-28 | [2026-01-28.md] | RSpec fixes, warning cleanup, DhanHQ::WS migration |
 
 | Reference | File | Summary |
 | --------- | ---- | ------- |
 | Audit | [SPEC_STUBBING_AUDIT.md] | What we stub in specs: external vs internal; when to stub only external boundaries |
 
+[2026-03-08.md]: ./2026-03-08.md
+[2026-03-03.md]: ./2026-03-03.md
 [2026-01-28.md]: ./2026-01-28.md
 [SPEC_STUBBING_AUDIT.md]: ./SPEC_STUBBING_AUDIT.md

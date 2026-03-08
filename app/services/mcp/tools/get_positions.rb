@@ -2,6 +2,7 @@
 
 module Mcp
   module Tools
+    # Tool for retrieving current open positions and holdings via MCP.
     class GetPositions
       def self.name
         'get_positions'

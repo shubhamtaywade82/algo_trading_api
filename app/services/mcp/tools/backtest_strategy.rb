@@ -2,6 +2,7 @@
 
 module Mcp
   module Tools
+    # Tool for backtesting an options strategy via MCP.
     class BacktestStrategy
       def self.name
         'backtest_strategy'

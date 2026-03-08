@@ -27,20 +27,20 @@ RSpec.describe InstrumentsImporter, type: :service do
 
     context 'when file_path is not provided' do
       before do
-        allow(described_class).to receive(:fetch_csv_with_cache).and_return(File.read(mock_csv_path))
+        allow(InstrumentsImport::Fetcher).to receive(:call).and_return(File.read(mock_csv_path))
       end
 
       it 'uses cached/fetched CSV and imports' do
-        expect(described_class).to receive(:fetch_csv_with_cache)
+        expect(InstrumentsImport::Fetcher).to receive(:call)
         expect { described_class.import }.to change(Instrument, :count)
       end
     end
   end
 
-  describe '.import_from_csv' do
+  describe '#import_from_csv' do
     it 'imports instruments then derivatives from CSV string' do
       csv_content = File.read(mock_csv_path)
-      summary = described_class.import_from_csv(csv_content)
+      summary = described_class.new.import_from_csv(csv_content)
 
       expect(summary[:instrument_total]).to eq(Instrument.count)
       expect(summary[:derivative_total]).to eq(Derivative.count)

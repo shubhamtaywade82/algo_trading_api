@@ -2,6 +2,7 @@
 
 module Mcp
   module Tools
+    # Tool for explaining a trade setup via MCP using LLM.
     class ExplainTrade
       def self.name
         'explain_trade'

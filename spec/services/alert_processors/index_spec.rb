@@ -197,12 +197,13 @@ RSpec.describe AlertProcessors::Index, type: :service do
         )
       end
 
-      it 'calls exit_position! and marks alert as processed' do
-        allow(processor).to receive(:exit_position!).and_return(false)
+      it 'calls exit_position! on IndexPositionManager and marks alert as processed' do
+        manager_double = instance_double(AlertProcessors::IndexPositionManager, exit_position!: false)
+        allow(AlertProcessors::IndexPositionManager).to receive(:new).with(processor).and_return(manager_double)
 
         processor.call
 
-        expect(processor).to have_received(:exit_position!).with(:ce)
+        expect(manager_double).to have_received(:exit_position!).with(:ce)
         expect(alert.reload.status).to eq('skipped')
       end
     end
