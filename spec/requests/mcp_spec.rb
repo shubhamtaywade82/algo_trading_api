@@ -2,9 +2,8 @@
 
 require 'rails_helper'
 
-# Streamable HTTP (MCP) requires Accept: application/json, text/event-stream for POST
 MCP_ACCEPT = { 'Accept' => 'application/json, text/event-stream' }.freeze
-MCP_AUTH = { 'Authorization' => 'Bearer secret-token' }.freeze
+MCP_AUTH   = { 'Authorization' => 'Bearer secret-token' }.freeze
 
 RSpec.describe 'MCP', :mcp do
   around do |example|
@@ -52,18 +51,49 @@ RSpec.describe 'MCP', :mcp do
         expect(response).to have_http_status(:unauthorized)
       end
 
-      it 'forwards to MCP transport with valid Bearer token' do
-        transport = instance_double(MCP::Server::Transports::StreamableHTTPTransport)
-        allow(transport).to receive(:handle_request).and_return(
-          [200, { 'Content-Type' => 'application/json' }, ['{"jsonrpc":"2.0","id":1,"result":{}}']]
-        )
-        server = instance_double(MCP::Server, transport: transport)
-        allow(Rails.application.config.x).to receive(:dhan_mcp_server).and_return(server)
+      it 'returns 200 and initialize result with protocolVersion and capabilities' do
+        body = { jsonrpc: '2.0', id: 1, method: 'initialize' }.to_json
+        post '/mcp', params: body,
+                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json['jsonrpc']).to eq('2.0')
+        expect(json['id']).to eq(1)
+        expect(json['result']['protocolVersion']).to be_present
+        expect(json['result']['capabilities']['tools']).to eq('listChanged' => false)
+        expect(json['result']['serverInfo']['name']).to eq('algo-trading-api')
+      end
+
+      it 'returns 200 and tools/list with registered tools' do
         body = { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json
         post '/mcp', params: body,
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:ok)
-        expect(transport).to have_received(:handle_request).with(instance_of(Rack::Request))
+        json = response.parsed_body
+        expect(json['jsonrpc']).to eq('2.0')
+        expect(json['result']['tools']).to be_an(Array)
+        names = json['result']['tools'].map { |t| t['name'] }
+        expect(names).to include('get_option_chain', 'get_positions', 'get_market_data', 'place_trade', 'close_trade',
+                                'scan_trade_setup', 'backtest_strategy', 'explain_trade')
+      end
+
+      it 'returns 200 and Method not found for unknown method' do
+        body = { jsonrpc: '2.0', id: 2, method: 'unknown/method' }.to_json
+        post '/mcp', params: body,
+                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json['jsonrpc']).to eq('2.0')
+        expect(json['error']['code']).to eq(-32_601)
+        expect(json['error']['message']).to eq('Method not found')
+      end
+
+      it 'returns 200 and result for notifications/initialized (no id)' do
+        body = { jsonrpc: '2.0', method: 'notifications/initialized' }.to_json
+        post '/mcp', params: body,
+                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to be_blank
       end
     end
 
@@ -86,107 +116,65 @@ RSpec.describe 'MCP', :mcp do
         post '/mcp', headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:bad_request)
         json = response.parsed_body
-        # Transport returns simple error body for parse failures
-        expect(json['error']).to eq('Invalid JSON')
+        expect(json['error']['message']).to eq('Parse error')
+        expect(json['error']['data']).to eq('Request body is required')
       end
     end
 
     context 'when body is whitespace-only' do
-      it 'returns 400 from transport parse error' do
+      it 'returns 400 with Invalid JSON' do
         post '/mcp', params: "   \n\t  ",
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:bad_request)
-        expect(response.parsed_body['error']).to eq('Invalid JSON')
+        expect(response.parsed_body['error']['data']).to eq('Invalid JSON')
       end
     end
 
     context 'when body is invalid JSON' do
-      let(:transport) do
-        instance_double(MCP::Server::Transports::StreamableHTTPTransport).tap do |t|
-          allow(t).to receive(:handle_request).and_return(
-            [200, { 'Content-Type' => 'application/json' },
-             ['{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}']]
-          )
-        end
+      it 'returns 400 with Parse error' do
+        post '/mcp', params: 'not valid json',
+                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
+        expect(response).to have_http_status(:bad_request)
+        json = response.parsed_body
+        expect(json['error']['message']).to eq('Parse error')
+        expect(json['error']['data']).to eq('Invalid JSON')
       end
+    end
 
-      before do
-        server = instance_double(MCP::Server, transport: transport)
-        allow(Rails.application.config.x).to receive(:dhan_mcp_server).and_return(server)
-      end
-
-      it 'forwards body to transport and returns transport response' do
-        body = 'not valid json'
+    context 'when tools/call is used' do
+      it 'returns 200 with content and isError for known tool' do
+        body = {
+          jsonrpc: '2.0', id: 3, method: 'tools/call',
+          params: { name: 'backtest_strategy', arguments: {} }
+        }.to_json
         post '/mcp', params: body,
-                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
-        expect(response).to have_http_status(:ok)
-        expect(response.parsed_body).to have_key('error')
-        expect(transport).to have_received(:handle_request).with(instance_of(Rack::Request))
-      end
-    end
-
-    context 'when transport raises' do
-      before do
-        transport = instance_double(MCP::Server::Transports::StreamableHTTPTransport)
-        allow(transport).to receive(:handle_request).and_raise(StandardError.new('server exploded'))
-        server = instance_double(MCP::Server, transport: transport)
-        allow(Rails.application.config.x).to receive(:dhan_mcp_server).and_return(server)
-      end
-
-      it 'returns 500 and is handled by ApplicationController' do
-        post '/mcp', params: '{"jsonrpc":"2.0","id":1}',
-                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
-        expect(response).to have_http_status(:internal_server_error)
-        expect(response.parsed_body['error']).to eq('Internal server error')
-      end
-    end
-
-    context 'when body is present and valid' do
-      let(:transport) do
-        instance_double(MCP::Server::Transports::StreamableHTTPTransport).tap do |t|
-          allow(t).to receive(:handle_request).and_return(
-            [200, { 'Content-Type' => 'application/json' },
-             ['{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}']]
-          )
-        end
-      end
-
-      before do
-        server = instance_double(MCP::Server, transport: transport)
-        allow(Rails.application.config.x).to receive(:dhan_mcp_server).and_return(server)
-      end
-
-      it 'forwards body to transport and returns its response' do
-        body = { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json
-        post '/mcp', params: body,
-                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
-        expect(response).to have_http_status(:ok)
-        expect(response.media_type).to eq('application/json')
-        expect(response.body).to include('"jsonrpc":"2.0"')
-        expect(transport).to have_received(:handle_request).with(instance_of(Rack::Request))
-      end
-    end
-
-    context 'with real transport (integration)' do
-      it 'returns 406 when Accept header omits required types' do
-        post '/mcp', params: { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json,
-                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_AUTH)
-        expect(response).to have_http_status(:not_acceptable)
-      end
-
-      it 'returns 200 and tools/list result with valid Accept header' do
-        post '/mcp', params: { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json,
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
         expect(json['jsonrpc']).to eq('2.0')
-        expect(json['result']).to have_key('tools')
+        expect(json['result']['content']).to be_an(Array)
+        expect(json['result']['content'].first['type']).to eq('text')
+        expect(json['result']['isError']).to eq(false)
+      end
+
+      it 'returns 200 with isError true for unknown tool name' do
+        body = {
+          jsonrpc: '2.0', id: 4, method: 'tools/call',
+          params: { name: 'nonexistent_tool', arguments: {} }
+        }.to_json
+        post '/mcp', params: body,
+                     headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json['result']['isError']).to eq(true)
+        text = JSON.parse(json['result']['content'].first['text'])
+        expect(text['error']).to include('Unknown tool')
       end
     end
   end
 
   describe 'GET /mcp' do
-    it 'returns 405 Method Not Allowed (stateless transport)' do
+    it 'returns 405 Method Not Allowed' do
       get '/mcp', headers: MCP_ACCEPT.merge(MCP_AUTH)
       expect(response).to have_http_status(:method_not_allowed)
     end

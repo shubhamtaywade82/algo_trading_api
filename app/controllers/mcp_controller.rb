@@ -6,33 +6,41 @@ class McpController < ApplicationController
   before_action :authenticate_mcp_request
   before_action :reject_oversized_body
 
-  def index
-    server = Rails.application.config.x.dhan_mcp_server
-    transport = server.transport
+  def handle
+    return head :method_not_allowed if request.get?
 
-    if transport
-      serve_streamable_http(transport)
-    else
-      serve_legacy_json(server)
-    end
+    raw = request.body.read
+    return render json: mcp_error(-32_700, 'Parse error', 'Request body is required'), status: :bad_request if raw.blank?
+
+    request_body = JSON.parse(raw)
+  rescue JSON::ParserError
+    render json: mcp_error(-32_700, 'Parse error', 'Invalid JSON'), status: :bad_request
+  else
+    response = run_mcp_dispatch(request_body)
+    return head :ok if response.nil?
+
+    render json: response
   end
 
   private
 
-  def serve_streamable_http(transport)
-    rack_request = Rack::Request.new(request.env)
-    status, headers, body_parts = transport.handle_request(rack_request)
-    headers.each { |k, v| response.headers[k] = v }
-    body = body_parts.is_a?(Array) && body_parts.any? ? body_parts.first : nil
-    render status: status, body: body, content_type: headers['Content-Type']
+  def run_mcp_dispatch(req)
+    if req['id'].nil? && req.key?('method')
+      handle_notification(req)
+      return nil
+    end
+
+    Mcp::Dispatcher.call(req)
+  rescue StandardError => e
+    {
+      jsonrpc: '2.0',
+      id: req['id'],
+      error: { code: -32_603, message: e.message }
+    }
   end
 
-  def serve_legacy_json(server)
-    raw = request.body.read
-    return render json: mcp_error(-32_700, 'Parse error', 'Request body is required'), status: :bad_request if raw.blank?
-
-    body = server.handle_json(raw)
-    render body: body, content_type: 'application/json'
+  def handle_notification(req)
+    Mcp::Dispatcher.call(req)
   end
 
   def authenticate_mcp_request

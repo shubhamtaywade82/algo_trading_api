@@ -5,9 +5,8 @@
 # Usage: ruby script/test_mcp_tools.rb [base_url]
 # Example: ruby script/test_mcp_tools.rb http://localhost:5002
 # Requires MCP_ACCESS_TOKEN (set in .env or export). Script loads .env from project root if present.
-# Set TO_DATE / FROM_DATE for date-range tools (default: today / yesterday).
 # Set SHOW_RESPONSE=1 to print a short preview of each response (default: 1). Set to 0 to hide.
-# Tools that need Dhan credentials may return "Error: ..." in result; we only check HTTP 200 + jsonrpc.
+# Tools that need Dhan/OpenAI may return error in result; we only check HTTP 200 + jsonrpc.
 
 require 'net/http'
 require 'json'
@@ -45,12 +44,10 @@ headers = {
   'Authorization' => "Bearer #{mcp_token}"
 }
 
-to_date_str = ENV.fetch('TO_DATE', nil).to_s.strip
-to_date = to_date_str.empty? ? Time.zone.today.to_s : to_date_str
-from_date_str = ENV.fetch('FROM_DATE', nil).to_s.strip
-from_date = from_date_str.empty? ? (Time.zone.today - 1.day).to_s : from_date_str
-expiry_symbol = ENV['EXPIRY_SYMBOL'] || 'NIFTY'
-expiry_segment = ENV['EXPIRY_SEGMENT'] || 'IDX_I'
+to_date = ENV.fetch('TO_DATE', Time.zone.today.to_s).to_s.strip
+from_date = ENV.fetch('FROM_DATE', (Time.zone.today - 1.day).to_s).to_s.strip
+expiry = ENV['EXPIRY'].to_s.strip
+expiry = nil if expiry.empty?
 show_response = ENV['SHOW_RESPONSE'].to_s =~ /\A(1|yes|true)\z/i
 preview_len = (ENV['PREVIEW_LEN'] || '380').to_i
 
@@ -62,50 +59,6 @@ def post(uri, body, headers)
   req.body = body.is_a?(String) ? body : body.to_json
   http.request(req)
 end
-
-def fetch_expiry(mcp_url, headers, segment, symbol)
-  body = {
-    jsonrpc: '2.0', id: 0, method: 'tools/call',
-    params: {
-      name: 'get_expiry_list',
-      arguments: { exchange_segment: segment, symbol: symbol }
-    }
-  }.to_json
-  resp = post(mcp_url, body, headers)
-  return nil unless resp.code.to_i == 200
-
-  data = JSON.parse(resp.body)
-  return nil unless data.dig('result', 'content', 0)
-
-  raw = data['result']['content'][0]['text']
-  return nil if raw.to_s.empty?
-
-  parsed = parse_expiry_json(raw)
-  first_expiry_from_parsed(parsed)
-rescue JSON::ParserError, TypeError
-  nil
-end
-
-def parse_expiry_json(raw_text)
-  json_str = raw_text.sub(/\A```json?\s*\n/, '').sub(/\n```\s*\z/, '')
-  JSON.parse(json_str)
-end
-
-def first_expiry_from_parsed(parsed)
-  return first_expiry_from_array(parsed[0]) if parsed.is_a?(Array) && parsed[0]
-  return parsed['expiry'][0] if parsed['expiry'].is_a?(Array) && parsed['expiry'][0]
-  return parsed['expiries'][0] if parsed['expiries'].is_a?(Array) && parsed['expiries'][0]
-
-  nil
-end
-
-def first_expiry_from_array(first_elem)
-  first_elem.is_a?(String) ? first_elem : (first_elem['expiry'] || first_elem['expiries']&.first)
-end
-
-expiry = ENV['EXPIRY'].to_s.strip
-expiry = fetch_expiry(mcp_url, headers, expiry_segment, expiry_symbol) if expiry.empty?
-expiry = '2025-02-27' if expiry.to_s.empty?
 
 def run_tool(mcp_url, headers, name, params, show_response:, preview_len:)
   body = { jsonrpc: '2.0', id: params[:id], method: 'tools/call', params: params[:params] }.to_json
@@ -129,36 +82,47 @@ def run_tool(mcp_url, headers, name, params, show_response:, preview_len:)
 end
 
 puts "Testing MCP tools at #{mcp_url}"
-puts "  (TO_DATE=#{to_date}, FROM_DATE=#{from_date}, EXPIRY=#{expiry})"
+puts "  (TO_DATE=#{to_date}, FROM_DATE=#{from_date}, EXPIRY=#{expiry || 'default'})"
 puts ''
 
 failed = 0
 id = 0
 
-[
-  ['get_holdings', { name: 'get_holdings', arguments: {} }],
+tools = [
   ['get_positions', { name: 'get_positions', arguments: {} }],
-  ['get_fund_limits', { name: 'get_fund_limits', arguments: {} }],
-  ['get_order_list', { name: 'get_order_list', arguments: {} }],
-  ['get_edis_inquiry', { name: 'get_edis_inquiry', arguments: {} }],
-  ['get_order_by_id', { name: 'get_order_by_id', arguments: { order_id: 'test-order-123' } }],
-  ['get_order_by_correlation_id', { name: 'get_order_by_correlation_id', arguments: { correlation_id: 'test-corr-1' } }],
-  ['get_trade_book', { name: 'get_trade_book', arguments: { order_id: 'test-order-123' } }],
-  ['get_trade_history', { name: 'get_trade_history', arguments: { from_date: from_date, to_date: to_date } }],
-  ['get_instrument', { name: 'get_instrument', arguments: { exchange_segment: 'IDX_I', symbol: 'SENSEX' } }],
-  ['get_instrument NIFTY', { name: 'get_instrument', arguments: { exchange_segment: 'IDX_I', symbol: 'NIFTY' } }],
-  ['get_market_ohlc', { name: 'get_market_ohlc', arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE' } }],
-  ['get_expiry_list', { name: 'get_expiry_list', arguments: { exchange_segment: 'IDX_I', symbol: 'NIFTY' } }],
-  ['get_option_chain', { name: 'get_option_chain', arguments: { exchange_segment: 'IDX_I', symbol: 'NIFTY', expiry: expiry } }],
-  ['get_historical_daily_data', {
-    name: 'get_historical_daily_data',
-    arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE', from_date: from_date, to_date: to_date }
+  ['get_market_data', { name: 'get_market_data', arguments: { exchange_segment: 'IDX_I', symbol: 'NIFTY' } }],
+  ['get_option_chain', { name: 'get_option_chain', arguments: { index: 'NIFTY', expiry: expiry }.compact }],
+  ['scan_trade_setup', {
+    name: 'scan_trade_setup',
+    arguments: { index_symbol: 'NIFTY', expiry_date: expiry, strategy_type: 'intraday' }.compact
   }],
-  ['get_intraday_minute_data', {
-    name: 'get_intraday_minute_data',
-    arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE', from_date: from_date, to_date: to_date }
+  ['backtest_strategy', {
+    name: 'backtest_strategy',
+    arguments: { symbol: 'NIFTY', from_date: from_date, to_date: to_date }
+  }],
+  ['explain_trade', { name: 'explain_trade', arguments: { query: 'What is a covered call?' } }],
+  ['place_trade (dry-run)', {
+    name: 'place_trade',
+    arguments: {
+      security_id: '1',
+      exchange_segment: 'NSE_EQ',
+      transaction_type: 'BUY',
+      quantity: 1,
+      product_type: 'CNC'
+    }
+  }],
+  ['close_trade (dry-run)', {
+    name: 'close_trade',
+    arguments: {
+      security_id: '1',
+      exchange_segment: 'NSE_EQ',
+      net_quantity: 1,
+      product_type: 'CNC'
+    }
   }]
-].each do |name, params|
+]
+
+tools.each do |name, params|
   id += 1
   failed += 1 unless run_tool(mcp_url, headers, name, { id: id, params: params }, show_response: show_response, preview_len: preview_len)
 end

@@ -81,15 +81,15 @@ else
   exit 1
 end
 
-# 3. tools/call get_instrument
-print '3. tools/call get_instrument IDX_I SENSEX (expect 200)... '
+# 3. tools/call with a tool that exists (get_positions or backtest_strategy)
+print '3. tools/call get_positions (expect 200, jsonrpc 2.0)... '
 body = {
   jsonrpc: '2.0',
   id: 2,
   method: 'tools/call',
   params: {
-    name: 'get_instrument',
-    arguments: { exchange_segment: 'IDX_I', symbol: 'SENSEX' }
+    name: 'get_positions',
+    arguments: {}
   }
 }.to_json
 resp = post(mcp_url, body, headers)

@@ -44,8 +44,8 @@ Rails.application.routes.draw do
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get 'up' => 'rails/health#show', as: :rails_health_check
 
-  post 'mcp', to: 'mcp#index'
-  get 'mcp', to: 'mcp#index'
+  post 'mcp', to: 'mcp#handle'
+  get 'mcp', to: 'mcp#handle'
 
   # Defines the root path route ("/")
   root to: proc { [200, { 'Content-Type' => 'application/json' }, ['{"status":"ok"}']] }

@@ -51,9 +51,9 @@ else
   exit 1
 fi
 
-# 3. tools/call get_instrument (no Dhan creds needed for validation; may return error from server)
-echo "3. tools/call get_instrument IDX_I SENSEX (expect 200)..."
-resp=$(curl -s -w "\n%{http_code}" -X POST "${MCP_URL}" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "${MCP_AUTH_HEADER}" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_instrument","arguments":{"exchange_segment":"IDX_I","symbol":"SENSEX"}}}')
+# 3. tools/call get_positions (one of the 8 MCP tools)
+echo "3. tools/call get_positions (expect 200)..."
+resp=$(curl -s -w "\n%{http_code}" -X POST "${MCP_URL}" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "${MCP_AUTH_HEADER}" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_positions","arguments":{}}}')
 code=$(echo "$resp" | tail -n1)
 body=$(echo "$resp" | sed '$d')
 if [ "$code" = "200" ] && echo "$body" | grep -q '"jsonrpc":"2.0"'; then

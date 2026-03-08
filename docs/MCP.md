@@ -1,6 +1,10 @@
-# MCP (Model Context Protocol) — DhanHQ Tools
+# MCP (Model Context Protocol) — Algo Trading API
 
-The app exposes a **read-only** DhanHQ MCP server over HTTP. AI assistants (e.g. Cursor) and other MCP clients can call Dhan broker and market tools via JSON-RPC.
+The app exposes a **spec-compliant** MCP server over HTTP so agents (Claude Desktop, Cursor, Codex CLI, Ollama, etc.) can discover and call trading tools via JSON-RPC 2.0.
+
+## Lifecycle and capabilities
+
+The server implements the required MCP layers: **initialize** (protocolVersion, capabilities, serverInfo), **notifications/initialized**, **tools/list**, and **tools/call**. See [Protocol](#protocol) below.
 
 ## Endpoint
 
@@ -9,10 +13,9 @@ The app exposes a **read-only** DhanHQ MCP server over HTTP. AI assistants (e.g.
 | **Local**    | `http://localhost:5002/mcp` (or `PORT` from `.env`)   |
 | **Deployed** | `https://YOUR_APP_HOST/mcp` (use your app’s base URL) |
 
-- **Method**: `POST` (and `GET` for transport compliance; `GET` returns 405 in stateless mode).
+- **Method**: `POST` only. `GET` returns **405** Method Not Allowed.
 - **Content-Type**: `application/json`
-- **Accept**: `application/json, text/event-stream` (required by MCP Streamable HTTP; missing it returns **406** Not Acceptable).
-- **Body**: JSON-RPC 2.0 request (see examples below).
+- **Body**: JSON-RPC 2.0 request (`method`, `params`, `id` for requests; omit `id` for notifications).
 
 Empty or invalid JSON body returns **400** with a JSON-RPC parse error.
 
@@ -23,27 +26,14 @@ Empty or invalid JSON body returns **400** with a JSON-RPC parse error.
 
 Set `MCP_ACCESS_TOKEN` in your environment (e.g. `.env` for local, Render dashboard → Environment for production) and configure every client to send the same value as a Bearer token. Use a long, random secret (e.g. `openssl rand -hex 32`).
 
-## Argument validation
-
-The server validates tool arguments **before** calling the Dhan API. Invalid or missing arguments produce a clear error in `result.content[].text` (e.g. `"Error: Missing required argument(s): symbol"`), so the model can correct and retry.
-
-Validation rules:
-
-| Rule                    | Applies to                                                                   | Example                                                                                                                                                          |
-| ----------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Required args**       | All tools with params                                                        | `get_instrument` needs `exchange_segment` and `symbol`                                                                                                           |
-| **Non-empty strings**   | `order_id`, `correlation_id`, `symbol`, etc.                                 | `"symbol": ""` → error                                                                                                                                           |
-| **exchange_segment**    | Instrument/market/options tools                                              | Must be one of: `IDX_I`, `NSE_EQ`, `NSE_FNO`, `BSE_EQ`, `NSE_CURRENCY`, `MCX_COMM`, `BSE_CURRENCY`, `BSE_FNO`                                                    |
-| **Dates**               | `from_date`, `to_date`, `expiry`                                             | `YYYY-MM-DD` for daily/history/expiry; `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` for intraday                                                                        |
-| **to_date / from_date** | `get_trade_history`, `get_historical_daily_data`, `get_intraday_minute_data` | **to_date must be today.** **from_date must be the last trading day before to_date** (NSE/BSE calendar via `MarketCalendar`). Any other combination is rejected. |
-| **interval**            | `get_intraday_minute_data`                                                   | One of: `1`, `5`, `15`, `25`, `60`                                                                                                                               |
-| **page_number**         | `get_trade_history`                                                          | Non-negative integer                                                                                                                                             |
-
-Implementation: `DhanMcp::ArgumentValidator` (see `app/services/dhan_mcp/argument_validator.rb`). Tools with no arguments (e.g. `get_holdings`) are not validated for extra keys.
-
 ## Protocol
 
-All requests are JSON-RPC 2.0. To call a tool, use `method: "tools/call"` and pass `name` and `arguments` in `params`.
+1. **initialize** — `method: "initialize"`. Response: `result.protocolVersion`, `result.capabilities` (tools.listChanged: false), `result.serverInfo` (name: algo-trading-api).
+2. **notifications/initialized** — Optional; no `id`; server returns 200 with empty body.
+3. **tools/list** — `method: "tools/list"`. Response: `result.tools` (array of name, title, description, inputSchema).
+4. **tools/call** — `method: "tools/call"`, `params.name`, `params.arguments`. Response: `result.content[]` (type: "text", text: JSON string), `result.isError`.
+
+## Available tools (8 trading tools)
 
 ### Example: call a tool (no auth)
 
@@ -80,45 +70,20 @@ Responses include `result.content[].text` (often markdown-wrapped JSON) or `erro
 
 Tools use the app’s Dhan credentials (`CLIENT_ID`, `ACCESS_TOKEN`). **Every request must include** `Authorization: Bearer <MCP_ACCESS_TOKEN>`; see [Production: authentication and limits](#production-authentication-and-limits).
 
-### Portfolio & funds
+## Available tools (8 trading tools)
 
-| Tool                | Description                          | `arguments` |
-| ------------------- | ------------------------------------ | ----------- |
-| **get_holdings**    | Current portfolio holdings           | `{}`        |
-| **get_positions**   | Open positions (intraday + delivery) | `{}`        |
-| **get_fund_limits** | Available funds, margins, limits     | `{}`        |
+Every request must include `Authorization: Bearer <MCP_ACCESS_TOKEN>`. See [Production: authentication and limits](#production-authentication-and-limits).
 
-### Orders & trades
-
-| Tool                            | Description                        | `arguments`                                                                         |
-| ------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------- |
-| **get_order_list**              | All orders (today + history)       | `{}`                                                                                |
-| **get_order_by_id**             | Order by Dhan order ID             | `{"order_id": "ORD123"}`                                                            |
-| **get_order_by_correlation_id** | Order by your correlation ID       | `{"correlation_id": "my-ref-1"}`                                                    |
-| **get_trade_book**              | Executed trades for an order       | `{"order_id": "ORD123"}`                                                            |
-| **get_trade_history**           | Trades in a date range (paginated) | `{"from_date": "2025-01-01", "to_date": "2025-01-28"}` optional: `"page_number": 0` |
-
-### Instruments & market data
-
-| Tool                          | Description                            | `arguments`                                                                                                                                               |
-| ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **get_instrument**            | Resolve instrument by segment + symbol | `{"exchange_segment": "NSE_EQ", "symbol": "RELIANCE"}`                                                                                                    |
-| **get_market_ohlc**           | Current OHLC for a symbol              | `{"exchange_segment": "NSE_EQ", "symbol": "RELIANCE"}`                                                                                                    |
-| **get_historical_daily_data** | Daily candle data                      | `{"exchange_segment": "NSE_EQ", "symbol": "RELIANCE", "from_date": "2025-01-01", "to_date": "2025-01-28"}`                                                |
-| **get_intraday_minute_data**  | Minute candle data                     | `{"exchange_segment": "NSE_EQ", "symbol": "RELIANCE", "from_date": "2025-01-28", "to_date": "2025-01-28"}` optional: `"interval": "1"` (1, 5, 15, 25, 60) |
-
-### Options
-
-| Tool                 | Description                                                                                                | `arguments`                                                                  |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **get_expiry_list**  | Expiry dates for an underlying (use underlying segment: IDX_I for indices, NSE_EQ for stocks; not NSE_FNO) | `{"exchange_segment": "IDX_I", "symbol": "NIFTY"}`                           |
-| **get_option_chain** | Full option chain for an expiry                                                                            | `{"exchange_segment": "NSE_FNO", "symbol": "NIFTY", "expiry": "2025-01-30"}` |
-
-### Other
-
-| Tool                 | Description         | `arguments` |
-| -------------------- | ------------------- | ----------- |
-| **get_edis_inquiry** | eDIS inquiry status | `{}`        |
+| Tool                | Purpose                        | Key arguments |
+| ------------------- | ------------------------------ | ------------- |
+| **get_option_chain**  | Retrieve analyzed option chain | `index` (e.g. NIFTY), optional `expiry` |
+| **scan_trade_setup**  | Run strategy scanner           | `index_symbol`, optional `expiry_date`, `strategy_type`, `instrument_type` |
+| **place_trade**       | Execute trade                  | `security_id`, `exchange_segment`, `transaction_type`, `quantity`, `product_type`, optional `order_type`, `price` |
+| **close_trade**       | Close position                 | `security_id`, `exchange_segment`, `net_quantity`, `product_type` |
+| **get_positions**     | Active positions               | (none) |
+| **get_market_data**   | LTP / OHLC                     | `exchange_segment`, `symbol` |
+| **backtest_strategy** | Run historical test            | Optional `symbol`, `from_date`, `to_date` (stub: returns not_implemented) |
+| **explain_trade**     | AI explanation                 | `query`, optional `context` |
 
 ---
 
@@ -255,12 +220,10 @@ If the client asks for **SSE** or **Streamable HTTP**, use the same URL; this en
 
 ## Implementation notes
 
-- **Controller**: `McpController#index` — requires `MCP_ACCESS_TOKEN` to be set and validates `Authorization: Bearer <token>` on every request; returns 503 if token is unset, 401 if missing/invalid; rejects oversized body (1 MB limit); forwards valid requests to the MCP transport.
-- **Service**: `DhanMcpService` — builds the `MCP::Server`, defines all tools, and uses the DhanHQ gem under the hood. Each tool that takes arguments runs `DhanMcp::ArgumentValidator.validate(tool_name, args)` before calling Dhan; invalid args return an error string in the usual `Error: …` format.
-- **Validator**: `DhanMcp::ArgumentValidator` — validates required/optional args, `exchange_segment` enum, date formats, `interval`, and `page_number`. Returns `nil` if valid, or a short error message string.
-- **Config**: `config/initializers/dhan_mcp.rb` — builds the server at boot and stores it in `Rails.application.config.x.dhan_mcp_server`.
-- **Route**: `POST /mcp` → `mcp#index`.
+- **Controller**: `McpController#handle` — requires `MCP_ACCESS_TOKEN`; validates `Authorization: Bearer <token>`; rejects oversized body (1 MB); parses JSON and dispatches to `Mcp::Dispatcher`.
+- **Dispatcher**: `Mcp::Dispatcher` — routes `initialize`, `notifications/initialized`, `tools/list`, `tools/call`; returns JSON-RPC 2.0 response or `nil` for notifications.
+- **Handlers**: `Mcp::Handlers::Initialize`, `ListTools`, `CallTool` — lifecycle, tool list, and tool execution.
+- **Tool registry**: `Mcp::ToolRegistry` — lists the 8 tool classes in `app/services/mcp/tools/`.
+- **Route**: `POST /mcp` → `mcp#handle`; `GET /mcp` → 405.
 
-All tools are read-only; no orders or modifications are performed via the MCP.
-
-**Running MCP specs:** `bundle exec rspec --tag mcp`
+**Running MCP specs:** `bundle exec rspec spec/requests/mcp_spec.rb` (requires local or allowed test DB; see DatabaseCleaner safeguard if using remote DATABASE_URL).
