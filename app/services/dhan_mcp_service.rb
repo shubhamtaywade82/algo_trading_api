@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require 'mcp'
-require 'dhan_hq'
-
 class DhanMcpService
   def self.build_server
     server = MCP::Server.new(

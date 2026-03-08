@@ -122,11 +122,11 @@ RSpec.describe 'MCP', :mcp do
     end
 
     context 'when body is whitespace-only' do
-      it 'returns 400 with Invalid JSON' do
+      it 'returns 400 with Request body is required' do
         post '/mcp', params: "   \n\t  ",
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
         expect(response).to have_http_status(:bad_request)
-        expect(response.parsed_body['error']['data']).to eq('Invalid JSON')
+        expect(response.parsed_body['error']['data']).to eq('Request body is required')
       end
     end
 

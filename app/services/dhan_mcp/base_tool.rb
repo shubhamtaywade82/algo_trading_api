@@ -9,7 +9,7 @@ module DhanMcp
     end
 
     def self.define(server, service)
-      new(server, service).define
+      new(server, service)
     end
 
     protected

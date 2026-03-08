@@ -37,6 +37,14 @@ class InstrumentsImporter < ApplicationService
     summary
   end
 
+  def self.import_from_csv(csv_content)
+    new.import_from_csv(csv_content)
+  end
+
+  def import_from_csv(csv_content)
+    process_csv(csv_content)
+  end
+
   private
 
   def process_csv(csv_content)

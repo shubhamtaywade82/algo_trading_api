@@ -15,8 +15,8 @@ module Option
           checks[:failed] << 'IV rank outside range'
           checks[:details][:iv_rank] = {
             current_rank: @iv_rank,
-            min_rank: IV_RANK_MIN,
-            max_rank: IV_RANK_MAX
+            min_rank: ChainAnalyzer::IV_RANK_MIN,
+            max_rank: ChainAnalyzer::IV_RANK_MAX
           }
         end
 
@@ -27,17 +27,17 @@ module Option
             current_time: Time.zone.now.strftime('%H:%M'),
             expiry_date: @expiry.strftime('%Y-%m-%d'),
             hours_left: (@expiry - Time.zone.today).to_i,
-            theta_avoid_hour: THETA_AVOID_HOUR
+            theta_avoid_hour: ChainAnalyzer::THETA_AVOID_HOUR
           }
         end
 
         # 3️⃣  ADX Check
-        adx_ok = ta ? ta.adx.to_f >= MIN_ADX_VALUE : true
+        adx_ok = ta ? ta.adx.to_f >= ChainAnalyzer::MIN_ADX_VALUE : true
         unless adx_ok
           checks[:failed] << "ADX below minimum value (#{ta&.adx})"
           checks[:details][:adx] = {
             current_value: ta&.adx,
-            min_value: MIN_ADX_VALUE
+            min_value: ChainAnalyzer::MIN_ADX_VALUE
           }
         end
 
@@ -93,7 +93,7 @@ module Option
           reasons << "ADX below minimum value (#{ta&.adx})"
           details[:adx] = {
             current_value: ta&.adx,
-            min_value: MIN_ADX_VALUE
+            min_value: ChainAnalyzer::MIN_ADX_VALUE
           }
         end
 
@@ -111,14 +111,14 @@ module Option
       end
 
       def iv_rank_outside_range?
-        @iv_rank < IV_RANK_MIN || @iv_rank > IV_RANK_MAX
+        @iv_rank < ChainAnalyzer::IV_RANK_MIN || @iv_rank > ChainAnalyzer::IV_RANK_MAX
       end
 
       def discourage_late_entry_due_to_theta?
         now = Time.zone.now
         expiry_today = @expiry == now.to_date
         current_hour = now.hour + (now.min / 60.0)
-        expiry_today && current_hour > THETA_AVOID_HOUR
+        expiry_today && current_hour > ChainAnalyzer::THETA_AVOID_HOUR
       end
     end
   end
