@@ -29,9 +29,7 @@ class McpController < ApplicationController
 
   def serve_legacy_json(server)
     raw = request.body.read
-    if raw.blank?
-      return render json: mcp_error(-32_700, 'Parse error', 'Request body is required'), status: :bad_request
-    end
+    return render json: mcp_error(-32_700, 'Parse error', 'Request body is required'), status: :bad_request if raw.blank?
 
     body = server.handle_json(raw)
     render body: body, content_type: 'application/json'
@@ -39,7 +37,7 @@ class McpController < ApplicationController
 
   def authenticate_mcp_request
     expected = ENV.fetch('MCP_ACCESS_TOKEN', nil)
-    unless expected.present?
+    if expected.blank?
       render json: mcp_error(-32_503, 'Service Unavailable', 'MCP_ACCESS_TOKEN must be set'), status: :service_unavailable
       return
     end

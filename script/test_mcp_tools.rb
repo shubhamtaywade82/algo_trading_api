@@ -13,6 +13,7 @@ require 'net/http'
 require 'json'
 require 'uri'
 require 'date'
+require_relative '../config/environment'
 
 def load_dotenv(path)
   return unless File.file?(path)
@@ -32,9 +33,8 @@ script_dir = File.dirname(File.expand_path(__FILE__))
 root_dir = File.expand_path('..', script_dir)
 load_dotenv(File.join(root_dir, '.env'))
 
-if ENV['MCP_ACCESS_TOKEN'].to_s.strip.empty?
-  abort 'MCP_ACCESS_TOKEN is not set. Set it in .env or export it before running this script.'
-end
+mcp_token = ENV.fetch('MCP_ACCESS_TOKEN', nil)
+abort 'MCP_ACCESS_TOKEN is not set. Set it in .env or export it before running this script.' if mcp_token.to_s.strip.empty?
 
 base_url = ARGV[0] || 'http://localhost:5002'
 mcp_url = URI.join(base_url.end_with?('/') ? base_url : "#{base_url}/", 'mcp')
@@ -42,11 +42,13 @@ mcp_url = URI.join(base_url.end_with?('/') ? base_url : "#{base_url}/", 'mcp')
 headers = {
   'Content-Type' => 'application/json',
   'Accept' => 'application/json, text/event-stream',
-  'Authorization' => "Bearer #{ENV['MCP_ACCESS_TOKEN']}"
+  'Authorization' => "Bearer #{mcp_token}"
 }
 
-to_date = ENV['TO_DATE'].to_s.strip.empty? ? Date.today.to_s : ENV['TO_DATE']
-from_date = ENV['FROM_DATE'].to_s.strip.empty? ? (Date.today - 1).to_s : ENV['FROM_DATE']
+to_date_str = ENV.fetch('TO_DATE', nil).to_s.strip
+to_date = to_date_str.empty? ? Time.zone.today.to_s : to_date_str
+from_date_str = ENV.fetch('FROM_DATE', nil).to_s.strip
+from_date = from_date_str.empty? ? (Time.zone.today - 1.day).to_s : from_date_str
 expiry_symbol = ENV['EXPIRY_SYMBOL'] || 'NIFTY'
 expiry_segment = ENV['EXPIRY_SEGMENT'] || 'IDX_I'
 show_response = ENV['SHOW_RESPONSE'].to_s =~ /\A(1|yes|true)\z/i
@@ -73,22 +75,32 @@ def fetch_expiry(mcp_url, headers, segment, symbol)
   return nil unless resp.code.to_i == 200
 
   data = JSON.parse(resp.body)
-  return nil unless data['result'] && data['result']['content'] && data['result']['content'][0]
+  return nil unless data.dig('result', 'content', 0)
 
   raw = data['result']['content'][0]['text']
   return nil if raw.to_s.empty?
 
-  json_str = raw.sub(/\A```json?\s*\n/, '').sub(/\n```\s*\z/, '')
-  parsed = JSON.parse(json_str)
-  if parsed.is_a?(Array) && parsed[0]
-    parsed[0].is_a?(String) ? parsed[0] : (parsed[0]['expiry'] || parsed[0]['expiries']&.first)
-  elsif parsed['expiry'].is_a?(Array) && parsed['expiry'][0]
-    parsed['expiry'][0]
-  elsif parsed['expiries'].is_a?(Array) && parsed['expiries'][0]
-    parsed['expiries'][0]
-  end
+  parsed = parse_expiry_json(raw)
+  first_expiry_from_parsed(parsed)
 rescue JSON::ParserError, TypeError
   nil
+end
+
+def parse_expiry_json(raw_text)
+  json_str = raw_text.sub(/\A```json?\s*\n/, '').sub(/\n```\s*\z/, '')
+  JSON.parse(json_str)
+end
+
+def first_expiry_from_parsed(parsed)
+  return first_expiry_from_array(parsed[0]) if parsed.is_a?(Array) && parsed[0]
+  return parsed['expiry'][0] if parsed['expiry'].is_a?(Array) && parsed['expiry'][0]
+  return parsed['expiries'][0] if parsed['expiries'].is_a?(Array) && parsed['expiries'][0]
+
+  nil
+end
+
+def first_expiry_from_array(first_elem)
+  first_elem.is_a?(String) ? first_elem : (first_elem['expiry'] || first_elem['expiries']&.first)
 end
 
 expiry = ENV['EXPIRY'].to_s.strip
@@ -138,8 +150,14 @@ id = 0
   ['get_market_ohlc', { name: 'get_market_ohlc', arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE' } }],
   ['get_expiry_list', { name: 'get_expiry_list', arguments: { exchange_segment: 'IDX_I', symbol: 'NIFTY' } }],
   ['get_option_chain', { name: 'get_option_chain', arguments: { exchange_segment: 'IDX_I', symbol: 'NIFTY', expiry: expiry } }],
-  ['get_historical_daily_data', { name: 'get_historical_daily_data', arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE', from_date: from_date, to_date: to_date } }],
-  ['get_intraday_minute_data', { name: 'get_intraday_minute_data', arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE', from_date: from_date, to_date: to_date } }]
+  ['get_historical_daily_data', {
+    name: 'get_historical_daily_data',
+    arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE', from_date: from_date, to_date: to_date }
+  }],
+  ['get_intraday_minute_data', {
+    name: 'get_intraday_minute_data',
+    arguments: { exchange_segment: 'NSE_EQ', symbol: 'RELIANCE', from_date: from_date, to_date: to_date }
+  }]
 ].each do |name, params|
   id += 1
   failed += 1 unless run_tool(mcp_url, headers, name, { id: id, params: params }, show_response: show_response, preview_len: preview_len)

@@ -29,9 +29,8 @@ script_dir = File.dirname(File.expand_path(__FILE__))
 root_dir = File.expand_path('..', script_dir)
 load_dotenv(File.join(root_dir, '.env'))
 
-if ENV['MCP_ACCESS_TOKEN'].to_s.strip.empty?
-  abort 'MCP_ACCESS_TOKEN is not set. Set it in .env or export it before running this script.'
-end
+mcp_token = ENV.fetch('MCP_ACCESS_TOKEN', nil)
+abort 'MCP_ACCESS_TOKEN is not set. Set it in .env or export it before running this script.' if mcp_token.to_s.strip.empty?
 
 base_url = ARGV[0] || 'http://localhost:5002'
 mcp_url = URI.join(base_url.end_with?('/') ? base_url : "#{base_url}/", 'mcp')
@@ -39,7 +38,7 @@ mcp_url = URI.join(base_url.end_with?('/') ? base_url : "#{base_url}/", 'mcp')
 headers = {
   'Content-Type' => 'application/json',
   'Accept' => 'application/json, text/event-stream',
-  'Authorization' => "Bearer #{ENV['MCP_ACCESS_TOKEN']}"
+  'Authorization' => "Bearer #{mcp_token}"
 }
 
 def post(uri, body, headers)

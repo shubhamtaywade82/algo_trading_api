@@ -13,7 +13,7 @@ module Auth
       def configured_secret
         raw = from_credentials.presence || ENV.fetch(ENV_KEY, nil)
         return raw if raw.blank?
-        return raw if !Rails.env.production?
+        return raw unless Rails.env.production?
         return nil if raw.length < MIN_LENGTH
 
         raw
