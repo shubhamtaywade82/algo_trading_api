@@ -11,7 +11,12 @@ module Market
     MARKET_CLOSE = Time.zone.parse('15:30')
 
     def call
-      SYMBOLS.each { |sym| update_symbol(sym) }
+      candle_map = {}
+      SYMBOLS.each do |sym|
+        candles = update_symbol(sym)
+        candle_map[sym] = candles if candles.present?
+      end
+      Market::SmcTrendNotifier.new(candle_map).call if ENV['ENABLE_SMC_TREND_NOTIFY'] == 'true'
     end
 
     private
@@ -19,14 +24,16 @@ module Market
     def update_symbol(symbol)
       inst    = instrument(symbol, segment: 'index')
       candles = fetch_candles(inst)
-      return if candles.size < 15
+      return nil if candles.size < 15
 
       atr   = atr14(candles)
       close = (candles.last[:close] || candles.last['close']).to_f
       record! symbol, atr, close
       detect_confluence(symbol, candles)
+      candles
     rescue StandardError => e
       Rails.logger.error "[TA] #{symbol} – #{e.class}: #{e.message}"
+      nil
     end
 
     def detect_confluence(symbol, candles)
