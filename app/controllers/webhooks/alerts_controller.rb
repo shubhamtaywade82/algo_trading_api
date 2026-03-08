@@ -81,31 +81,7 @@ module Webhooks
     #
     # @return [Instrument] the matching instrument or renders a 404
     def instrument
-      return @instrument if defined?(@instrument) && @instrument
-
-      type = alert_params[:instrument_type].to_s.downcase
-      exch = alert_params[:exchange]
-
-      @instrument =
-        case type
-        when 'index', 'stock'
-          Instrument.find_by!(
-            underlying_symbol: alert_params[:ticker],
-            segment: segment_from_alert_type(type), # index / equity
-            exchange: exch
-          )
-
-        when 'futures'
-          root = alert_params[:ticker].to_s.gsub(/\d+!$/, '')
-          Instrument.where(exchange: exch, segment: 'M')          # commodity
-                    .where(underlying_symbol: [root, "#{root}M"]) # main & mini
-                    .order(lot_size: :desc)
-                    .first
-        end
-
-      raise ActiveRecord::RecordNotFound, 'Instrument not found for the given parameters' unless @instrument
-
-      @instrument
+      @instrument ||= Alerts::InstrumentResolver.call(alert_params)
     end
 
     # Checks if the instrument type is 'index' or 'stock', ignoring case.
@@ -114,22 +90,6 @@ module Webhooks
     #
     def relevant_instrument_type?
       %w[index stock futures].include?(alert_params[:instrument_type].to_s.downcase)
-    end
-
-    # Converts the incoming `instrument_type` to the segment expected
-    # by the Instrument model ('index' remains 'index', 'stock' -> 'equity',
-    # else returns instrument_type verbatim).
-    #
-    # @param instrument_type [String] the incoming type from the alert
-    # @return [String] the mapped segment
-    #
-    def segment_from_alert_type(instrument_type)
-      case instrument_type
-      when 'index' then 'index'
-      when 'stock' then 'equity'
-      when 'futures' then 'commodity'
-      else instrument_type
-      end
     end
 
     # Strong parameters for alert creation.
