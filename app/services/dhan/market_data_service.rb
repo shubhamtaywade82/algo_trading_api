@@ -57,15 +57,16 @@ module Dhan
       nil
     end
 
-    def historical_ohlc(to_date: nil, oi: false)
+    def historical_ohlc(from_date: nil, to_date: nil, oi: false)
       instrument_code = @instrument.resolve_instrument_code
       to_date_final = to_date.presence&.to_s || Time.zone.today.to_s
+      from_date_final = from_date.presence&.to_s || (Time.zone.today - 30).to_s
       params = {
         security_id: @instrument.security_id,
         exchange_segment: @instrument.exchange_segment,
         instrument: instrument_code,
         oi: oi,
-        from_date: (Time.zone.today - 30).to_s,
+        from_date: from_date_final,
         to_date: to_date_final
       }
 

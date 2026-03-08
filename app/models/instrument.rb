@@ -86,8 +86,8 @@ class Instrument < ApplicationRecord
     nil
   end
 
-  def historical_ohlc(to_date: nil, oi: false)
-    Dhan::MarketDataService.new(self).historical_ohlc(to_date: to_date, oi: oi)
+  def historical_ohlc(from_date: nil, to_date: nil, oi: false)
+    Dhan::MarketDataService.new(self).historical_ohlc(from_date: from_date, to_date: to_date, oi: oi)
   end
 
   # Dhan intraday API requires interval: one of "1", "5", "15", "25", "60" (minutes).

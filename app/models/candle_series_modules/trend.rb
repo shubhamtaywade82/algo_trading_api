@@ -4,7 +4,7 @@ module CandleSeriesModules
   # Trend analysis utilities for CandleSeries
   module Trend
     def supertrend_signal
-      indicator   = Indicators::AdaptiveSupertrend.new(series: self)
+      indicator   = ::Indicators::AdaptiveSupertrend.new(series: self)
       trend_line  = indicator.call
       latest_trend = trend_line.last
       return nil unless latest_trend
