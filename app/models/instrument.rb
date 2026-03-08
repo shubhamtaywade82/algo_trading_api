@@ -129,18 +129,7 @@ class Instrument < ApplicationRecord
     end
   end
 
-  # Helper method to check if a value is numeric
-  def numeric_value?(value)
-    value.is_a?(Numeric) || value.to_s.match?(/\A-?\d+(\.\d+)?\z/)
-  end
-
   def expiry_list
     Dhan::MarketDataService.new(self).expiry_list
-  end
-
-  private
-
-  def exch_segment_enum
-    { exchange_segment => [security_id.to_i] }
   end
 end

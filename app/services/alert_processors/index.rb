@@ -161,18 +161,18 @@ module AlertProcessors
     def pre_trade_validation
       return false unless daily_loss_guard_ok?
 
+      position_manager = IndexPositionManager.new(self)
+
       case alert[:signal_type]
       when 'long_entry'
-        # close_opposite!(:pe)  # Close any PE before entering CE
         true # Always allow new CE entry
       when 'short_entry'
-        # close_opposite!(:ce)  # Close any CE before entering PE
         true # Always allow new PE entry
       when 'long_exit'
-        exit_position!(:ce)
+        position_manager.exit_position!(:ce)
         false
       when 'short_exit'
-        exit_position!(:pe)
+        position_manager.exit_position!(:pe)
         false
       else
         true
@@ -180,7 +180,8 @@ module AlertProcessors
     end
 
     def ensure_no_position!(type)
-      already = type == :ce ? open_long_ce_position? : open_long_pe_position?
+      position_manager = IndexPositionManager.new(self)
+      already = type == :ce ? position_manager.open_long_ce_position? : position_manager.open_long_pe_position?
       return true unless already
 
       reason = "existing #{type.upcase} position"
@@ -489,92 +490,6 @@ module AlertProcessors
                  "Per-lot cost: ₹#{PriceMath.round_tick(sizing[:per_lot_cost])}, Per-lot risk: ₹#{PriceMath.round_tick(sizing[:per_lot_risk])}. " \
                  "Total cost: ₹#{PriceMath.round_tick(total_cost)}, Total risk: ₹#{PriceMath.round_tick(total_risk)}. " \
                  "(SL%≈#{(sizing[:sl_pct] * 100).round(1)}%)"
-    end
-
-    # -- Positions helpers ----------------------------------------------------
-    def open_long_ce_position?
-      open_long_position?(ce_security_ids)
-    end
-
-    def open_long_pe_position?
-      open_long_position?(pe_security_ids)
-    end
-
-    def open_long_position?(sec_ids)
-      dhan_positions.any? do |p|
-        p_hash = p.is_a?(Hash) ? p : p.to_h
-        position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
-        security_id = p_hash['securityId'] || p_hash[:security_id] || p_hash['security_id']
-        position_type == 'LONG' && sec_ids.include?(security_id.to_s)
-      end
-    end
-
-    def ce_security_ids
-      @ce_security_ids ||= instrument.derivatives.where(option_type: 'CE').pluck(:security_id).map(&:to_s)
-    end
-
-    def pe_security_ids
-      @pe_security_ids ||= instrument.derivatives.where(option_type: 'PE').pluck(:security_id).map(&:to_s)
-    end
-
-    # -- Exit helpers ---------------------------------------------------------
-    def exit_position!(type)
-      ids = type == :ce ? ce_security_ids : pe_security_ids
-      positions = dhan_positions.select do |p|
-        p_hash = p.is_a?(Hash) ? p : p.to_h
-        position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
-        security_id = p_hash['securityId'] || p_hash[:security_id] || p_hash['security_id']
-        position_type == 'LONG' && ids.include?(security_id.to_s)
-      end
-      return skip!("no #{type.upcase} position to exit") if positions.empty?
-
-      positions.each do |pos|
-        pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
-        order = DhanHQ::Models::Order.new(
-          transaction_type: 'SELL',
-          order_type: 'MARKET',
-          product_type: 'MARGIN',
-          validity: 'DAY',
-          security_id: pos_hash['securityId'] || pos_hash[:security_id],
-          exchange_segment: pos_hash['exchangeSegment'] || pos_hash[:exchange_segment],
-          quantity: pos_hash['quantity'] || pos_hash[:quantity]
-        )
-        order.save
-        log :info,
-            "closed #{type.upcase} ⇒ security_id=#{pos_hash['securityId'] || pos_hash[:security_id]}, quantity=#{pos_hash['quantity'] || pos_hash[:quantity]}"
-        notify("📤 Exited #{type.upcase} position(s) for Alert ##{alert.id}", tag: 'EXIT')
-      end
-      alert.update!(status: :processed, error_message: "exited #{type.upcase}")
-      false
-    end
-
-    # Immediately closes all open opposite-side positions
-    def close_opposite!(type)
-      ids = type == :ce ? ce_security_ids : pe_security_ids
-      positions = dhan_positions.select do |p|
-        p_hash = p.is_a?(Hash) ? p : p.to_h
-        position_type = p_hash['positionType'] || p_hash[:position_type] || p_hash['position_type']
-        security_id = p_hash['securityId'] || p_hash[:security_id] || p_hash['security_id']
-        position_type == 'LONG' && ids.include?(security_id.to_s)
-      end
-      return if positions.empty?
-
-      positions.each do |pos|
-        pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
-        order = DhanHQ::Models::Order.new(
-          transaction_type: 'SELL',
-          order_type: 'MARKET',
-          product_type: 'MARGIN',
-          validity: 'DAY',
-          security_id: pos_hash['securityId'] || pos_hash[:security_id],
-          exchange_segment: pos_hash['exchangeSegment'] || pos_hash[:exchange_segment],
-          quantity: pos_hash['quantity'] || pos_hash[:quantity]
-        )
-        order.save
-        log :info,
-            "Flipped & closed #{type.upcase} ⇒ security_id=#{pos_hash['securityId'] || pos_hash[:security_id]}, quantity=#{pos_hash['quantity'] || pos_hash[:quantity]}"
-        notify("↔️ Closed opposite #{type.upcase} position(s) before new entry (Alert ##{alert.id})", tag: 'FLIP')
-      end
     end
 
     # -- Utility --------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 module Mcp
   module Tools
+    # Tool for fetching historical or intraday market data via MCP.
     class GetMarketData
       def self.name
         'get_market_data'

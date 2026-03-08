@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Mcp
+  # Registry for all available MCP tools in the system.
   class ToolRegistry
     TOOL_CLASSES = [
       Tools::GetOptionChain,

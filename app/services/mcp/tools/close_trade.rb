@@ -2,6 +2,7 @@
 
 module Mcp
   module Tools
+    # Tool for closing an open position on DhanHQ via MCP.
     class CloseTrade
       def self.name
         'close_trade'
@@ -27,42 +28,60 @@ module Mcp
       end
 
       def self.execute(args)
-        unless ENV['DHAN_CLIENT_ID'].present? || ENV['CLIENT_ID'].present?
-          return { error: 'Dhan not configured. Set DHAN_CLIENT_ID and complete login.' }
-        end
+        return { error: 'Dhan not configured. Set DHAN_CLIENT_ID and complete login.' } unless dhan_configured?
 
-        security_id = (args['security_id'] || args[:security_id]).to_s
-        exchange_segment = (args['exchange_segment'] || args[:exchange_segment]).to_s
-        net_qty = (args['net_quantity'] || args[:net_quantity]).to_i
-        product_type = (args['product_type'] || args[:product_type]).to_s
-        transaction_type = (args['transaction_type'] || args[:transaction_type]).to_s.upcase
+        opts = args.with_indifferent_access
+        payload = build_payload(opts)
 
-        transaction_type = net_qty.positive? ? 'SELL' : 'BUY' if transaction_type.blank?
-        quantity = net_qty.abs
+        return { dry_run: true, message: 'PLACE_ORDER is not true; close order not sent.', payload: payload } if dry_run?
 
-        payload = {
-          security_id: security_id.to_i,
-          exchange_segment: exchange_segment,
-          transaction_type: transaction_type,
-          quantity: quantity,
-          order_type: 'MARKET',
-          product_type: product_type,
-          validity: 'DAY'
-        }
-
-        if ENV['PLACE_ORDER'] != 'true'
-          return { dry_run: true, message: 'PLACE_ORDER is not true; close order not sent.', payload: payload }
-        end
-
-        order = DhanHQ::Models::Order.new(payload)
-        order.save
-        {
-          order_id: order.order_id || order.id,
-          order_status: order.order_status || order.status,
-          payload: payload
-        }
+        place_order(payload)
       rescue StandardError => e
         { error: e.message }
+      end
+
+      class << self
+        private
+
+        def dhan_configured?
+          ENV['DHAN_CLIENT_ID'].present? || ENV['CLIENT_ID'].present?
+        end
+
+        def dry_run?
+          ENV['PLACE_ORDER'] != 'true'
+        end
+
+        def build_payload(opts)
+          net_qty = opts[:net_quantity].to_i
+          transaction_type = resolve_transaction_type(opts[:transaction_type], net_qty)
+
+          {
+            security_id: opts[:security_id].to_s.to_i,
+            exchange_segment: opts[:exchange_segment].to_s,
+            transaction_type: transaction_type,
+            quantity: net_qty.abs,
+            order_type: 'MARKET',
+            product_type: opts[:product_type].to_s,
+            validity: 'DAY'
+          }
+        end
+
+        def resolve_transaction_type(type, net_qty)
+          parsed_type = type.to_s.upcase
+          return parsed_type if parsed_type.present?
+
+          net_qty.positive? ? 'SELL' : 'BUY'
+        end
+
+        def place_order(payload)
+          order = DhanHQ::Models::Order.new(payload)
+          order.save
+          {
+            order_id: order.order_id || order.id,
+            order_status: order.order_status || order.status,
+            payload: payload
+          }
+        end
       end
     end
   end
