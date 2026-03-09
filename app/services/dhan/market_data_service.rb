@@ -57,7 +57,7 @@ module Dhan
       nil
     end
 
-    def historical_ohlc(from_date: nil, to_date: nil, oi: false)
+    def historical_ohlc(from_date: nil, to_date: nil, oi: false, expiry_date: nil, strike_price: nil, option_type: nil)
       instrument_code = @instrument.resolve_instrument_code
       to_date_final = to_date.presence&.to_s || Time.zone.today.to_s
       from_date_final = from_date.presence&.to_s || (Time.zone.today - 30).to_s
@@ -70,8 +70,14 @@ module Dhan
         to_date: to_date_final
       }
 
+      # Add expired option parameters if provided
+      params[:expiry_date] = expiry_date if expiry_date
+      params[:strike_price] = strike_price if strike_price
+      params[:option_type] = option_type if option_type
+
       # Only include expiry_code for derivative instruments (futures/options)
-      params[:expiry_code] = 0 if instrument_code.to_s.match?(/^(FUT|OPT)/)
+      # Note: For expired options, expiry_date is usually provided instead.
+      params[:expiry_code] = 0 if instrument_code.to_s.match?(/^(FUT|OPT)/) && expiry_date.nil?
 
       log_debug("Fetching Historical OHLC for Instrument #{@instrument.security_id} with params: #{params.inspect}")
       DhanHQ::Models::HistoricalData.daily(params)
@@ -80,7 +86,7 @@ module Dhan
       nil
     end
 
-    def intraday_ohlc(interval: Instrument::DEFAULT_INTRADAY_INTERVAL, oi: false, from_date: nil, to_date: nil, days: 2)
+    def intraday_ohlc(interval: Instrument::DEFAULT_INTRADAY_INTERVAL, oi: false, from_date: nil, to_date: nil, days: 2, expiry_date: nil, strike_price: nil, option_type: nil)
       today = Time.zone.today
       to_date_final = to_date.presence&.to_s&.strip.presence || today.to_s
 
@@ -94,7 +100,7 @@ module Dhan
       interval_str = Instrument::DEFAULT_INTRADAY_INTERVAL unless Instrument::INTRADAY_INTERVALS.include?(interval_str)
       instrument_code = @instrument.resolve_instrument_code
 
-      DhanHQ::Models::HistoricalData.intraday(
+      params = {
         security_id: @instrument.security_id,
         exchange_segment: @instrument.exchange_segment,
         instrument: instrument_code,
@@ -102,9 +108,65 @@ module Dhan
         oi: oi,
         from_date: from_date,
         to_date: to_date_final
-      )
+      }
+
+      # Add expired option parameters if provided
+      params[:expiry_date] = expiry_date if expiry_date
+      params[:strike_price] = strike_price if strike_price
+      params[:option_type] = option_type if option_type
+
+      log_debug("Fetching Intraday OHLC for Instrument #{@instrument.security_id} with params: #{params.inspect}")
+      response = DhanHQ::Models::HistoricalData.intraday(params)
+      
+      data = response.is_a?(Hash) ? response.with_indifferent_access : {}
+      log_debug("Raw Intraday OHLC response: #{data.keys.inspect}")
+      data
     rescue StandardError => e
       log_error("Failed to fetch Intraday OHLC for Instrument #{@instrument.security_id}: #{e.message}")
+      nil
+    end
+
+    def rolling_ohlc(from_date:, to_date:, interval: '5', strike: 'ATM', option_type: 'CALL', expiry_flag: 'WEEK', expiry_code: 1)
+      # The DhanHQ gem doesn't have a built-in method for /charts/rollingoption yet,
+      # so we use the underlying Resource client to make the POST request.
+      resource = DhanHQ::Models::HistoricalData.resource
+      params = {
+        exchange_segment: 'NSE_FNO',
+        security_id: @instrument.security_id.to_s, # Underlying (e.g., 13 for NIFTY)
+        instrument: 'OPTIDX',
+        expiry_flag: expiry_flag,
+        expiry_code: expiry_code,
+        strike: strike,
+        drv_option_type: option_type,
+        interval: interval.to_s,
+        from_date: from_date.to_s,
+        to_date: to_date.to_s,
+        required_data: ['open', 'high', 'low', 'close', 'volume', 'oi']
+      }
+
+      log_debug("Fetching Rolling Option OHLC for #{@instrument.underlying_symbol} with params: #{params.inspect}")
+      
+      # resource.post calls /v2/charts + endpoint
+      response = resource.post('/rollingoption', params: params)
+      
+      # Debug log the full response
+      log_debug("Raw Rolling Option OHLC response: #{response.inspect}")
+      
+      # Ensure it's a Hash with indifferent access
+      full_data = response.is_a?(Hash) ? response.with_indifferent_access : {}
+      
+      # The API returns {"data" => {"ce" => {...}, "pe" => {...}}}
+      # We extract the specific type requested (ce or pe)
+      type_key = option_type.to_s.upcase == 'CALL' ? 'ce' : 'pe'
+      data = full_data.dig(:data, type_key) || {}
+      
+      if data[:open].blank?
+        log_warn("Rolling Option OHLC returned empty data for #{@instrument.underlying_symbol} #{option_type}")
+      end
+      
+      data
+    rescue StandardError => e
+      log_error("Failed to fetch Rolling Option OHLC: #{e.message}")
       nil
     end
 
