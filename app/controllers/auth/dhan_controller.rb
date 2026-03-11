@@ -17,7 +17,7 @@ module Auth
     # Secured API: returns the latest Dhan access token. Ensures token via TokenManager (refresh if needed), then serves from DB.
     def token
       Dhan::TokenManager.current_token!
-      record = DhanAccessToken.first
+      record = DhanAccessToken.current_record
       if record.blank?
         notify_telegram_token_missing_once
         return render json: { error: 'No valid Dhan token. Re-login at /auth/dhan/login' }, status: :not_found

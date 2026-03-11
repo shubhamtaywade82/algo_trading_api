@@ -69,9 +69,9 @@ module Dhan
         token_data[:expires_at] <= BUFFER_MINUTES.minutes.from_now
       end
 
-      # Loads token state from DB.
+      # Loads token state from DB (most recently created non-expired token; uncached).
       def load_from_db
-        record = DhanAccessToken.first
+        record = DhanAccessToken.current_record
         return nil unless record
 
         {
