@@ -23,24 +23,24 @@ RSpec.describe MarketAnalysisJob do
       expect(TelegramNotifier).to have_received(:send_message).with('Analysis result', chat_id: chat_id)
     end
 
-    it 'sends "could not be completed" when analysis is empty' do
+    it 'sends "returned no result" when analysis is empty' do
       allow(Market::AnalysisService).to receive(:call).and_return('')
 
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
       expect(TelegramNotifier).to have_received(:send_message).with(
-        /could not be completed/,
+        /returned no result/,
         hash_including(chat_id: chat_id)
       )
     end
 
-    it 'sends "could not be completed" when analysis is nil' do
+    it 'sends "returned no result" when analysis is nil' do
       allow(Market::AnalysisService).to receive(:call).and_return(nil)
 
       described_class.perform_now(chat_id, symbol, exchange: exchange)
 
       expect(TelegramNotifier).to have_received(:send_message).with(
-        /could not be completed/,
+        /returned no result/,
         hash_including(chat_id: chat_id)
       )
     end
@@ -66,6 +66,36 @@ RSpec.describe MarketAnalysisJob do
           "🚨 Error running analysis – #{error_message}",
           chat_id: chat_id
         )
+      end
+
+      context 'when error is Faraday::ConnectionFailed' do
+        before do
+          allow(Market::AnalysisService).to receive(:call).and_raise(Faraday::ConnectionFailed, 'end of file reached')
+        end
+
+        it 'sends connection-unavailable message' do
+          described_class.perform_now(chat_id, symbol, exchange: exchange)
+
+          expect(TelegramNotifier).to have_received(:send_message).with(
+            /Analysis service unavailable \(connection error\)/,
+            hash_including(chat_id: chat_id)
+          )
+        end
+      end
+
+      context 'when error is Dhan authentication related' do
+        before do
+          allow(Market::AnalysisService).to receive(:call).and_raise(DhanHQ::InvalidAuthenticationError, 'Invalid token')
+        end
+
+        it 'sends Dhan session message' do
+          described_class.perform_now(chat_id, symbol, exchange: exchange)
+
+          expect(TelegramNotifier).to have_received(:send_message).with(
+            /Dhan session or data access issue/,
+            hash_including(chat_id: chat_id)
+          )
+        end
       end
     end
   end

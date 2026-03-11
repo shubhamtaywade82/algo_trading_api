@@ -57,7 +57,7 @@ module Market
     rescue StandardError => e
       Rails.logger.error "[AnalysisService] ❌ #{e.class} – #{e.message}"
       Rails.logger.error e.backtrace.first(8).map { |l| "  #{l}" }.join("\n")
-      nil
+      raise
     end
 
     private
