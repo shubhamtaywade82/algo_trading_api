@@ -43,8 +43,8 @@ module Dhan
             totp: generate_totp
           )
 
-          access_token = response.fetch('accessToken')
-          expires_at = Time.zone.parse(response.fetch('expiryTime'))
+          access_token = extract_access_token(response)
+          expires_at = extract_expiry_time(response)
 
           persist_token(access_token, expires_at)
 
@@ -124,6 +124,36 @@ module Dhan
       # Generates current TOTP using configured secret.
       def generate_totp
         DhanHQ::Auth.generate_totp(creds[:totp_secret])
+      end
+
+      private
+
+      # Extracts access token from API response (string or symbol keys, optional "data" wrapper).
+      def extract_access_token(response)
+        data = response.is_a?(Hash) ? (response['data'] || response) : {}
+        token = data['accessToken'] || data[:accessToken] || data['access_token'] || data[:access_token]
+        return token if token.present?
+
+        raise DhanHQ::InvalidAuthenticationError,
+              "Dhan token response missing accessToken. Keys: #{safe_response_keys(response)}"
+      end
+
+      def extract_expiry_time(response)
+        data = response.is_a?(Hash) ? (response['data'] || response) : {}
+        raw = data['expiryTime'] || data[:expiryTime] || data['expiry_time'] || data[:expiry_time]
+        raise DhanHQ::InvalidAuthenticationError,
+              "Dhan token response missing expiryTime. Keys: #{safe_response_keys(response)}" if raw.blank?
+
+        Time.zone.parse(raw.to_s)
+      end
+
+      def safe_response_keys(response)
+        return [] unless response.is_a?(Hash)
+
+        top = response.keys.map(&:to_s)
+        data = response['data'] || response[:data]
+        nested = data.is_a?(Hash) ? data.keys.map(&:to_s) : []
+        (top + nested).uniq
       end
 
       # Required Dhan authentication credentials.

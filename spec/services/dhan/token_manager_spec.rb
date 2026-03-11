@@ -64,4 +64,37 @@ RSpec.describe Dhan::TokenManager do
       end
     end
   end
+
+  describe 'token response parsing' do
+    context 'when API response has no accessToken' do
+      before do
+        allow(DhanHQ::Auth).to receive(:generate_access_token).and_return(
+          { 'status' => 'error', 'message' => 'Invalid TOTP' }
+        )
+      end
+
+      it 'raises InvalidAuthenticationError with response keys in message' do
+        expect do
+          described_class.refresh!(reason: :missing)
+        end.to raise_error(DhanHQ::InvalidAuthenticationError, /missing accessToken.*Keys:.*status.*message/)
+      end
+    end
+
+    context 'when API response nests token under data' do
+      before do
+        allow(DhanHQ::Auth).to receive(:generate_access_token).and_return(
+          'data' => {
+            'accessToken' => 'nested_token',
+            'expiryTime' => 24.hours.from_now.iso8601
+          }
+        )
+      end
+
+      it 'extracts token and expiry from nested data' do
+        token = described_class.refresh!(reason: :missing)
+        expect(token).to eq('nested_token')
+        expect(DhanAccessToken.first.access_token).to eq('nested_token')
+      end
+    end
+  end
 end
