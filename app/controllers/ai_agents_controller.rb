@@ -24,7 +24,7 @@ class AiAgentsController < ApplicationController
     return if performed?
 
     candle = params[:candle] || '15m'
-    result = AI::TradeBrain.analyze(symbol, candle: candle)
+    result = ::AI::TradeBrain.analyze(symbol, candle: candle)
 
     render json: { output: result.output, context: result.context }
   end
@@ -36,7 +36,7 @@ class AiAgentsController < ApplicationController
     return if performed?
 
     direction = params[:direction]
-    data      = AI::TradeBrain.propose(symbol: symbol, direction: direction)
+    data      = ::AI::TradeBrain.propose(symbol: symbol, direction: direction)
 
     render json: {
       output:         data[:output],
@@ -53,13 +53,13 @@ class AiAgentsController < ApplicationController
     question = require_param!(:question)
     return if performed?
 
-    result = AI::TradeBrain.ask(question)
+    result = ::AI::TradeBrain.ask(question)
     render json: { answer: result.output, context: result.context }
   end
 
   # GET /ai_agents/positions
   def positions
-    result = AI::TradeBrain.review_positions
+    result = ::AI::TradeBrain.review_positions
     render json: { answer: result.output, context: result.context }
   end
 
@@ -67,7 +67,7 @@ class AiAgentsController < ApplicationController
   # Query param: ?symbol=NIFTY
   def session_report
     symbol = params[:symbol]&.upcase || 'NIFTY'
-    data   = AI::TradeBrain.session_report(symbol)
+    data   = ::AI::TradeBrain.session_report(symbol)
     render json: data
   end
 
