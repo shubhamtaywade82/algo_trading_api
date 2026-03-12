@@ -35,8 +35,6 @@ module Mcp
         opts = args.with_indifferent_access
         payload = build_payload(opts)
 
-        return { dry_run: true, message: 'PLACE_ORDER is not true; order not sent.', payload: payload } if dry_run?
-
         place_order(payload)
       rescue StandardError => e
         { error: e.message }
@@ -47,10 +45,6 @@ module Mcp
 
         def dhan_configured?
           ENV['DHAN_CLIENT_ID'].present? || ENV['CLIENT_ID'].present?
-        end
-
-        def dry_run?
-          ENV['PLACE_ORDER'] != 'true'
         end
 
         def build_payload(opts)
@@ -68,13 +62,7 @@ module Mcp
         end
 
         def place_order(payload)
-          order = DhanHQ::Models::Order.new(payload)
-          order.save
-          {
-            order_id: order.order_id || order.id,
-            order_status: order.order_status || order.status,
-            payload: payload
-          }
+          Orders::Gateway.place_order(payload, source: name).slice(:dry_run, :message, :order_id, :order_status, :payload)
         end
       end
     end
