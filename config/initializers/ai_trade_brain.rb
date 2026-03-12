@@ -1,26 +1,11 @@
+#!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# AI::TradeBrain — public façade for the AI agent cluster.
+#
+# This is defined in an initializer so it is not affected by Rails'
+# code reloader in development.
 module AI
-  # TradeBrain — public façade for the AI agent cluster.
-  #
-  # Single entry point into the orchestration layer. Runners return
-  # Agents::RunResult objects (from the ai-agents gem) with:
-  #   result.output   → final text from the last active agent
-  #   result.context  → serialisable conversation state for multi-turn sessions
-  #
-  # Critical boundary: TradeBrain produces PROPOSALS. It never executes orders.
-  # Execution always goes through the deterministic Strategy::Validator → Orders::Executor pipeline.
-  #
-  # Usage:
-  #   result = AI::TradeBrain.analyze("NIFTY")
-  #   puts result.output
-  #
-  #   result   = AI::TradeBrain.propose(symbol: "NIFTY")
-  #   proposal = result[:proposal]
-  #   Orders::Executor.place(proposal) if Strategy::Validator.valid?(proposal)
-  #
-  #   result = AI::TradeBrain.ask("Why did trade #214 exit early?")
-  #   puts result.output
   module TradeBrain
     module_function
 
@@ -50,7 +35,7 @@ module AI
     def propose(symbol:, direction: nil, context: nil)
       dir_hint = direction ? " Preferred direction: #{direction}." : ''
       input    = "Generate a concrete options trade setup for #{symbol}.#{dir_hint} " \
-                 "Include specific strike, entry, stop-loss, and target."
+                 'Include specific strike, entry, stop-loss, and target.'
 
       result   = AI::Runners::TradeRunner.run(input, context: context)
       proposal = AI::Runners::TradeRunner.extract_proposal(result.output)
@@ -72,8 +57,8 @@ module AI
     # @return [Agents::RunResult]
     def review_positions(context: nil)
       result = AI::Runners::OperatorRunner.run(
-        "Review all current open positions. Assess P&L, risk level, " \
-        "and flag any positions that should be considered for exit.",
+        'Review all current open positions. Assess P&L, risk level, ' \
+        'and flag any positions that should be considered for exit.',
         context: context
       )
 
@@ -123,3 +108,4 @@ module AI
     end
   end
 end
+

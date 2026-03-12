@@ -162,6 +162,16 @@ Available tools include: `get_holdings`, `get_positions`, `get_fund_limits`, `ge
 
 Full docs, argument shapes, and example `curl` calls: **[docs/MCP.md](docs/MCP.md)**.
 
+## 🤖 AI Agents (orchestration layer)
+
+The app exposes an **AI agents orchestration layer** for trading intelligence: market analysis, options flow, trade proposals, position review, and operational Q&A. It uses the [chatwoot/ai-agents](https://github.com/chatwoot/ai-agents) gem.
+
+- **Endpoints:** `POST /ai_agents/analyze`, `POST /ai_agents/propose`, `POST /ai_agents/ask`, `GET /ai_agents/positions`, `GET /ai_agents/session_report`
+- **Auth:** Set `AI_AGENTS_ACCESS_TOKEN` and send `Authorization: Bearer <token>` (optional; if unset, no auth).
+- **Scope:** Analysis and proposals only — the AI layer never places orders; execution goes through `Strategy::Validator` and the existing order pipeline.
+
+Full docs, configuration, request/response shapes, and Ruby usage: **[docs/AI_AGENTS.md](docs/AI_AGENTS.md)**.
+
 ## 🏗️ Architecture
 
 ### Core Components
@@ -201,6 +211,12 @@ REDIS_URL=redis://localhost:6379/0
 # Broker API (Dhan) — OAuth; one-time login at /auth/dhan/login (see docs/DHAN_AUTH.md)
 DHAN_CLIENT_ID=your_client_id
 DHAN_CLIENT_SECRET=your_client_secret
+
+# AI Agents (see docs/AI_AGENTS.md)
+OPENAI_API_KEY=sk-...
+# AI_AGENTS_ACCESS_TOKEN=optional_bearer_token_for_ai_agents_endpoints
+# OPENAI_URI_BASE=http://localhost:11434/v1   # Ollama
+# OPENAI_OLLAMA_MODEL=qwen3:latest
 
 # Capital Management
 ALLOC_PCT=0.25
