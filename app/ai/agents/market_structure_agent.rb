@@ -16,7 +16,7 @@ module AI
     #   "reason":     "...",
     #   "confidence": 0.72
     # }
-    class MarketStructureAgent < BaseAgent
+    module MarketStructureAgent
       INSTRUCTIONS = <<~PROMPT.freeze
         You are a professional NSE/BSE market structure analyst specializing in index trading.
 
@@ -45,10 +45,16 @@ module AI
         }
       PROMPT
 
-      TOOLS = [
-        AI::Tools::DhanCandleTool,
-        AI::Tools::MarketSentimentTool
-      ].freeze
+      def self.build
+        Agents::Agent.new(
+          name:         'Market Structure Analyst',
+          instructions: INSTRUCTIONS,
+          tools:        [
+            AI::Tools::DhanCandleTool.new,
+            AI::Tools::MarketSentimentTool.new
+          ]
+        )
+      end
     end
   end
 end

@@ -3,28 +3,15 @@
 module AI
   module Tools
     # Returns current open positions from the DhanHQ API.
-    class PositionsTool < BaseTool
-      TOOL_NAME   = 'get_positions'
-      DESCRIPTION = 'Fetch current open positions from the trading account including P&L, quantity, and instrument details.'
-      PARAMETERS  = {
-        type: 'object',
-        properties: {
-          filter: {
-            type: 'string',
-            description: 'Optional filter: all, profitable, losing',
-            enum: %w[all profitable losing]
-          }
-        },
-        required: []
-      }.freeze
+    class PositionsTool < Agents::Tool
+      description 'Fetch current open positions from the trading account including P&L, quantity, and instrument details.'
 
-      def perform(args)
-        filter = args['filter'] || 'all'
+      param :filter, type: 'string', desc: 'Filter positions: all, profitable, or losing', required: false
 
+      def perform(_ctx, filter: 'all')
         raw_positions = Dhanhq::API::Portfolio.positions
         positions     = Array(raw_positions)
-
-        positions = filter_positions(positions, filter)
+        positions     = filter_positions(positions, filter.to_s)
 
         formatted = positions.map { |p| format_position(p) }
         total_pnl = formatted.sum { |p| p[:unrealized_pnl] }
@@ -52,7 +39,6 @@ module AI
 
       def format_position(p)
         pnl = p['unrealizedProfit'].to_f
-
         {
           symbol:         p['tradingSymbol'],
           security_id:    p['securityId'],

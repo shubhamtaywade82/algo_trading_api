@@ -3,26 +3,19 @@
 module AI
   module Tools
     # Returns available trading capital and margin information.
-    class FundsTool < BaseTool
-      TOOL_NAME   = 'get_funds'
-      DESCRIPTION = 'Fetch available trading capital, used margin, and capital band classification for position sizing decisions.'
-      PARAMETERS  = {
-        type: 'object',
-        properties: {},
-        required: []
-      }.freeze
+    class FundsTool < Agents::Tool
+      description 'Fetch available trading capital, used margin, and capital band classification for position sizing decisions.'
 
-      def perform(_args)
+      def perform(_ctx)
         funds = Dhanhq::API::Funds.get_fund_limits
 
-        balance  = funds['availabelBalance'].to_f
-        used     = funds['utilizedAmount'].to_f
-        total    = balance + used
+        balance = funds['availabelBalance'].to_f
+        used    = funds['utilizedAmount'].to_f
 
         {
           available_balance:  balance.round(2),
           used_margin:        used.round(2),
-          total_capital:      total.round(2),
+          total_capital:      (balance + used).round(2),
           capital_band:       classify_capital_band(balance),
           allocation_pct:     allocation_pct(balance),
           risk_per_trade_pct: risk_per_trade_pct(balance),
@@ -37,14 +30,10 @@ module AI
       private
 
       def classify_capital_band(balance)
-        if balance <= 75_000
-          '≤75K'
-        elsif balance <= 150_000
-          '≤1.5L'
-        elsif balance <= 300_000
-          '≤3L'
-        else
-          '>3L'
+        if balance <= 75_000     then '≤75K'
+        elsif balance <= 150_000 then '≤1.5L'
+        elsif balance <= 300_000 then '≤3L'
+        else '>3L'
         end
       end
 
@@ -54,7 +43,6 @@ module AI
 
         if balance <= 75_000     then 30.0
         elsif balance <= 150_000 then 25.0
-        elsif balance <= 300_000 then 20.0
         else 20.0
         end
       end
@@ -75,7 +63,6 @@ module AI
         return (env.to_f * 100).round(1) if env.present?
 
         if balance <= 75_000     then 5.0
-        elsif balance <= 150_000 then 6.0
         elsif balance <= 300_000 then 6.0
         else 5.0
         end

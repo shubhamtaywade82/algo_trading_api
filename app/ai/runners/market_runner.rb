@@ -2,19 +2,33 @@
 
 module AI
   module Runners
-    # Runs the market analysis pipeline: structure → options flow → synthesis.
+    # Market analysis pipeline using the ai-agents gem.
+    #
+    # Hub-and-spoke topology:
+    #   SupervisorAgent (entry point)
+    #     → MarketStructureAgent   (price action + trend)
+    #     → OptionsFlowAgent       (IV, PCR, OI)
+    #   Both specialists hand back to Supervisor for synthesis.
     #
     # Usage:
     #   result = AI::Runners::MarketRunner.run("Analyze NIFTY for today's session")
-    #   result[:final][:parsed]
-    #   # => { "symbol" => "NIFTY", "bias" => "bullish", ... }
-    class MarketRunner < BaseRunner
-      PIPELINE = [
-        AI::Agents::MarketStructureAgent,
-        AI::Agents::OptionsFlowAgent
-      ].freeze
+    #   puts result.output
+    #   # Continue conversation:
+    #   result2 = AI::Runners::MarketRunner.run("What about BANKNIFTY?", context: result.context)
+    class MarketRunner
+      def self.run(input, context: nil)
+        supervisor = AI::Agents::SupervisorAgent.build
+        market     = AI::Agents::MarketStructureAgent.build
+        options    = AI::Agents::OptionsFlowAgent.build
 
-      SYNTHESIZER = AI::Agents::SupervisorAgent
+        # Hub-and-spoke: supervisor routes to specialists; specialists hand back
+        supervisor.register_handoffs(market, options)
+        market.register_handoffs(supervisor)
+        options.register_handoffs(supervisor)
+
+        runner = Agents::Runner.with_agents(supervisor, market, options)
+        runner.run(input, context: context)
+      end
     end
   end
 end

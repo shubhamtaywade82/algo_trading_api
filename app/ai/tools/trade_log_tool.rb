@@ -3,74 +3,45 @@
 module AI
   module Tools
     # Queries trade history and exit logs for operator/debugging agents.
-    class TradeLogTool < BaseTool
-      TOOL_NAME   = 'get_trade_logs'
-      DESCRIPTION = 'Fetch trade execution logs, order history, and exit events. Useful for debugging why a trade was placed, modified, or closed.'
-      PARAMETERS  = {
-        type: 'object',
-        properties: {
-          symbol: {
-            type: 'string',
-            description: 'Filter by trading symbol (optional)'
-          },
-          limit: {
-            type: 'integer',
-            description: 'Maximum number of log entries to return (default 20, max 50)'
-          },
-          since_hours: {
-            type: 'integer',
-            description: 'Only return logs from the last N hours (default 24)'
-          },
-          include_exit_logs: {
-            type: 'boolean',
-            description: 'Include exit log entries (default true)'
-          },
-          include_orders: {
-            type: 'boolean',
-            description: 'Include order records (default true)'
-          },
-          include_alerts: {
-            type: 'boolean',
-            description: 'Include TradingView alert records (default false)'
-          }
-        },
-        required: []
-      }.freeze
+    class TradeLogTool < Agents::Tool
+      description 'Fetch trade execution logs, order history, and exit events. Useful for debugging why a trade was placed, modified, or closed.'
 
-      def perform(args)
-        symbol            = args['symbol']&.upcase
-        limit             = [args['limit'].to_i.positive? ? args['limit'].to_i : 20, 50].min
-        since_hours       = args['since_hours'].to_i.positive? ? args['since_hours'].to_i : 24
-        include_exits     = args.fetch('include_exit_logs', true)
-        include_orders    = args.fetch('include_orders', true)
-        include_alerts    = args.fetch('include_alerts', false)
+      param :symbol,             type: 'string',  desc: 'Filter by trading symbol (optional)', required: false
+      param :limit,              type: 'integer', desc: 'Max log entries to return (default 20, max 50)', required: false
+      param :since_hours,        type: 'integer', desc: 'Only return logs from the last N hours (default 24)', required: false
+      param :include_exit_logs,  type: 'boolean', desc: 'Include exit log entries (default true)', required: false
+      param :include_orders,     type: 'boolean', desc: 'Include order records (default true)', required: false
+      param :include_alerts,     type: 'boolean', desc: 'Include TradingView alert records (default false)', required: false
 
-        since_time = Time.current - since_hours.hours
+      def perform(_ctx, symbol: nil, limit: 20, since_hours: 24, include_exit_logs: true, include_orders: true, include_alerts: false)
+        sym        = symbol&.upcase
+        lim        = [limit.to_i.positive? ? limit.to_i : 20, 50].min
+        since_time = Time.current - since_hours.to_i.positive? ? since_hours.to_i.hours : 24.hours
 
         result = {}
 
-        if include_exits
-          exits_scope = ExitLog.where('created_at >= ?', since_time).order(created_at: :desc)
-          exits_scope = exits_scope.where(trading_symbol: symbol) if symbol
-          result[:exit_logs] = exits_scope.limit(limit).map { |e| format_exit_log(e) }
+        if include_exit_logs
+          scope = ExitLog.where('created_at >= ?', since_time).order(created_at: :desc)
+          scope = scope.where(trading_symbol: sym) if sym
+          result[:exit_logs] = scope.limit(lim).map { |e| format_exit_log(e) }
         end
 
         if include_orders
-          orders_scope = Order.where('created_at >= ?', since_time).order(created_at: :desc)
-          orders_scope = orders_scope.where(trading_symbol: symbol) if symbol
-          result[:orders] = orders_scope.limit(limit).map { |o| format_order(o) }
+          scope = Order.where('created_at >= ?', since_time).order(created_at: :desc)
+          scope = scope.where(trading_symbol: sym) if sym
+          result[:orders] = scope.limit(lim).map { |o| format_order(o) }
         end
 
         if include_alerts
-          alerts_scope = Alert.where('created_at >= ?', since_time).order(created_at: :desc)
-          alerts_scope = alerts_scope.where("data->>'symbol' = ?", symbol) if symbol
-          result[:alerts] = alerts_scope.limit(limit).map { |a| format_alert(a) }
+          scope = Alert.where('created_at >= ?', since_time).order(created_at: :desc)
+          scope = scope.where("data->>'symbol' = ?", sym) if sym
+          result[:alerts] = scope.limit(lim).map { |a| format_alert(a) }
         end
 
         result.merge(
-          symbol:      symbol || 'all',
-          since:       since_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
-          timestamp:   Time.current.strftime('%Y-%m-%dT%H:%M:%S%z')
+          symbol:    sym || 'all',
+          since:     since_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+          timestamp: Time.current.strftime('%Y-%m-%dT%H:%M:%S%z')
         )
       rescue StandardError => e
         { error: e.message }
@@ -80,13 +51,12 @@ module AI
 
       def format_exit_log(e)
         {
-          id:             e.id,
-          symbol:         e.trading_symbol,
-          reason:         e.exit_reason,
-          pnl:            e.try(:pnl)&.to_f&.round(2),
-          quantity:       e.try(:quantity),
-          exit_price:     e.try(:exit_price)&.to_f&.round(2),
-          created_at:     e.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
+          id:         e.id,
+          symbol:     e.trading_symbol,
+          reason:     e.exit_reason,
+          pnl:        e.try(:pnl)&.to_f&.round(2),
+          exit_price: e.try(:exit_price)&.to_f&.round(2),
+          created_at: e.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
         }
       end
 
@@ -106,10 +76,10 @@ module AI
 
       def format_alert(a)
         {
-          id:          a.id,
-          data:        a.data,
-          processed:   a.try(:processed),
-          created_at:  a.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
+          id:         a.id,
+          data:       a.data,
+          processed:  a.try(:processed),
+          created_at: a.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
         }
       end
     end

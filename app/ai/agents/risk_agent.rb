@@ -4,21 +4,18 @@ module AI
   module Agents
     # Validates a trade proposal against risk parameters before it reaches the engine.
     #
-    # This is the last AI gate before a proposal enters the deterministic engine.
-    # It checks capital bands, daily loss limits, position conflicts, and market conditions.
-    #
     # Output JSON schema:
     # {
-    #   "approved":      true|false,
-    #   "risk_score":    0.0-1.0,   (higher = riskier)
-    #   "capital_ok":   true|false,
-    #   "daily_loss_ok": true|false,
-    #   "position_conflict": true|false,
-    #   "reasons":       ["...", "..."],
-    #   "adjusted_quantity": <number or null>,
+    #   "approved":           true|false,
+    #   "risk_score":         0.0-1.0,
+    #   "capital_ok":         true|false,
+    #   "daily_loss_ok":      true|false,
+    #   "position_conflict":  true|false,
+    #   "reasons":            [...],
+    #   "adjusted_quantity":  <integer or null>,
     #   "adjusted_stop_loss": <number or null>
     # }
-    class RiskAgent < BaseAgent
+    module RiskAgent
       INSTRUCTIONS = <<~PROMPT.freeze
         You are a risk management AI for an algorithmic trading system on NSE/BSE.
 
@@ -58,10 +55,16 @@ module AI
         }
       PROMPT
 
-      TOOLS = [
-        AI::Tools::FundsTool,
-        AI::Tools::PositionsTool
-      ].freeze
+      def self.build
+        Agents::Agent.new(
+          name:         'Risk Manager',
+          instructions: INSTRUCTIONS,
+          tools:        [
+            AI::Tools::FundsTool.new,
+            AI::Tools::PositionsTool.new
+          ]
+        )
+      end
     end
   end
 end

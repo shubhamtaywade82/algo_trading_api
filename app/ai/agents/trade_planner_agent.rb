@@ -4,13 +4,10 @@ module AI
   module Agents
     # Synthesizes market structure + options flow into a concrete trade proposal.
     #
-    # Receives upstream analysis as context and produces an actionable trade plan
-    # that will be validated by the deterministic Strategy::Validator before execution.
-    #
     # Output JSON schema (trade proposal):
     # {
     #   "symbol":      "NIFTY",
-    #   "direction":   "CE|PE",
+    #   "direction":   "CE|PE|none",
     #   "strike":      24300,
     #   "expiry":      "2025-04-03",
     #   "entry_price": 62.5,
@@ -22,7 +19,7 @@ module AI
     #   "confidence":  0.72,
     #   "risk_reward": 2.3
     # }
-    class TradePlannerAgent < BaseAgent
+    module TradePlannerAgent
       INSTRUCTIONS = <<~PROMPT.freeze
         You are a professional options trade planner for NSE indices (NIFTY, BANKNIFTY).
 
@@ -57,11 +54,17 @@ module AI
         }
       PROMPT
 
-      TOOLS = [
-        AI::Tools::OptionChainTool,
-        AI::Tools::FundsTool,
-        AI::Tools::DhanCandleTool
-      ].freeze
+      def self.build
+        Agents::Agent.new(
+          name:         'Trade Planner',
+          instructions: INSTRUCTIONS,
+          tools:        [
+            AI::Tools::OptionChainTool.new,
+            AI::Tools::FundsTool.new,
+            AI::Tools::DhanCandleTool.new
+          ]
+        )
+      end
     end
   end
 end

@@ -3,84 +3,92 @@
 require 'rails_helper'
 
 RSpec.describe AI::Runners::TradeRunner do
-  let(:market_output) do
-    '{"symbol":"NIFTY","bias":"bullish","trend":"uptrend","volatility":"normal",' \
-    '"key_levels":{"support":24100,"resistance":24450},"vix":13.5,"rsi":58.2,' \
-    '"reason":"Strong uptrend.","confidence":0.72}'
-  end
-
-  let(:options_output) do
-    '{"symbol":"NIFTY","expiry":"2025-04-03","iv_rank":38.2,"pcr":1.15,' \
-    '"oi_bias":"put_writing","smart_money":"neutral","premium_signal":"buy",' \
-    '"recommended_direction":"CE","reason":"Put writing dominant.","confidence":0.68}'
-  end
-
-  let(:planner_output) do
-    '{"symbol":"NIFTY","direction":"CE","strike":24300,"expiry":"2025-04-03",' \
-    '"entry_price":62.5,"stop_loss":42.0,"target":110.0,"quantity":75,' \
-    '"product":"INTRADAY","rationale":"Bullish setup.","confidence":0.72,"risk_reward":2.3}'
-  end
-
-  let(:risk_output) do
-    '{"approved":true,"risk_score":0.35,"capital_ok":true,"daily_loss_ok":true,' \
-    '"position_conflict":false,"reasons":[],"adjusted_quantity":null,"adjusted_stop_loss":null}'
-  end
-
-  def mock_llm_sequence(*outputs)
-    client = instance_double(OpenAI::Client)
-    allow(Openai::Client).to receive(:instance).and_return(client)
-
-    responses = outputs.map do |text|
-      { 'choices' => [{ 'message' => { 'content' => text, 'tool_calls' => nil } }] }
-    end
-
-    allow(client).to receive(:chat).and_return(*responses)
+  # Build a minimal mock for Agents::RunResult
+  let(:run_result) do
+    instance_double('Agents::RunResult',
+      output:  output_text,
+      context: { current_agent: 'Trade Planner', conversation_history: [] }
+    )
   end
 
   describe '.run' do
+    let(:output_text) { 'Market is bullish. Here is the setup.' }
+
     before do
-      mock_llm_sequence(market_output, options_output, planner_output, risk_output)
+      runner = instance_double('Agents::AgentRunner')
+      allow(Agents::Runner).to receive(:with_agents).and_return(runner)
+      allow(runner).to receive(:run).and_return(run_result)
+
+      # Stub agent building
+      allow(AI::Agents::SupervisorAgent).to receive(:build).and_return(double('supervisor', register_handoffs: nil, tools: []))
+      allow(AI::Agents::MarketStructureAgent).to receive(:build).and_return(double('market', register_handoffs: nil))
+      allow(AI::Agents::OptionsFlowAgent).to receive(:build).and_return(double('options', register_handoffs: nil))
+      allow(AI::Agents::TradePlannerAgent).to receive(:build).and_return(double('planner', register_handoffs: nil))
+      allow(AI::Agents::RiskAgent).to receive(:build).and_return(double('risk', register_handoffs: nil))
     end
 
-    it 'returns a proposal hash' do
+    it 'returns an Agents::RunResult' do
       result = described_class.run('Generate a NIFTY trade setup')
-      expect(result[:proposal]).to be_a(Hash)
+      expect(result).to eq(run_result)
     end
 
-    it 'extracts the symbol and direction from the planner agent' do
-      result   = described_class.run('Generate a NIFTY trade setup')
-      proposal = result[:proposal]
+    it 'passes context through to the runner' do
+      ctx = { current_agent: 'Trade Planner', conversation_history: [] }
+      runner = instance_double('Agents::AgentRunner')
+      allow(Agents::Runner).to receive(:with_agents).and_return(runner)
+      expect(runner).to receive(:run).with(anything, context: ctx).and_return(run_result)
 
-      expect(proposal[:symbol]).to eq('NIFTY')
-      expect(proposal[:direction]).to eq('CE')
-      expect(proposal[:strike]).to eq(24300)
-    end
-
-    it 'includes risk approval status' do
-      result = described_class.run('Generate a NIFTY trade setup')
-      expect(result[:proposal][:risk_approved]).to be true
-    end
-
-    it 'marks pipeline as successful' do
-      result = described_class.run('Generate a NIFTY trade setup')
-      expect(result[:success]).to be true
+      described_class.run('Follow-up question', context: ctx)
     end
   end
 
-  describe 'proposal with direction: none' do
-    let(:no_trade_output) do
-      '{"symbol":"NIFTY","direction":"none","strike":null,"entry_price":null,' \
-      '"stop_loss":null,"target":null,"quantity":null,"product":null,' \
-      '"rationale":"No clear setup.","confidence":0.42,"risk_reward":null}'
+  describe '.extract_proposal' do
+    context 'with a PROPOSAL: JSON block in markdown fences' do
+      let(:output_text) do
+        <<~TEXT
+          Based on my analysis, here is the trade setup:
+
+          PROPOSAL:
+          ```json
+          {"symbol":"NIFTY","direction":"CE","strike":24300,"entry_price":62.5,"stop_loss":42.0,"target":110.0,"quantity":75,"confidence":0.75}
+          ```
+        TEXT
+      end
+
+      it 'extracts and parses the JSON proposal' do
+        proposal = described_class.extract_proposal(output_text)
+        expect(proposal).to be_a(Hash)
+        expect(proposal['symbol']).to eq('NIFTY')
+        expect(proposal['direction']).to eq('CE')
+        expect(proposal['strike']).to eq(24300)
+      end
     end
 
-    before do
-      mock_llm_sequence(market_output, options_output, no_trade_output, risk_output)
+    context 'with a bare JSON block in fences' do
+      let(:output_text) do
+        '```json{"direction":"PE","entry_price":55.0,"stop_loss":37.0,"target":95.0}```'
+      end
+
+      it 'extracts the JSON block' do
+        proposal = described_class.extract_proposal(output_text)
+        expect(proposal).to be_a(Hash)
+        expect(proposal['direction']).to eq('PE')
+      end
     end
 
-    it 'returns nil proposal when direction is none' do
-      result = described_class.run('Generate a NIFTY trade setup')
-      expect(result[:proposal]).to be_nil
+    context 'with no JSON in output' do
+      let(:output_text) { 'Market conditions are not suitable for trading today.' }
+
+      it 'returns nil' do
+        expect(described_class.extract_proposal(output_text)).to be_nil
+      end
+    end
+
+    context 'with blank output' do
+      it 'returns nil' do
+        expect(described_class.extract_proposal('')).to be_nil
+        expect(described_class.extract_proposal(nil)).to be_nil
+      end
     end
   end
 end

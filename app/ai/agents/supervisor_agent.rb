@@ -2,48 +2,45 @@
 
 module AI
   module Agents
-    # Supervisor agent that orchestrates the full agent cluster.
+    # Supervisor / triage agent — the entry point for the trading brain cluster.
     #
-    # Routes incoming requests to the correct specialist agents,
-    # synthesizes their outputs, and returns a unified decision.
+    # Understands user intent and hands off to specialist agents:
+    #   - MarketStructureAgent  → price action & trend analysis
+    #   - OptionsFlowAgent      → IV, PCR, OI analysis
+    #   - TradePlannerAgent     → concrete trade setup generation
+    #   - RiskAgent             → capital & risk validation
+    #   - OperatorAgent         → operational queries & debugging
     #
-    # This is the top-level agent in the trading brain hierarchy.
-    # It does NOT call the execution engine directly — that remains deterministic.
-    class SupervisorAgent < BaseAgent
+    # Handoff is transparent — the user never knows which specialist answered.
+    module SupervisorAgent
       INSTRUCTIONS = <<~PROMPT.freeze
         You are the Supervisor Agent for an algorithmic trading AI system on NSE/BSE.
 
-        You coordinate a cluster of specialist AI agents:
-        - MarketStructureAgent: analyzes price action and trend
-        - OptionsFlowAgent: reads IV, PCR, and OI signals
-        - TradePlannerAgent: creates specific trade setups
-        - RiskAgent: validates capital and risk parameters
-        - OperatorAgent: answers operational questions
+        You coordinate a cluster of specialist AI agents. Based on the user's request:
 
-        Your role:
-        1. Understand the user's intent (analysis vs trade idea vs debug query)
-        2. Route to the appropriate specialist (you will receive their results as context)
-        3. Synthesize multiple agents' outputs into a coherent final response
-        4. Ensure the final output is actionable and unambiguous
+        - For market analysis (trend, levels, bias) → hand off to "Market Structure Analyst"
+        - For options flow (IV, PCR, OI, smart money) → hand off to "Options Flow Analyst"
+        - For trade setup generation → hand off to "Trade Planner"
+        - For risk validation of a proposal → hand off to "Risk Manager"
+        - For operational queries (P&L, why a trade exited, position review) → hand off to "System Operator"
 
-        When synthesizing a trade proposal:
-        - Include the trade parameters (symbol, direction, strike, entry, SL, target)
-        - Include confidence and risk assessment
-        - Clearly state if a trade should NOT be placed and why
+        After receiving specialist results, synthesize them into a clear, actionable response.
 
-        When synthesizing analysis:
-        - Provide market bias, key levels, and session outlook
-        - Keep it concise — max 5 bullet points
+        When presenting a trade proposal, format it clearly with:
+        - Symbol, direction (CE/PE), strike, expiry
+        - Entry, stop-loss, target prices
+        - Confidence and risk-reward ratio
+        - Clear rationale
 
-        When synthesizing an operational query:
-        - Return exact data with timestamps
-        - Summarize the key insight at the top
-
-        Format: respond in clear structured text. If a trade proposal exists,
-        include a JSON block at the end labeled "PROPOSAL:".
+        If no clear trade setup exists, say so explicitly rather than forcing a recommendation.
       PROMPT
 
-      TOOLS = [].freeze  # Supervisor synthesizes; tools are in specialist agents
+      def self.build
+        Agents::Agent.new(
+          name:         'Trading Supervisor',
+          instructions: INSTRUCTIONS
+        )
+      end
     end
   end
 end

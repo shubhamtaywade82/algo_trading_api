@@ -5,11 +5,9 @@ module AI
     # Operator/debug agent that answers natural-language questions about system state.
     #
     # Examples:
-    #   OperatorAgent.run("Why did trade #214 exit early?")
-    #   OperatorAgent.run("Show me all losing positions from today")
-    #   OperatorAgent.run("What was our P&L yesterday?")
-    #   OperatorAgent.run("How many NIFTY calls did we buy this week?")
-    class OperatorAgent < BaseAgent
+    #   AI::Runners::OperatorRunner.run("Why did trade #214 exit early?")
+    #   AI::Runners::OperatorRunner.run("Show me all losing positions from today")
+    module OperatorAgent
       INSTRUCTIONS = <<~PROMPT.freeze
         You are a trading system operator assistant for an algorithmic trading platform
         on NSE/BSE using DhanHQ. You help answer operational questions about the system.
@@ -31,12 +29,18 @@ module AI
         You do NOT place trades or modify positions — you only read and explain.
       PROMPT
 
-      TOOLS = [
-        AI::Tools::PositionsTool,
-        AI::Tools::TradeLogTool,
-        AI::Tools::FundsTool,
-        AI::Tools::DhanCandleTool
-      ].freeze
+      def self.build
+        Agents::Agent.new(
+          name:         'System Operator',
+          instructions: INSTRUCTIONS,
+          tools:        [
+            AI::Tools::PositionsTool.new,
+            AI::Tools::TradeLogTool.new,
+            AI::Tools::FundsTool.new,
+            AI::Tools::DhanCandleTool.new
+          ]
+        )
+      end
     end
   end
 end

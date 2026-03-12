@@ -4,23 +4,16 @@ module AI
   module Runners
     # Single-agent runner for operational/debug queries.
     #
+    # Uses only the OperatorAgent — no handoffs needed for simple queries.
+    #
     # Usage:
     #   result = AI::Runners::OperatorRunner.run("Why did NIFTY CE 24300 exit early today?")
-    #   puts result[:final][:output]
-    class OperatorRunner < BaseRunner
-      PIPELINE    = [AI::Agents::OperatorAgent].freeze
-      SYNTHESIZER = nil
-
-      def run
-        result = super
-
-        # OperatorRunner always returns a text answer (not JSON)
-        final_output = result.dig(:pipeline_results, 0, :output)
-
-        result.merge(
-          final:   { output: final_output, parsed: nil, agent: 'OperatorAgent' },
-          answer:  final_output
-        )
+    #   puts result.output
+    class OperatorRunner
+      def self.run(input, context: nil)
+        agent  = AI::Agents::OperatorAgent.build
+        runner = Agents::Runner.with_agents(agent)
+        runner.run(input, context: context)
       end
     end
   end

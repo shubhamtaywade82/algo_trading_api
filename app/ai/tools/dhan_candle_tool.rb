@@ -2,44 +2,27 @@
 
 module AI
   module Tools
-    # Fetches OHLC candle data for an instrument via existing DhanHQ services.
-    class DhanCandleTool < BaseTool
-      TOOL_NAME   = 'get_candle_data'
-      DESCRIPTION = 'Fetch OHLC candle data for an NSE/BSE instrument. Returns recent candles with technical indicators (RSI, MACD, Supertrend, Bollinger Bands).'
-      PARAMETERS  = {
-        type: 'object',
-        properties: {
-          symbol: {
-            type: 'string',
-            description: 'Instrument symbol, e.g. NIFTY, BANKNIFTY, RELIANCE'
-          },
-          interval: {
-            type: 'string',
-            description: 'Candle interval: 1m, 5m, 15m, 30m, 1d',
-            enum: %w[1m 5m 15m 30m 1d]
-          },
-          limit: {
-            type: 'integer',
-            description: 'Number of recent candles to return (default 20, max 100)'
-          }
-        },
-        required: %w[symbol interval]
-      }.freeze
+    # Fetches OHLC candle data + technical indicators via the existing CandleSeries pipeline.
+    class DhanCandleTool < Agents::Tool
+      description 'Fetch OHLC candle data for an NSE/BSE instrument. Returns recent candles with technical indicators (RSI, MACD, Supertrend, Bollinger Bands, ATR).'
 
-      def perform(args)
-        symbol   = args['symbol'].to_s.upcase
-        interval = args['interval'].to_s
-        limit    = [args['limit'].to_i.positive? ? args['limit'].to_i : 20, 100].min
+      param :symbol,   type: 'string',  desc: 'Instrument symbol, e.g. NIFTY, BANKNIFTY, RELIANCE'
+      param :interval, type: 'string',  desc: 'Candle interval: 1m, 5m, 15m, 30m, 1d'
+      param :limit,    type: 'integer', desc: 'Number of recent candles to return (default 20, max 100)', required: false
 
-        instrument = Instrument.segment_index.find_by(underlying_symbol: symbol) ||
-                     Instrument.find_by(trading_symbol: symbol)
+      def perform(_ctx, symbol:, interval:, limit: 20)
+        sym = symbol.to_s.upcase
+        lim = [limit.to_i.positive? ? limit.to_i : 20, 100].min
 
-        return { error: "Instrument not found: #{symbol}" } unless instrument
+        instrument = Instrument.segment_index.find_by(underlying_symbol: sym) ||
+                     Instrument.find_by(trading_symbol: sym)
 
-        series = instrument.candle_series(interval: interval.delete_suffix('m'))
+        return { error: "Instrument not found: #{sym}" } unless instrument
+
+        series = instrument.candle_series(interval: interval.to_s.delete_suffix('m'))
         return { error: 'No candle data available' } if series.candles.blank?
 
-        recent_candles = series.candles.last(limit).map do |c|
+        recent = series.candles.last(lim).map do |c|
           {
             ts:     c.timestamp&.strftime('%Y-%m-%dT%H:%M:%S'),
             open:   c.open.to_f.round(2),
@@ -51,10 +34,10 @@ module AI
         end
 
         {
-          symbol:   symbol,
-          interval: interval,
-          count:    recent_candles.length,
-          candles:  recent_candles,
+          symbol:     sym,
+          interval:   interval,
+          count:      recent.length,
+          candles:    recent,
           indicators: {
             rsi:        series.rsi[:rsi]&.round(2),
             macd:       series.macd.transform_values { |v| v&.round(4) },

@@ -21,28 +21,29 @@ class AiAgentsController < ApplicationController
   # Body: { symbol: "NIFTY", candle: "15m" }
   def analyze
     symbol = require_param!(:symbol)
-    candle = params[:candle] || '15m'
+    return if performed?
 
+    candle = params[:candle] || '15m'
     result = AI::TradeBrain.analyze(symbol, candle: candle)
-    render json: serialized_result(result)
+
+    render json: { output: result.output, context: result.context }
   end
 
   # POST /ai_agents/propose
   # Body: { symbol: "NIFTY", direction: "CE" }
   def propose
     symbol    = require_param!(:symbol)
+    return if performed?
+
     direction = params[:direction]
-
-    result   = AI::TradeBrain.propose(symbol: symbol, direction: direction)
-    proposal = result[:proposal]
-
-    validation = proposal ? Strategy::Validator.validate(proposal) : nil
+    data      = AI::TradeBrain.propose(symbol: symbol, direction: direction)
 
     render json: {
-      runner_success: result[:success],
-      proposal:       proposal,
-      validation:     validation,
-      ready_to_trade: proposal.present? && validation&.dig(:valid) == true
+      output:         data[:output],
+      proposal:       data[:proposal],
+      validation:     data[:validation],
+      ready_to_trade: data[:proposal].present? && data.dig(:validation, :valid) == true,
+      context:        data[:context]
     }
   end
 
@@ -50,30 +51,31 @@ class AiAgentsController < ApplicationController
   # Body: { question: "Why did trade #214 exit early?" }
   def ask
     question = require_param!(:question)
+    return if performed?
 
     result = AI::TradeBrain.ask(question)
-    render json: { answer: result[:answer], success: result[:success] }
+    render json: { answer: result.output, context: result.context }
   end
 
   # GET /ai_agents/positions
   def positions
     result = AI::TradeBrain.review_positions
-    render json: { answer: result[:answer], success: result[:success] }
+    render json: { answer: result.output, context: result.context }
   end
 
   # GET /ai_agents/session_report
   # Query param: ?symbol=NIFTY
   def session_report
     symbol = params[:symbol]&.upcase || 'NIFTY'
-    result = AI::TradeBrain.session_report(symbol)
-    render json: result
+    data   = AI::TradeBrain.session_report(symbol)
+    render json: data
   end
 
   private
 
   def authenticate!
     token = ENV['AI_AGENTS_ACCESS_TOKEN'].presence
-    return if token.blank?  # disabled when not configured
+    return if token.blank?
 
     provided = request.headers['Authorization'].to_s.delete_prefix('Bearer ').strip
     render json: { error: 'Unauthorized' }, status: :unauthorized unless ActiveSupport::SecurityUtils.secure_compare(provided, token)
@@ -81,8 +83,7 @@ class AiAgentsController < ApplicationController
 
   def require_param!(key)
     val = params[key].to_s.strip
-    render json: { error: "#{key} is required" }, status: :unprocessable_entity and return if val.blank?
-
-    val
+    render json: { error: "#{key} is required" }, status: :unprocessable_entity if val.blank?
+    val.presence
   end
 end

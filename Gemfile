@@ -101,6 +101,9 @@ gem 'faye-websocket'
 
 gem 'ruby-openai', require: 'openai'
 
+# Multi-agent AI orchestration (https://github.com/chatwoot/ai-agents)
+gem 'ai-agents'
+
 gem 'technical-analysis'
 
 gem 'ruby-technical-analysis'

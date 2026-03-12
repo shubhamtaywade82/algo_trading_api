@@ -2,58 +2,64 @@
 
 require 'rails_helper'
 
-RSpec.describe AI::Tools::BaseTool do
-  let(:concrete_tool_class) do
-    Class.new(described_class) do
-      TOOL_NAME   = 'sample_tool'
-      DESCRIPTION = 'A sample tool for testing'
-      PARAMETERS  = {
-        type: 'object',
-        properties: { value: { type: 'string' } },
-        required: ['value']
-      }.freeze
+RSpec.describe 'AI::Tools — Agents::Tool subclasses' do
+  describe AI::Tools::DhanCandleTool do
+    subject(:tool) { described_class.new }
 
-      def perform(args)
-        { result: args['value'].upcase }
-      end
+    it 'subclasses Agents::Tool' do
+      expect(tool).to be_a(Agents::Tool)
+    end
+
+    it 'has a description set' do
+      expect(described_class.description).to be_present
+    end
+
+    it 'declares required params (symbol, interval)' do
+      param_names = described_class.params.map { |p| p[:name].to_s }
+      expect(param_names).to include('symbol', 'interval')
     end
   end
 
-  subject(:tool) { concrete_tool_class.new }
+  describe AI::Tools::OptionChainTool do
+    it 'subclasses Agents::Tool' do
+      expect(described_class.new).to be_a(Agents::Tool)
+    end
 
-  describe '#name' do
-    it 'returns the TOOL_NAME constant' do
-      expect(tool.name).to eq('sample_tool')
+    it 'declares :symbol as a required param' do
+      required = described_class.params.select { |p| p[:required] }.map { |p| p[:name].to_s }
+      expect(required).to include('symbol')
     end
   end
 
-  describe '#description' do
-    it 'returns the DESCRIPTION constant' do
-      expect(tool.description).to eq('A sample tool for testing')
+  describe AI::Tools::MarketSentimentTool do
+    it 'subclasses Agents::Tool and declares :symbol' do
+      param_names = described_class.params.map { |p| p[:name].to_s }
+      expect(param_names).to include('symbol')
     end
   end
 
-  describe '#to_openai_definition' do
-    it 'returns a valid OpenAI function definition' do
-      defn = tool.to_openai_definition
-      expect(defn[:type]).to eq('function')
-      expect(defn[:function][:name]).to eq('sample_tool')
-      expect(defn[:function][:description]).to be_present
-      expect(defn[:function][:parameters]).to be_a(Hash)
+  describe AI::Tools::PositionsTool do
+    it 'subclasses Agents::Tool' do
+      expect(described_class.new).to be_a(Agents::Tool)
     end
   end
 
-  describe '#perform' do
-    it 'returns the expected result' do
-      result = tool.perform('value' => 'hello')
-      expect(result[:result]).to eq('HELLO')
+  describe AI::Tools::TradeLogTool do
+    it 'subclasses Agents::Tool' do
+      expect(described_class.new).to be_a(Agents::Tool)
     end
+  end
 
-    context 'when called on BaseTool directly' do
-      it 'raises NotImplementedError' do
-        base = described_class.new
-        expect { base.perform({}) }.to raise_error(NotImplementedError)
-      end
+  describe AI::Tools::BacktestTool do
+    it 'declares symbol and strategy as required params' do
+      required = described_class.params.select { |p| p[:required] }.map { |p| p[:name].to_s }
+      expect(required).to include('symbol', 'strategy')
+    end
+  end
+
+  describe AI::Tools::FundsTool do
+    it 'subclasses Agents::Tool and needs no params' do
+      expect(described_class.params).to be_blank
     end
   end
 end
