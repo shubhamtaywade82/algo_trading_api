@@ -36,7 +36,7 @@ module AI
       PROMPT
 
       def self.build
-        Agents::Agent.new(
+        ::Agents::Agent.new(
           name:         'Trading Supervisor',
           instructions: INSTRUCTIONS
         )

@@ -36,8 +36,8 @@ module AI
         planner.register_handoffs(supervisor, risk)
         risk.register_handoffs(supervisor)
 
-        runner = Agents::Runner.with_agents(supervisor, market, options, planner, risk)
-        runner.run(input, context: context)
+        runner = ::Agents::Runner.with_agents(supervisor, market, options, planner, risk)
+        runner.run(input, context: context || {})
       end
 
       # Extract a structured trade proposal from the agent's text output.

@@ -98,7 +98,7 @@ module AI
     # @return [Agents::RunResult]
     def quick_analysis(symbol)
       agent  = AI::Agents::MarketStructureAgent.build
-      runner = Agents::Runner.with_agents(agent)
+      runner = ::Agents::Runner.with_agents(agent)
       runner.run("Quick market structure analysis for #{symbol}. Use 15m candles.")
     end
 

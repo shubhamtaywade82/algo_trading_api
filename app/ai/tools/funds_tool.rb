@@ -3,7 +3,7 @@
 module AI
   module Tools
     # Returns available trading capital and margin information.
-    class FundsTool < Agents::Tool
+    class FundsTool < ::Agents::Tool
       description 'Fetch available trading capital, used margin, and capital band classification for position sizing decisions.'
 
       def perform(_ctx)

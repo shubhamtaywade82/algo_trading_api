@@ -3,7 +3,7 @@
 module AI
   module Tools
     # Runs a strategy backtest using the existing Backtest::Runner service.
-    class BacktestTool < Agents::Tool
+    class BacktestTool < ::Agents::Tool
       description 'Run a strategy backtest for an instrument. Returns win rate, P&L, and max drawdown metrics.'
 
       param :symbol,    type: 'string', desc: 'Instrument symbol to backtest, e.g. NIFTY, BANKNIFTY'

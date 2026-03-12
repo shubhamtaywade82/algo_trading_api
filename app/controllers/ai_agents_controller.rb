@@ -23,10 +23,18 @@ class AiAgentsController < ApplicationController
     symbol = require_param!(:symbol)
     return if performed?
 
-    candle = params[:candle] || '15m'
+    candle = params[:candle] || params.dig(:ai_agent, :candle) || '15m'
     result = ::AI::TradeBrain.analyze(symbol, candle: candle)
 
     render json: { output: result.output, context: result.context }
+  rescue NoMethodError => e
+    backtrace = e.backtrace.first(20).join("\n")
+    Rails.logger.error "[AiAgentsController#analyze] #{e.class}: #{e.message}\n#{backtrace}"
+    render json: {
+      error: e.message,
+      hint: "Check log for backtrace. Common: context was nil (pass context: {}).",
+      backtrace: e.backtrace.first(8)
+    }, status: :internal_server_error
   end
 
   # POST /ai_agents/propose
@@ -82,8 +90,8 @@ class AiAgentsController < ApplicationController
   end
 
   def require_param!(key)
-    val = params[key].to_s.strip
+    val = params[key].to_s.strip.presence || params[:ai_agent]&.dig(key)&.to_s&.strip.presence
     render json: { error: "#{key} is required" }, status: :unprocessable_entity if val.blank?
-    val.presence
+    val
   end
 end

@@ -30,7 +30,7 @@ module AI
       PROMPT
 
       def self.build
-        Agents::Agent.new(
+        ::Agents::Agent.new(
           name:         'System Operator',
           instructions: INSTRUCTIONS,
           tools:        [

@@ -3,7 +3,7 @@
 module AI
   module Tools
     # Fetches OHLC candle data + technical indicators via the existing CandleSeries pipeline.
-    class DhanCandleTool < Agents::Tool
+    class DhanCandleTool < ::Agents::Tool
       description 'Fetch OHLC candle data for an NSE/BSE instrument. Returns recent candles with technical indicators (RSI, MACD, Supertrend, Bollinger Bands, ATR).'
 
       param :symbol,   type: 'string',  desc: 'Instrument symbol, e.g. NIFTY, BANKNIFTY, RELIANCE'

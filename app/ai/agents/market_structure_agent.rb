@@ -46,7 +46,7 @@ module AI
       PROMPT
 
       def self.build
-        Agents::Agent.new(
+        ::Agents::Agent.new(
           name:         'Market Structure Analyst',
           instructions: INSTRUCTIONS,
           tools:        [

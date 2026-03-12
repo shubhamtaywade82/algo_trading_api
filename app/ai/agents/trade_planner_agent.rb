@@ -55,7 +55,7 @@ module AI
       PROMPT
 
       def self.build
-        Agents::Agent.new(
+        ::Agents::Agent.new(
           name:         'Trade Planner',
           instructions: INSTRUCTIONS,
           tools:        [

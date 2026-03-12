@@ -56,7 +56,7 @@ module AI
       PROMPT
 
       def self.build
-        Agents::Agent.new(
+        ::Agents::Agent.new(
           name:         'Risk Manager',
           instructions: INSTRUCTIONS,
           tools:        [

@@ -1,47 +1,29 @@
-#!/usr/bin/env ruby
 # frozen_string_literal: true
 
 # AI::TradeBrain — public façade for the AI agent cluster.
 #
-# This is defined in an initializer so it is not affected by Rails'
-# code reloader in development.
+# Defined here so it is not affected by Rails' code reloader in development.
+# Runners are loaded explicitly so AI::Runners is available (Zeitwerk would not
+# autoload them into this AI module because it is defined in this initializer).
 module AI
   module TradeBrain
     module_function
 
-    # Run the full market analysis pipeline for a symbol.
-    #
-    # @param symbol  [String]  NSE index symbol, e.g. "NIFTY"
-    # @param candle  [String]  timeframe, e.g. "15m"
-    # @param context [Hash]    optional prior conversation context (for multi-turn)
-    # @return [Agents::RunResult]  result.output = analysis text, result.context = state
     def analyze(symbol, candle: '15m', context: nil)
       input = "Analyze #{symbol} market structure and options flow for the current session. " \
               "Use #{candle} candle data."
-
-      result = AI::Runners::MarketRunner.run(input, context: context)
+      result = AI::Runners::MarketRunner.run(input, context: context || {})
       Rails.logger.info "[TradeBrain] analyze(#{symbol}) complete"
       result
     end
 
-    # Generate a trade proposal via the full agent pipeline.
-    #
-    # The returned :proposal hash must pass Strategy::Validator.valid? before execution.
-    #
-    # @param symbol    [String]  NSE index symbol
-    # @param direction [String]  optional hint: "CE", "PE", or nil (auto)
-    # @param context   [Hash]    optional prior conversation context
-    # @return [Hash]   { result:, proposal:, validation: }
     def propose(symbol:, direction: nil, context: nil)
       dir_hint = direction ? " Preferred direction: #{direction}." : ''
       input    = "Generate a concrete options trade setup for #{symbol}.#{dir_hint} " \
                  'Include specific strike, entry, stop-loss, and target.'
-
-      result   = AI::Runners::TradeRunner.run(input, context: context)
+      result   = AI::Runners::TradeRunner.run(input, context: context || {})
       proposal = AI::Runners::TradeRunner.extract_proposal(result.output)
-
       Rails.logger.info "[TradeBrain] propose(#{symbol}) → proposal=#{proposal.inspect}"
-
       {
         result:     result,
         output:     result.output,
@@ -51,51 +33,32 @@ module AI
       }
     end
 
-    # Analyze all current positions for risk and exit recommendations.
-    #
-    # @param context [Hash]  optional prior conversation context
-    # @return [Agents::RunResult]
     def review_positions(context: nil)
       result = AI::Runners::OperatorRunner.run(
         'Review all current open positions. Assess P&L, risk level, ' \
         'and flag any positions that should be considered for exit.',
-        context: context
+        context: context || {}
       )
-
       Rails.logger.info "[TradeBrain] review_positions → #{result.output.to_s.slice(0, 80)}..."
       result
     end
 
-    # Answer an operational question about the trading system.
-    #
-    # @param question [String]  free-form natural language question
-    # @param context  [Hash]    optional prior conversation context (multi-turn support)
-    # @return [Agents::RunResult]  result.output = answer text
     def ask(question, context: nil)
-      result = AI::Runners::OperatorRunner.run(question, context: context)
+      result = AI::Runners::OperatorRunner.run(question, context: context || {})
       Rails.logger.info "[TradeBrain] ask → #{result.output.to_s.slice(0, 80)}..."
       result
     end
 
-    # Quick single-agent market structure snapshot (cheaper than full pipeline).
-    #
-    # @param symbol [String]
-    # @return [Agents::RunResult]
     def quick_analysis(symbol)
       agent  = AI::Agents::MarketStructureAgent.build
-      runner = Agents::Runner.with_agents(agent)
+      runner = ::Agents::Runner.with_agents(agent)
       runner.run("Quick market structure analysis for #{symbol}. Use 15m candles.")
     end
 
-    # Generate a complete session report: analysis + positions + proposal.
-    #
-    # @param symbol [String]
-    # @return [Hash]  aggregated session data
     def session_report(symbol)
       analysis     = analyze(symbol)
       positions    = review_positions
       trade_result = propose(symbol: symbol)
-
       {
         symbol:     symbol,
         timestamp:  Time.current.iso8601,
@@ -109,3 +72,10 @@ module AI
   end
 end
 
+# Load runner files into AI so AI::Runners::* is available (initializer defines AI first,
+# so Zeitwerk does not autoload app/ai into this namespace).
+# Load tools and agents first (runners depend on AI::Agents::*).
+ai_root = Rails.root.join('app/ai')
+%w[tools agents runners].each do |subdir|
+  Dir[ai_root.join(subdir, '*.rb')].sort.each { |f| load f }
+end

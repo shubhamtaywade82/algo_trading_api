@@ -26,8 +26,8 @@ module AI
         market.register_handoffs(supervisor)
         options.register_handoffs(supervisor)
 
-        runner = Agents::Runner.with_agents(supervisor, market, options)
-        runner.run(input, context: context)
+        runner = ::Agents::Runner.with_agents(supervisor, market, options)
+        runner.run(input, context: context || {})
       end
     end
   end

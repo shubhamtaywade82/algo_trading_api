@@ -3,7 +3,7 @@
 module AI
   module Tools
     # Returns current open positions from the DhanHQ API.
-    class PositionsTool < Agents::Tool
+    class PositionsTool < ::Agents::Tool
       description 'Fetch current open positions from the trading account including P&L, quantity, and instrument details.'
 
       param :filter, type: 'string', desc: 'Filter positions: all, profitable, or losing', required: false

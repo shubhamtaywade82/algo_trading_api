@@ -12,8 +12,8 @@ module AI
     class OperatorRunner
       def self.run(input, context: nil)
         agent  = AI::Agents::OperatorAgent.build
-        runner = Agents::Runner.with_agents(agent)
-        runner.run(input, context: context)
+        runner = ::Agents::Runner.with_agents(agent)
+        runner.run(input, context: context || {})
       end
     end
   end

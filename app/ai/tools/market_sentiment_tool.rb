@@ -3,7 +3,7 @@
 module AI
   module Tools
     # Returns aggregated market sentiment indicators for NSE indices.
-    class MarketSentimentTool < Agents::Tool
+    class MarketSentimentTool < ::Agents::Tool
       description 'Get market sentiment indicators: India VIX, PCR, and derived bias for NIFTY and BANKNIFTY.'
 
       param :symbol, type: 'string', desc: 'Index symbol: NIFTY or BANKNIFTY'

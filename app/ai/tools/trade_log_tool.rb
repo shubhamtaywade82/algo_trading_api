@@ -3,7 +3,7 @@
 module AI
   module Tools
     # Queries trade history and exit logs for operator/debugging agents.
-    class TradeLogTool < Agents::Tool
+    class TradeLogTool < ::Agents::Tool
       description 'Fetch trade execution logs, order history, and exit events. Useful for debugging why a trade was placed, modified, or closed.'
 
       param :symbol,             type: 'string',  desc: 'Filter by trading symbol (optional)', required: false

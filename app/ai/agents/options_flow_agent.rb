@@ -35,7 +35,7 @@ module AI
       PROMPT
 
       def self.build
-        Agents::Agent.new(
+        ::Agents::Agent.new(
           name:         'Options Flow Analyst',
           instructions: INSTRUCTIONS,
           tools:        [
