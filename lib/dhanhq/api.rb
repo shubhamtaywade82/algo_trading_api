@@ -176,8 +176,10 @@ module Dhanhq
       extend self
 
       def place(params)
-        order = DhanHQ::Models::Order.place(params)
-        wrap_order(order)
+        result = ::Orders::Gateway.place_order(params, source: name)
+        return result.with_indifferent_access if result[:dry_run]
+
+        wrap_order(result[:raw])
       end
 
       def modify(order_id, params)

@@ -150,10 +150,10 @@ module AlertProcessors
         order = build_super_order_payload(strike, derivative, quantity)
         return skip!(:ltp_unavailable) unless order
 
-        ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
+        place_super_order!(order)
       else
         order = build_legacy_order_payload(derivative, quantity)
-        ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
+        place_order!(order)
       end
     end
 
@@ -328,9 +328,10 @@ module AlertProcessors
     end
 
     def place_order!(params)
-      order = DhanHQ::Models::Order.new(params)
-      order.save
-      order_id = order.order_id || order.id
+      result = Orders::Gateway.place_order(params, source: self.class.name)
+      return dry_run(params) if result[:dry_run]
+
+      order_id = result[:order_id]
       log :info, "order placed  → #{order_id}"
       alert.update!(error_message: "orderId #{order_id}")
 
@@ -354,8 +355,10 @@ module AlertProcessors
     end
 
     def place_super_order!(params)
-      order = DhanHQ::Models::SuperOrder.create(params)
-      order_id = order.order_id || order.id
+      result = Orders::Gateway.place_super_order(params, source: self.class.name)
+      return dry_run(params) if result[:dry_run]
+
+      order_id = result[:order_id]
       log :info, "super-order placed → #{order_id}"
       alert.update!(error_message: "SO #{order_id}")
 

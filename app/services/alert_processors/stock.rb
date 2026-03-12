@@ -49,7 +49,7 @@ module AlertProcessors
         return skip! unless daily_loss_guard_ok?
 
         order = build_order_payload
-        ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
+        place_order!(order)
 
         alert.update!(status: :processed)
       end
@@ -234,9 +234,10 @@ module AlertProcessors
     #  Execution helpers
     # ------------------------------------------------------------------------
     def place_order!(payload)
-      order = DhanHQ::Models::Order.new(payload)
-      order.save
-      order_id = order.order_id || order.id
+      result = Orders::Gateway.place_order(payload, source: self.class.name)
+      return dry_run(payload) if result[:dry_run]
+
+      order_id = result[:order_id]
       ensure_edis!(payload[:quantity]) if cnc_sell?(payload)
       alert.update!(metadata: { placed_order: { order_id: order_id } })
       logger.info("[Stock ##{alert.id}] ✅ placed #{order_id}")

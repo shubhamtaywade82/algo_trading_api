@@ -4,48 +4,53 @@ module Orders
   class BracketPlacer < ApplicationService
     def call
       Positions::ActiveCache.all_positions.each do |pos|
-        next if bracket_order_exists?(pos)
-
-        entry_price = PriceMath.round_tick(pos['costPrice'].to_f)
-        instrument_type = detect_instrument_type(pos)
-
-        sl_pct = instrument_type == :option ? 25.0 : 10.0
-        tp_pct = instrument_type == :option ? 50.0 : 20.0
-
-        sl_val = PriceMath.round_tick(entry_price * sl_pct / 100.0)
-        tp_val = PriceMath.round_tick(entry_price * tp_pct / 100.0)
-
-        payload = {
-          securityId: pos['securityId'],
-          transactionType: pos['netQty'].to_f.positive? ? 'SELL' : 'BUY',
-          orderType: 'MARKET',
-          quantity: pos['netQty'].abs,
-          exchangeSegment: pos['exchangeSegment'],
-          productType: pos['productType'],
-          validity: 'DAY',
-          price: pos['ltp'] || pos['buyAvg'],
-          boStopLossValue: sl_val,
-          boProfitValue: tp_val
-        }
-
-        if ENV['PLACE_ORDER'] == 'true'
-          response = Dhanhq::API::Orders.place(payload)
-
-          if response['orderId']
-            notify("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
-            log_info("Bracket placed for #{pos['tradingSymbol']} #{response['orderId']}")
-          else
-            log_error("Failed for #{pos['tradingSymbol']}: #{response['message']}")
-          end
-        else
-          dry_run(payload, pos['tradingSymbol'])
-        end
+        process_position(pos)
       rescue StandardError => e
         log_error("Error for #{pos['tradingSymbol']}: #{e.class} - #{e.message}")
       end
     end
 
     private
+
+    def process_position(pos)
+      return if bracket_order_exists?(pos)
+
+      entry_price = PriceMath.round_tick(pos['costPrice'].to_f)
+      instrument_type = detect_instrument_type(pos)
+
+      sl_pct = instrument_type == :option ? 25.0 : 10.0
+      tp_pct = instrument_type == :option ? 50.0 : 20.0
+
+      sl_val = PriceMath.round_tick(entry_price * sl_pct / 100.0)
+      tp_val = PriceMath.round_tick(entry_price * tp_pct / 100.0)
+
+      payload = {
+        securityId: pos['securityId'],
+        transactionType: pos['netQty'].to_f.positive? ? 'SELL' : 'BUY',
+        orderType: 'MARKET',
+        quantity: pos['netQty'].abs,
+        exchangeSegment: pos['exchangeSegment'],
+        productType: pos['productType'],
+        validity: 'DAY',
+        price: pos['ltp'] || pos['buyAvg'],
+        boStopLossValue: sl_val,
+        boProfitValue: tp_val
+      }
+
+      result = Orders::Gateway.place_order(payload, source: self.class.name)
+      return dry_run(payload, pos['tradingSymbol']) if result[:dry_run]
+
+      handle_place_result(result, pos, sl_val, tp_val)
+    end
+
+    def handle_place_result(result, pos, sl_val, tp_val)
+      if result[:order_id].present?
+        notify("🛡️ Bracket order placed for #{pos['tradingSymbol']} (SL: #{sl_val}, TP: #{tp_val})")
+        log_info("Bracket placed for #{pos['tradingSymbol']} #{result[:order_id]}")
+      else
+        log_error("Failed for #{pos['tradingSymbol']}: #{result[:message] || 'unknown error'}")
+      end
+    end
 
     def bracket_order_exists?(pos)
       Dhanhq::API::Orders.list.any? do |o|

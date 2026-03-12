@@ -25,26 +25,27 @@ module Orders
       # Only include price for LIMIT, not MARKET orders
       payload[:price] = exit_price if order_type == 'LIMIT'
 
-      if ENV['PLACE_ORDER'] == 'true'
-        order = DhanHQ::Models::Order.new(payload)
-        order.save
-        order_id = order.order_id || order.id
-        order_status = order.order_status || order.status
+      result = Orders::Gateway.place_order(payload, source: self.class.name)
 
-        if order_id.present? && %w[PENDING TRANSIT TRADED].include?(order_status.to_s.upcase)
-          charges = @analysis[:charges] || Charges::Calculator.call(@pos, @analysis)
-          pnl     = @analysis[:pnl]
-          net_pnl = pnl ? (pnl - charges) : nil
-
-          extra = @analysis[:order_type] ? " (#{@analysis[:order_type].to_s.upcase})" : ''
-
-          notify("✅ Exit Placed#{extra}: #{@pos['tradingSymbol'] || @pos[:trading_symbol]} | Reason: #{@reason} | Qty: #{(@pos['netQty'] || @pos[:net_qty]).to_f.abs} | Price: ₹#{@pos['ltp'] || @pos[:ltp]} | Net PNL: ₹#{net_pnl}")
-          Rails.logger.info("[Orders::Executor] Exit placed and logged for #{@pos['tradingSymbol'] || @pos[:trading_symbol]} — #{@reason}#{extra}")
-        else
-          Rails.logger.error("[Orders::Executor] Failed for #{@pos['tradingSymbol'] || @pos[:trading_symbol]}: Order status #{order_status}")
-        end
-      else
+      if result[:dry_run]
         dry_run(payload, @pos['tradingSymbol'])
+        return
+      end
+
+      order_id = result[:order_id]
+      order_status = result[:order_status]
+
+      if order_id.present? && %w[PENDING TRANSIT TRADED].include?(order_status.to_s.upcase)
+        charges = @analysis[:charges] || Charges::Calculator.call(@pos, @analysis)
+        pnl     = @analysis[:pnl]
+        net_pnl = pnl ? (pnl - charges) : nil
+
+        extra = @analysis[:order_type] ? " (#{@analysis[:order_type].to_s.upcase})" : ''
+
+        notify("✅ Exit Placed#{extra}: #{@pos['tradingSymbol'] || @pos[:trading_symbol]} | Reason: #{@reason} | Qty: #{(@pos['netQty'] || @pos[:net_qty]).to_f.abs} | Price: ₹#{@pos['ltp'] || @pos[:ltp]} | Net PNL: ₹#{net_pnl}")
+        Rails.logger.info("[Orders::Executor] Exit placed and logged for #{@pos['tradingSymbol'] || @pos[:trading_symbol]} — #{@reason}#{extra}")
+      else
+        Rails.logger.error("[Orders::Executor] Failed for #{@pos['tradingSymbol'] || @pos[:trading_symbol]}: Order status #{order_status}")
       end
     rescue DhanHQ::OrderError => e
       if e.message.include?('Market is Closed')

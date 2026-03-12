@@ -55,7 +55,7 @@ module AlertProcessors
         sec_id = pos_hash['securityId'] || pos_hash[:security_id]
         qty = pos_hash['quantity'] || pos_hash[:quantity]
 
-        order = DhanHQ::Models::Order.new(
+        payload = {
           transaction_type: 'SELL',
           order_type: 'MARKET',
           product_type: 'MARGIN',
@@ -63,8 +63,13 @@ module AlertProcessors
           security_id: sec_id,
           exchange_segment: pos_hash['exchangeSegment'] || pos_hash[:exchange_segment],
           quantity: qty
-        )
-        order.save
+        }
+
+        result = Orders::Gateway.place_order(payload, source: self.class.name)
+        if result[:dry_run]
+          @processor.send(:log, :warn, "blocked #{type.upcase} exit ⇒ security_id=#{sec_id}, quantity=#{qty}")
+          next
+        end
 
         @processor.send(:log, :info, "#{log_prefix} #{type.upcase} ⇒ security_id=#{sec_id}, quantity=#{qty}")
         @processor.send(:notify, notify_msg, tag: tag)
