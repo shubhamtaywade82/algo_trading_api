@@ -30,3 +30,10 @@ This is a **Rails 8 API-only** app (Ruby 3.3.4, PostgreSQL 16). No Redis or Side
 | Single spec | `bundle exec rspec spec/path/file_spec.rb` |
 | Dev server | `bundle exec rails server -p 5002` |
 | Console | `bin/rails console` |
+
+
+### Order placement invariant (must-follow)
+
+- Route **all** live order placement through `Orders::Gateway`.
+- `PLACE_ORDER` enforcement must live in the gateway; do not add new direct broker placement calls in other services.
+- Any new order placement flow must return a dry-run/blocked response when `PLACE_ORDER != "true"`, with logging.

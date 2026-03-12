@@ -150,6 +150,15 @@ The system includes comprehensive webhook testing tools:
 - `short_entry` - Enter short position
 - `short_exit` - Exit short position
 
+
+## 🔒 Order Placement Safety
+
+All broker order placement is centralized in `Orders::Gateway`.
+
+- Live order execution is allowed only when `PLACE_ORDER=true`.
+- When disabled, the gateway blocks placement, logs the attempt, and returns a deterministic dry-run style response.
+- New order flows must call the gateway instead of invoking `DhanHQ::Models::Order` / `SuperOrder` directly.
+
 ## 🤖 MCP (Model Context Protocol)
 
 The app exposes a **read-only DhanHQ MCP server** over HTTP so AI assistants (e.g. Cursor) and other MCP clients can call broker and market tools via JSON-RPC.

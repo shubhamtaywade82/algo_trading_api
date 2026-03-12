@@ -150,10 +150,10 @@ module AlertProcessors
         order = build_super_order_payload(strike, derivative, quantity)
         return skip!(:ltp_unavailable) unless order
 
-        ENV['PLACE_ORDER'] == 'true' ? place_super_order!(order) : dry_run(order)
+        place_super_order!(order)
       else
         order = build_legacy_order_payload(derivative, quantity)
-        ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
+        place_order!(order)
       end
     end
 

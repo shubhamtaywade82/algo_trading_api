@@ -49,7 +49,7 @@ module AlertProcessors
         return skip! unless daily_loss_guard_ok?
 
         order = build_order_payload
-        ENV['PLACE_ORDER'] == 'true' ? place_order!(order) : dry_run(order)
+        place_order!(order)
 
         alert.update!(status: :processed)
       end
