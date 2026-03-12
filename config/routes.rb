@@ -47,6 +47,15 @@ Rails.application.routes.draw do
   post 'mcp', to: 'mcp#handle'
   get 'mcp', to: 'mcp#handle'
 
+  # AI Agents orchestration layer (analysis + proposals only, no execution)
+  scope :ai_agents do
+    post :analyze,        to: 'ai_agents#analyze'
+    post :propose,        to: 'ai_agents#propose'
+    post :ask,            to: 'ai_agents#ask'
+    get  :positions,      to: 'ai_agents#positions'
+    get  :session_report, to: 'ai_agents#session_report'
+  end
+
   # Defines the root path route ("/")
   root to: proc { [200, { 'Content-Type' => 'application/json' }, ['{"status":"ok"}']] }
 end
