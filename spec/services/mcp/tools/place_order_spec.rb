@@ -17,6 +17,7 @@ RSpec.describe Mcp::Tools::PlaceOrder do
       allow(Positions::ActiveCache).to receive(:refresh!)
       allow(Positions::ActiveCache).to receive(:fetch).and_return(nil)
 
+      allow(Orders::PlaceOrderGuard).to receive(:call).and_return(true)
       allow(Orders::Gateway).to receive(:place_order).and_return(payload_result)
     end
 

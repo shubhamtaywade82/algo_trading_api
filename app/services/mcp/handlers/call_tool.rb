@@ -13,6 +13,10 @@ module Mcp
         raise "Unknown tool: #{name}" unless tool
 
         result = tool.execute(args)
+        is_error =
+          result.is_a?(Hash) &&
+            result.key?(:error) &&
+            result[:error].present?
 
         {
           jsonrpc: '2.0',
@@ -20,7 +24,7 @@ module Mcp
           result: {
             structuredContent: result,
             content: [{ type: 'text', text: result.to_json }],
-            isError: false
+            isError: is_error
           }
         }
       rescue StandardError => e

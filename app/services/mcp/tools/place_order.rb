@@ -41,13 +41,23 @@ module Mcp
 
         validate!(security_id: security_id, exchange_segment: exchange_segment, transaction_type: transaction_type, quantity: quantity, product_type: product_type, order_type: order_type, price: price)
 
-        Positions::ActiveCache.refresh! # ensures we check the latest netQty
+        payload = build_payload(
+          security_id: security_id,
+          exchange_segment: exchange_segment,
+          transaction_type: transaction_type,
+          quantity: quantity,
+          product_type: product_type,
+          order_type: order_type,
+          price: price
+        )
+
+        Positions::ActiveCache.refresh! # ensures we check the latest netQty and allowed_to_trade context
+        Orders::PlaceOrderGuard.call(payload, logger: Rails.logger, source: 'mcp_place_order')
+
         existing = Positions::ActiveCache.fetch(security_id, exchange_segment)
         if existing.present? && (existing['netQty'] || existing[:net_qty]).to_i != 0
           return { error: 'Active position exists for this security; refusing to place another order.' }
         end
-
-        payload = build_payload(security_id: security_id, exchange_segment: exchange_segment, transaction_type: transaction_type, quantity: quantity, product_type: product_type, order_type: order_type, price: price)
 
         Orders::Gateway.place_order(payload, source: 'mcp_place_order')
           .slice(:dry_run, :blocked, :message, :order_id, :order_status, :payload)
