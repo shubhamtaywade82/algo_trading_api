@@ -58,6 +58,7 @@ module AI
         ::Agents::Agent.new(
           name:         'Trade Planner',
           instructions: INSTRUCTIONS,
+          model:        ::Agents.configuration.default_model,
           tools:        [
             AI::Tools::OptionChainTool.new,
             AI::Tools::FundsTool.new,

@@ -59,6 +59,7 @@ module AI
         ::Agents::Agent.new(
           name:         'Risk Manager',
           instructions: INSTRUCTIONS,
+          model:        ::Agents.configuration.default_model,
           tools:        [
             AI::Tools::FundsTool.new,
             AI::Tools::PositionsTool.new

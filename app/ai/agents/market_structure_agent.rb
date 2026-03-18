@@ -49,6 +49,7 @@ module AI
         ::Agents::Agent.new(
           name:         'Market Structure Analyst',
           instructions: INSTRUCTIONS,
+          model:        ::Agents.configuration.default_model,
           tools:        [
             AI::Tools::DhanCandleTool.new,
             AI::Tools::MarketSentimentTool.new

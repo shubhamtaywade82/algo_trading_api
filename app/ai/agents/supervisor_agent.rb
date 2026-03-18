@@ -38,7 +38,8 @@ module AI
       def self.build
         ::Agents::Agent.new(
           name:         'Trading Supervisor',
-          instructions: INSTRUCTIONS
+          instructions: INSTRUCTIONS,
+          model:        ::Agents.configuration.default_model
         )
       end
     end

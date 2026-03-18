@@ -33,6 +33,7 @@ module AI
         ::Agents::Agent.new(
           name:         'System Operator',
           instructions: INSTRUCTIONS,
+          model:        ::Agents.configuration.default_model,
           tools:        [
             AI::Tools::PositionsTool.new,
             AI::Tools::TradeLogTool.new,

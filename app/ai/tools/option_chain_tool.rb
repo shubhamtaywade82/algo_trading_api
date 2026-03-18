@@ -36,15 +36,21 @@ module AI
         )
 
         analysis  = analyzer.analyze(strategy_type: 'intraday', signal_type: stype.to_sym)
-        sentiment = Market::SentimentAnalysis.call(chain)
+        sentiment = Market::SentimentAnalysis.call(
+          option_chain:    chain,
+          expiry:         expiry,
+          spot:           ltp,
+          iv_rank:        iv_rank,
+          historical_data: historical
+        )
 
         {
           symbol:        sym,
           expiry:        expiry,
           ltp:           ltp.round(2),
           iv_rank:       iv_rank&.round(2),
-          pcr:           sentiment[:pcr]&.round(3),
-          sentiment:     sentiment[:sentiment],
+          pcr:           compute_pcr(chain),
+          sentiment:     sentiment[:bias]&.to_s,
           best_strike:   analysis[:best_strike],
           top_strikes:   analysis[:strikes]&.first(3),
           trend:         analysis[:trend],
@@ -56,19 +62,41 @@ module AI
 
       private
 
-      def summarize_chain(chain, ltp)
-        atm_strike = (ltp / 50.0).round * 50
-        strikes    = chain.select { |row| (row['strikePrice'].to_f - atm_strike).abs <= 200 }
+      def compute_pcr(chain)
+        return nil unless chain.is_a?(Hash) && chain[:oc].is_a?(Hash)
 
-        strikes.first(5).map do |row|
+        total_ce_oi = 0
+        total_pe_oi = 0
+        chain[:oc].each_value do |row|
+          data = (row || {}).with_indifferent_access
+          total_ce_oi += data.dig('ce', 'oi').to_i
+          total_pe_oi += data.dig('pe', 'oi').to_i
+        end
+        return nil if total_ce_oi.zero?
+
+        (total_pe_oi.to_f / total_ce_oi).round(3)
+      end
+
+      def summarize_chain(chain, ltp)
+        oc = chain.is_a?(Hash) ? chain[:oc] || chain['oc'] : {}
+        return [] unless oc.is_a?(Hash) && oc.any?
+
+        atm_strike = (ltp / 50.0).round * 50
+        strikes = oc.map do |strike_str, row|
+          strike = strike_str.to_f
+          [strike, row]
+        end.select { |strike, _| (strike - atm_strike).abs <= 200 }.sort_by { |strike, _| (strike - ltp).abs }.first(5)
+
+        strikes.map do |strike, row|
+          row = (row || {}).with_indifferent_access
           {
-            strike: row['strikePrice'].to_f,
-            ce_ltp: row.dig('callOption', 'last_price').to_f.round(2),
-            pe_ltp: row.dig('putOption',  'last_price').to_f.round(2),
-            ce_oi:  row.dig('callOption', 'oi').to_i,
-            pe_oi:  row.dig('putOption',  'oi').to_i,
-            ce_iv:  row.dig('callOption', 'implied_volatility').to_f.round(2),
-            pe_iv:  row.dig('putOption',  'implied_volatility').to_f.round(2)
+            strike: strike,
+            ce_ltp: row.dig('ce', 'last_price').to_f.round(2),
+            pe_ltp: row.dig('pe', 'last_price').to_f.round(2),
+            ce_oi:  row.dig('ce', 'oi').to_i,
+            pe_oi:  row.dig('pe', 'oi').to_i,
+            ce_iv:  row.dig('ce', 'implied_volatility').to_f.round(2),
+            pe_iv:  row.dig('pe', 'implied_volatility').to_f.round(2)
           }
         end
       end

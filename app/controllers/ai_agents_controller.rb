@@ -26,7 +26,15 @@ class AiAgentsController < ApplicationController
     candle = params[:candle] || params.dig(:ai_agent, :candle) || '15m'
     result = ::AI::TradeBrain.analyze(symbol, candle: candle)
 
-    render json: { output: result.output, context: result.context }
+    if result.error
+      Rails.logger.warn "[AiAgentsController#analyze] Run failed: #{result.error.class} #{result.error.message}"
+    end
+
+    render json: {
+      output: result.output.presence || (result.error ? "Error: #{result.error.message}" : nil),
+      error:  result.error&.message,
+      context: result.context
+    }
   rescue NoMethodError => e
     backtrace = e.backtrace.first(20).join("\n")
     Rails.logger.error "[AiAgentsController#analyze] #{e.class}: #{e.message}\n#{backtrace}"
@@ -62,13 +70,15 @@ class AiAgentsController < ApplicationController
     return if performed?
 
     result = ::AI::TradeBrain.ask(question)
-    render json: { answer: result.output, context: result.context }
+    output = result.output.presence || (result.error ? "Error: #{result.error.message}" : nil)
+    render json: { answer: output, error: result.error&.message, context: result.context }
   end
 
   # GET /ai_agents/positions
   def positions
     result = ::AI::TradeBrain.review_positions
-    render json: { answer: result.output, context: result.context }
+    output = result.output.presence || (result.error ? "Error: #{result.error.message}" : nil)
+    render json: { answer: output, error: result.error&.message, context: result.context }
   end
 
   # GET /ai_agents/session_report

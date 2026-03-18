@@ -34,7 +34,7 @@ module AI
       input = "Analyze #{symbol} market structure and options flow for the current session. " \
               "Use #{candle} candle data."
 
-      result = AI::Runners::MarketRunner.run(input, context: context)
+      result = AI::Runners::MarketRunner.run(input, context: context || {})
       Rails.logger.info "[TradeBrain] analyze(#{symbol}) complete"
       result
     end
@@ -52,7 +52,7 @@ module AI
       input    = "Generate a concrete options trade setup for #{symbol}.#{dir_hint} " \
                  "Include specific strike, entry, stop-loss, and target."
 
-      result   = AI::Runners::TradeRunner.run(input, context: context)
+      result   = AI::Runners::TradeRunner.run(input, context: context || {})
       proposal = AI::Runners::TradeRunner.extract_proposal(result.output)
 
       Rails.logger.info "[TradeBrain] propose(#{symbol}) → proposal=#{proposal.inspect}"
@@ -74,7 +74,7 @@ module AI
       result = AI::Runners::OperatorRunner.run(
         "Review all current open positions. Assess P&L, risk level, " \
         "and flag any positions that should be considered for exit.",
-        context: context
+        context: context || {}
       )
 
       Rails.logger.info "[TradeBrain] review_positions → #{result.output.to_s.slice(0, 80)}..."
@@ -87,7 +87,7 @@ module AI
     # @param context  [Hash]    optional prior conversation context (multi-turn support)
     # @return [Agents::RunResult]  result.output = answer text
     def ask(question, context: nil)
-      result = AI::Runners::OperatorRunner.run(question, context: context)
+      result = AI::Runners::OperatorRunner.run(question, context: context || {})
       Rails.logger.info "[TradeBrain] ask → #{result.output.to_s.slice(0, 80)}..."
       result
     end
@@ -99,7 +99,7 @@ module AI
     def quick_analysis(symbol)
       agent  = AI::Agents::MarketStructureAgent.build
       runner = ::Agents::Runner.with_agents(agent)
-      runner.run("Quick market structure analysis for #{symbol}. Use 15m candles.")
+      runner.run("Quick market structure analysis for #{symbol}. Use 15m candles.", context: {})
     end
 
     # Generate a complete session report: analysis + positions + proposal.

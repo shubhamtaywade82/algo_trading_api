@@ -38,6 +38,7 @@ module AI
         ::Agents::Agent.new(
           name:         'Options Flow Analyst',
           instructions: INSTRUCTIONS,
+          model:        ::Agents.configuration.default_model,
           tools:        [
             AI::Tools::OptionChainTool.new,
             AI::Tools::MarketSentimentTool.new
