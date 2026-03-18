@@ -17,9 +17,6 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
     end
   end
 
-  # Normalized candles (symbol keys) — same data
-  let(:normalized_candles) { candles }
-
   # Option chain in DhanHQ format
   let(:option_chain) do
     {
