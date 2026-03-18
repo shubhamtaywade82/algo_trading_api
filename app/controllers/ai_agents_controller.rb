@@ -24,7 +24,8 @@ class AiAgentsController < ApplicationController
     return if performed?
 
     candle = params[:candle] || params.dig(:ai_agent, :candle) || '15m'
-    result = ::AI::TradeBrain.analyze(symbol, candle: candle)
+    context = params.dig(:ai_agent, :context) || params[:context]
+    result = ::AI::TradeBrain.analyze(symbol, candle: candle, context: context)
 
     error = result.respond_to?(:error) ? result.error : nil
     Rails.logger.warn "[AiAgentsController#analyze] Run failed: #{error.class} #{error.message}" if error
