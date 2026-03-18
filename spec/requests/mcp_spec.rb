@@ -64,7 +64,7 @@ RSpec.describe 'MCP', :mcp do
         expect(json['result']['serverInfo']['name']).to eq('algo-trading-api')
       end
 
-      it 'returns 200 and tools/list with registered tools' do
+      it 'returns 200 and tools/list with empty array (no production tools yet)' do
         body = { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json
         post '/mcp', params: body,
                      headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
@@ -72,9 +72,7 @@ RSpec.describe 'MCP', :mcp do
         json = response.parsed_body
         expect(json['jsonrpc']).to eq('2.0')
         expect(json['result']['tools']).to be_an(Array)
-        names = json['result']['tools'].pluck('name')
-        expect(names).to include('get_option_chain', 'get_positions', 'get_market_data', 'place_trade', 'close_trade',
-                                 'scan_trade_setup', 'backtest_strategy', 'explain_trade')
+        expect(json['result']['tools']).to be_empty
       end
 
       it 'returns 200 and Method not found for unknown method' do
@@ -142,7 +140,7 @@ RSpec.describe 'MCP', :mcp do
     end
 
     context 'when tools/call is used' do
-      it 'returns 200 with content and isError for known tool' do
+      it 'returns 200 with isError true for any tool name (production registry is empty)' do
         body = {
           jsonrpc: '2.0', id: 3, method: 'tools/call',
           params: { name: 'backtest_strategy', arguments: {} }
@@ -152,9 +150,9 @@ RSpec.describe 'MCP', :mcp do
         expect(response).to have_http_status(:ok)
         json = response.parsed_body
         expect(json['jsonrpc']).to eq('2.0')
-        expect(json['result']['content']).to be_an(Array)
-        expect(json['result']['content'].first['type']).to eq('text')
-        expect(json['result']['isError']).to be(false)
+        expect(json['result']['isError']).to be(true)
+        text = JSON.parse(json['result']['content'].first['text'])
+        expect(text['error']).to include('Unknown tool')
       end
 
       it 'returns 200 with isError true for unknown tool name' do
