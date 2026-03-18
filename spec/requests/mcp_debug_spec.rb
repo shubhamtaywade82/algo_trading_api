@@ -76,16 +76,43 @@ RSpec.describe 'MCP Debug endpoint', :mcp do
     end
   end
 
-  describe 'POST /mcp tools/list' do
-    it 'returns empty array (no production tools yet)' do
-      body = { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json
-      post '/mcp',
-           params: body,
-           headers: { 'Content-Type' => 'application/json' }.merge(MCP_DEBUG_ACCEPT).merge(MCP_DEBUG_AUTH)
-      expect(response).to have_http_status(:ok)
-      json = response.parsed_body
-      expect(json['result']['tools']).to be_an(Array)
-      expect(json['result']['tools']).to be_empty
+  describe 'GET /mcp/debug' do
+    it 'returns 405 Method Not Allowed' do
+      get '/mcp/debug', headers: MCP_DEBUG_ACCEPT.merge(MCP_DEBUG_AUTH)
+      expect(response).to have_http_status(:method_not_allowed)
+    end
+  end
+
+  describe 'MCP_DEBUG_TOKEN precedence' do
+    context 'when MCP_DEBUG_TOKEN is set and differs from MCP_ACCESS_TOKEN' do
+      around do |example|
+        ENV['MCP_DEBUG_TOKEN'] = 'debug-only-token'
+        example.run
+      ensure
+        ENV.delete('MCP_DEBUG_TOKEN')
+      end
+
+      it 'grants access to the debug endpoint using MCP_DEBUG_TOKEN' do
+        body = { jsonrpc: '2.0', id: 1, method: 'initialize' }.to_json
+        post '/mcp/debug',
+             params: body,
+             headers: { 'Content-Type' => 'application/json' }
+               .merge(MCP_DEBUG_ACCEPT)
+               .merge('Authorization' => 'Bearer debug-only-token')
+        expect(response).to have_http_status(:ok)
+        json = response.parsed_body
+        expect(json['result']['protocolVersion']).to be_present
+      end
+
+      it 'denies access to the debug endpoint when using MCP_ACCESS_TOKEN instead of MCP_DEBUG_TOKEN' do
+        body = { jsonrpc: '2.0', id: 1, method: 'initialize' }.to_json
+        post '/mcp/debug',
+             params: body,
+             headers: { 'Content-Type' => 'application/json' }
+               .merge(MCP_DEBUG_ACCEPT)
+               .merge(MCP_DEBUG_AUTH)
+        expect(response).to have_http_status(:unauthorized)
+      end
     end
   end
 end
