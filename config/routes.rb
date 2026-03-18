@@ -46,6 +46,8 @@ Rails.application.routes.draw do
 
   post 'mcp', to: 'mcp#handle'
   get 'mcp', to: 'mcp#handle'
+  post 'mcp/debug', to: 'mcp#debug_handle'
+  get 'mcp/debug', to: 'mcp#debug_handle'
 
   # AI Agents orchestration layer (analysis + proposals only, no execution)
   scope :ai_agents do

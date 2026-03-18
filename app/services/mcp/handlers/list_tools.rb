@@ -4,8 +4,8 @@ module Mcp
   module Handlers
     # Handler for listing available MCP tools.
     class ListTools
-      def self.call(req)
-        tools = ToolRegistry.tools.map(&:definition)
+      def self.call(req, registry: ToolRegistry)
+        tools = registry.tools.map(&:definition)
 
         {
           jsonrpc: '2.0',

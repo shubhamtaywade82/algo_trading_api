@@ -4,7 +4,7 @@ module Mcp
   # Routes JSON-RPC requests to MCP lifecycle and tool handlers.
   # Spec: lifecycle (initialize, notifications/initialized), tools/list, tools/call.
   class Dispatcher
-    def self.call(req)
+    def self.call(req, registry: ToolRegistry)
       method = req['method'].to_s
       case method
       when 'initialize'
@@ -12,9 +12,9 @@ module Mcp
       when 'notifications/initialized'
         nil
       when 'tools/list'
-        Handlers::ListTools.call(req)
+        Handlers::ListTools.call(req, registry: registry)
       when 'tools/call'
-        Handlers::CallTool.call(req)
+        Handlers::CallTool.call(req, registry: registry)
       else
         {
           jsonrpc: '2.0',

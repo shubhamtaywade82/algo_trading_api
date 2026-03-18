@@ -146,13 +146,17 @@ module AlertProcessors
       end
       log_sizing_success(strike, derivative.lot_size, sizing) if sizing[:lots]
 
+      place_live = Orders::Gateway.place_order_enabled?(logger: Rails.logger, source: self.class.name)
       if USE_SUPER_ORDER
         order = build_super_order_payload(strike, derivative, quantity)
         return skip!(:ltp_unavailable) unless order
+        return dry_run(order) unless place_live
 
         place_super_order!(order)
       else
         order = build_legacy_order_payload(derivative, quantity)
+        return dry_run(order) unless place_live
+
         place_order!(order)
       end
     end

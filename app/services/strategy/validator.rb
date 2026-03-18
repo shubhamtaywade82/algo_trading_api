@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Strategy
+class Strategy
   # Validates an AI-generated trade proposal before it enters the execution engine.
   #
   # This is the deterministic gate between the AI layer and order execution.

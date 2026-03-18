@@ -26,13 +26,12 @@ class AiAgentsController < ApplicationController
     candle = params[:candle] || params.dig(:ai_agent, :candle) || '15m'
     result = ::AI::TradeBrain.analyze(symbol, candle: candle)
 
-    if result.error
-      Rails.logger.warn "[AiAgentsController#analyze] Run failed: #{result.error.class} #{result.error.message}"
-    end
+    error = result.respond_to?(:error) ? result.error : nil
+    Rails.logger.warn "[AiAgentsController#analyze] Run failed: #{error.class} #{error.message}" if error
 
     render json: {
-      output: result.output.presence || (result.error ? "Error: #{result.error.message}" : nil),
-      error:  result.error&.message,
+      output: result.output.presence || (error ? "Error: #{error.message}" : nil),
+      error:  error&.message,
       context: result.context
     }
   rescue NoMethodError => e
@@ -70,15 +69,17 @@ class AiAgentsController < ApplicationController
     return if performed?
 
     result = ::AI::TradeBrain.ask(question)
-    output = result.output.presence || (result.error ? "Error: #{result.error.message}" : nil)
-    render json: { answer: output, error: result.error&.message, context: result.context }
+    error = result.respond_to?(:error) ? result.error : nil
+    output = result.output.presence || (error ? "Error: #{error.message}" : nil)
+    render json: { answer: output, error: error&.message, context: result.context }
   end
 
   # GET /ai_agents/positions
   def positions
     result = ::AI::TradeBrain.review_positions
-    output = result.output.presence || (result.error ? "Error: #{result.error.message}" : nil)
-    render json: { answer: output, error: result.error&.message, context: result.context }
+    error = result.respond_to?(:error) ? result.error : nil
+    output = result.output.presence || (error ? "Error: #{error.message}" : nil)
+    render json: { answer: output, error: error&.message, context: result.context }
   end
 
   # GET /ai_agents/session_report
