@@ -28,6 +28,7 @@ module Mcp
           jsonrpc: '2.0',
           id: req['id'],
           result: {
+            structuredContent: { error: e.message },
             content: [{ type: 'text', text: { error: e.message }.to_json }],
             isError: true
           }

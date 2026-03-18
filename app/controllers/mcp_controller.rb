@@ -43,7 +43,7 @@ class McpController < ApplicationController
 
   def run_mcp_dispatch(req, registry: Mcp::ToolRegistry)
     if req['id'].nil? && req.key?('method')
-      handle_notification(req, registry: registry)
+      handle_notification(req)
       return nil
     end
 
@@ -56,8 +56,8 @@ class McpController < ApplicationController
     }
   end
 
-  def handle_notification(req, registry: Mcp::ToolRegistry)
-    Mcp::Dispatcher.call(req, registry: registry)
+  def handle_notification(req)
+    Mcp::Dispatcher.call(req)
   end
 
   def authenticate_mcp_request
@@ -76,7 +76,7 @@ class McpController < ApplicationController
   def authenticate_debug_request
     expected = ENV.fetch('MCP_DEBUG_TOKEN', ENV.fetch('MCP_ACCESS_TOKEN', nil))
     if expected.blank?
-      render json: mcp_error(-32_503, 'Service Unavailable', 'MCP_ACCESS_TOKEN must be set'), status: :service_unavailable
+      render json: mcp_error(-32_503, 'Service Unavailable', 'MCP_DEBUG_TOKEN or MCP_ACCESS_TOKEN must be set'), status: :service_unavailable
       return
     end
 
