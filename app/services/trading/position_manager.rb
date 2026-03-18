@@ -59,7 +59,8 @@ module Trading
     def partial_exit(position)
       net_qty  = position['netQty'].to_i.abs
       lot_size = detect_lot_size(position)
-      half_qty = [(net_qty / 2.0).ceil, lot_size].max
+      half_lots = [(net_qty / lot_size / 2.0).ceil, 1].max
+      half_qty  = half_lots * lot_size
 
       payload = build_exit_payload(position, half_qty)
       Orders::Gateway.place_order(payload, source: 'mcp_partial_exit')
