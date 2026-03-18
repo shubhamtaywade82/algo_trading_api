@@ -5,6 +5,7 @@ module Mcp
   class ProductionToolRegistry
     TOOL_CLASSES = [
       Tools::AnalyzeTrade,
+      Tools::ResolveDerivative,
       Tools::PlaceOrder,
       Tools::ManagePosition,
       Tools::ExitPosition,

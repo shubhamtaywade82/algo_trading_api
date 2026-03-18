@@ -73,7 +73,7 @@ RSpec.describe 'MCP', :mcp do
         expect(json['jsonrpc']).to eq('2.0')
         expect(json['result']['tools']).to be_an(Array)
         names = json['result']['tools'].pluck('name')
-        expect(names).to include('analyze_trade', 'place_order', 'get_positions', 'manage_position', 'exit_position',
+        expect(names).to include('analyze_trade', 'resolve_derivative', 'place_order', 'get_positions', 'manage_position', 'exit_position',
                                  'system_status', 'get_market_sentiment', 'get_confluence_signal', 'get_key_levels', 'get_iv_rank')
       end
 
