@@ -137,5 +137,53 @@ RSpec.describe 'MCP trade flow', :mcp do
     expect(place_result['blocked']).to eq(false)
     expect(place_result['payload']['exchange_segment']).to eq(resolver_result.exchange_segment)
   end
-end
 
+  it 'accepts params-wrapped analyze_trade arguments from ChatGPT Actions style payloads' do
+    expiry_date = Date.iso8601('2026-03-26')
+
+    trade_result = Trading::TradeDecisionEngine::Result.new(
+      proceed: true,
+      symbol: 'NIFTY',
+      direction: 'CE',
+      expiry: expiry_date.to_s,
+      selected_strike: { strike_price: 22_450, last_price: 150.0 },
+      iv_rank: 35.0,
+      regime: 'normal',
+      chain_analysis: { trend: 'up' },
+      spot: 200.0,
+      reason: nil,
+      timestamp: Time.current
+    )
+
+    allow(Trading::TradeDecisionEngine).to receive(:call)
+      .with(symbol: 'NIFTY', expiry: expiry_date.to_s)
+      .and_return(trade_result)
+
+    body = {
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'analyze_trade',
+        arguments: {
+          params: {
+            symbol: 'NIFTY',
+            expiry: expiry_date.to_s,
+            server_context: { request_id: 'abc123' }
+          },
+          server_context: { transport: 'openai_actions' }
+        }
+      }
+    }
+
+    post '/mcp',
+         params: body.to_json,
+         headers: { 'Content-Type' => 'application/json' }.merge(MCP_ACCEPT).merge(MCP_AUTH)
+
+    expect(response).to have_http_status(:ok)
+    json = response.parsed_body
+    expect(json.dig('result', 'isError')).to eq(false)
+    expect(json.dig('result', 'structuredContent', 'symbol')).to eq('NIFTY')
+    expect(json.dig('result', 'structuredContent', 'expiry')).to eq(expiry_date.to_s)
+  end
+end

@@ -10,14 +10,29 @@ module Mcp
         def normalize_args(args)
           raise ArgumentError, 'Expected Hash' unless args.is_a?(Hash)
 
-          args.deep_symbolize_keys
+          payload = args.with_indifferent_access
+          if payload[:params].is_a?(Hash)
+            payload = payload[:params].merge(payload.except(:params, :server_context))
+          end
+
+          payload.except(:server_context).deep_symbolize_keys
+        end
+
+        def extract_args(params)
+          return {} if params.blank?
+
+          if params.key?('arguments') || params.key?(:arguments)
+            normalize_args(params['arguments'] || params[:arguments] || {})
+          else
+            normalize_args(params.except('name', :name, 'server_context', :server_context))
+          end
         end
       end
 
       def self.call(req, registry: ToolRegistry)
         params = req['params'] || {}
         name   = params['name']
-        args   = normalize_args(params['arguments'] || {})
+        args   = extract_args(params)
 
         tool = registry.tools.find { |t| t.name == name }
         raise "Unknown tool: #{name}" unless tool
