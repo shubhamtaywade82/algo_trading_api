@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool that places a live or dry-run order via Orders::Gateway.
     class PlaceOrder
+      extend ExecutionHelpers
       def self.name
         'place_order'
       end
@@ -31,7 +32,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         security_id = opts[:security_id].to_s
         exchange_segment = opts[:exchange_segment].to_s
         transaction_type = opts[:transaction_type].to_s.upcase

@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for retrieving current open positions and holdings via MCP.
     class GetPositions
+      extend ExecutionHelpers
       def self.name
         'get_positions'
       end
@@ -21,7 +22,8 @@ module Mcp
         }
       end
 
-      def self.execute(_args)
+      def self.execute(args)
+        normalize_args!(name, args)
         unless ENV['DHAN_CLIENT_ID'].present? || ENV['CLIENT_ID'].present?
           return { error: 'Dhan not configured. Set DHAN_CLIENT_ID and complete login.' }
         end
