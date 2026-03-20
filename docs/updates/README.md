@@ -12,6 +12,7 @@ This directory tracks progress and changes to the project in markdown files.
 
 | Date       | File            | Summary |
 | ---------- | --------------- | ------- |
+| 2026-03-20 | [2026-03-20.md] | Fix MCP `params:` argument wrapping and `server_context` leakage |
 | 2026-03-12 | [2026-03-12.md] | Enforce centralized PLACE_ORDER order gateway invariant |
 | 2026-03-08 | [2026-03-08.md] | **Major Architectural Refactoring (SOLID & Clean Code)** |
 | 2026-03-03 | [2026-03-03.md] | Fix TA background loop in rake context |
@@ -27,3 +28,5 @@ This directory tracks progress and changes to the project in markdown files.
 [SPEC_STUBBING_AUDIT.md]: ./SPEC_STUBBING_AUDIT.md
 
 [2026-03-12.md]: ./2026-03-12.md
+
+[2026-03-20.md]: ./2026-03-20.md

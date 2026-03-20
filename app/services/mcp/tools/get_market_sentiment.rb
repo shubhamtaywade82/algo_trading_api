@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for computing market sentiment (VIX, PCR, derived bias).
     class GetMarketSentiment
+      extend ExecutionHelpers
       def self.name
         'get_market_sentiment'
       end
@@ -24,7 +25,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         symbol = opts[:symbol].to_s.upcase
 
         instrument = resolve_instrument!(symbol)

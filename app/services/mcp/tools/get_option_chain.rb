@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for retrieving an analyzed option chain via MCP.
     class GetOptionChain
+      extend ExecutionHelpers
       def self.name
         'get_option_chain'
       end
@@ -25,7 +26,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         instrument = resolve_instrument!(opts[:index])
         expiry = resolve_expiry!(instrument, opts[:expiry])
 
