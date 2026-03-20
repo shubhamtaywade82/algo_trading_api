@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool that wraps the deterministic trade decision engine.
     class AnalyzeTrade
+      extend ExecutionHelpers
       def self.name
         'analyze_trade'
       end
@@ -25,7 +26,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         symbol = opts[:symbol].to_s
         expiry = opts[:expiry].presence
 

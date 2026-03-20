@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for fetching historical or intraday market data via MCP.
     class GetMarketData
+      extend ExecutionHelpers
       def self.name
         'get_market_data'
       end
@@ -25,8 +26,9 @@ module Mcp
       end
 
       def self.execute(args)
-        segment = (args['exchange_segment'] || args[:exchange_segment]).to_s
-        symbol = (args['symbol'] || args[:symbol]).to_s
+        opts = normalize_args!(name, args).with_indifferent_access
+        segment = opts[:exchange_segment].to_s
+        symbol = opts[:symbol].to_s
         raise ArgumentError, 'exchange_segment and symbol are required' if segment.blank? || symbol.blank?
 
         inst = DhanHQ::Models::Instrument.find(segment, symbol)
