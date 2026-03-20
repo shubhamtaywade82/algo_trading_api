@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for explaining a trade setup via MCP using LLM.
     class ExplainTrade
+      extend ExecutionHelpers
       def self.name
         'explain_trade'
       end
@@ -25,10 +26,11 @@ module Mcp
       end
 
       def self.execute(args)
-        query = args['query'] || args[:query]
+        opts = normalize_args!(name, args).with_indifferent_access
+        query = opts[:query]
         raise ArgumentError, 'query is required' if query.blank?
 
-        context = args['context'] || args[:context]
+        context = opts[:context]
         prompt = context.present? ? "#{query}\n\nContext: #{context}" : query
 
         answer = Openai::MessageProcessor.call(prompt, model: nil, system: nil)

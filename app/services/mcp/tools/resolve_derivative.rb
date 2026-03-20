@@ -5,6 +5,7 @@ module Mcp
     # Tool that deterministically maps an option contract request
     # to the exact Dhan tradable instrument identifiers using the scrip master.
     class ResolveDerivative
+      extend ExecutionHelpers
       def self.name
         'resolve_derivative'
       end
@@ -27,7 +28,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
 
         result = Trading::DerivativeResolver.new(
           symbol: opts[:symbol],
