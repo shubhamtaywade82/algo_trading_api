@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool that exits an existing position via Orders::Executor (market order).
     class ExitPosition
+      extend ExecutionHelpers
       def self.name
         'exit_position'
       end
@@ -26,7 +27,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         security_id = opts[:security_id].to_s
         exchange_segment = opts[:exchange_segment].to_s
         reason = opts[:reason].presence || 'MCP_EXIT'

@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for computing IV rank (percentile bucketed) for an index option chain.
     class GetIvRank
+      extend ExecutionHelpers
       def self.name
         'get_iv_rank'
       end
@@ -25,7 +26,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         symbol = opts[:symbol].to_s.upcase
         expiry = opts[:expiry].presence
 

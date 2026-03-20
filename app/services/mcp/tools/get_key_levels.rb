@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool that computes key levels deterministically from recent candles.
     class GetKeyLevels
+      extend ExecutionHelpers
       def self.name
         'get_key_levels'
       end
@@ -25,7 +26,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         symbol = opts[:symbol].to_s.upcase
         interval = opts[:interval].presence || '5'
 

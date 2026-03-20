@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for placing a new trade order on DhanHQ via MCP.
     class PlaceTrade
+      extend ExecutionHelpers
       def self.name
         'place_trade'
       end
@@ -32,7 +33,7 @@ module Mcp
       def self.execute(args)
         return { error: 'Dhan not configured. Set DHAN_CLIENT_ID and complete login at /auth/dhan/login.' } unless dhan_configured?
 
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         payload = build_payload(opts)
 
         place_order(payload)
