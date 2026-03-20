@@ -25,5 +25,10 @@ module DhanMcp
     def validate(tool_name, args)
       DhanMcp::ArgumentValidator.validate(tool_name, args)
     end
+
+    def normalized_args(params: nil, **kwargs)
+      payload = params.is_a?(Hash) ? params : kwargs
+      DhanMcp::ArgumentValidator.symbolize(payload).except(:server_context)
+    end
   end
 end

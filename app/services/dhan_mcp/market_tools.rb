@@ -15,6 +15,11 @@ module DhanMcp
     private
 
     def define_instrument(fmt)
+      normalize = method(:normalized_args)
+      validator = method(:validate)
+      dhan_call = ->(&block) { dhan(fmt, &block) }
+      resolver = method(:resolve_instrument)
+
       @server.define_tool(
         name: 'get_instrument',
         description: 'Resolve instrument by segment and symbol. ' \
@@ -27,17 +32,24 @@ module DhanMcp
           },
           required: %w[exchange_segment symbol]
         }
-      ) do |exchange_segment:, symbol:, **_|
-        args = { exchange_segment: exchange_segment, symbol: symbol }
-        if (err = validate('get_instrument', args))
+      ) do |params: nil, **kwargs|
+        args = normalize.call(params: params, **kwargs)
+        exchange_segment = args[:exchange_segment]
+        symbol = args[:symbol]
+        if (err = validator.call('get_instrument', args))
           fmt.call({ error: err })
         else
-          dhan(fmt) { resolve_instrument(exchange_segment, symbol) }
+          dhan_call.call { resolver.call(exchange_segment, symbol) }
         end
       end
     end
 
     def define_historical_daily_data(fmt)
+      normalize = method(:normalized_args)
+      validator = method(:validate)
+      dhan_call = ->(&block) { dhan(fmt, &block) }
+      resolver = method(:resolve_instrument)
+
       @server.define_tool(
         name: 'get_historical_daily_data',
         description: 'Retrieve historical daily candle data.',
@@ -50,17 +62,26 @@ module DhanMcp
           },
           required: %w[exchange_segment symbol from_date to_date]
         }
-      ) do |exchange_segment:, symbol:, from_date:, to_date:, **_|
-        args = { exchange_segment: exchange_segment, symbol: symbol, from_date: from_date, to_date: to_date }
-        if (err = validate('get_historical_daily_data', args))
+      ) do |params: nil, **kwargs|
+        args = normalize.call(params: params, **kwargs)
+        exchange_segment = args[:exchange_segment]
+        symbol = args[:symbol]
+        from_date = args[:from_date]
+        to_date = args[:to_date]
+        if (err = validator.call('get_historical_daily_data', args))
           fmt.call({ error: err })
         else
-          dhan(fmt) { resolve_instrument(exchange_segment, symbol).daily(from_date: from_date, to_date: to_date) }
+          dhan_call.call { resolver.call(exchange_segment, symbol).daily(from_date: from_date, to_date: to_date) }
         end
       end
     end
 
     def define_intraday_minute_data(fmt)
+      normalize = method(:normalized_args)
+      validator = method(:validate)
+      dhan_call = ->(&block) { dhan(fmt, &block) }
+      resolver = method(:resolve_instrument)
+
       @server.define_tool(
         name: 'get_intraday_minute_data',
         description: 'Retrieve intraday minute candle data.',
@@ -74,15 +95,20 @@ module DhanMcp
           },
           required: %w[exchange_segment symbol from_date to_date]
         }
-      ) do |exchange_segment:, symbol:, from_date:, to_date:, interval: '1', **_|
-        args = { exchange_segment: exchange_segment, symbol: symbol, from_date: from_date, to_date: to_date, interval: interval }
-        if (err = validate('get_intraday_minute_data', args))
+      ) do |params: nil, **kwargs|
+        args = normalize.call(params: params, **kwargs)
+        exchange_segment = args[:exchange_segment]
+        symbol = args[:symbol]
+        from_date = args[:from_date]
+        to_date = args[:to_date]
+        interval = args.fetch(:interval, '1')
+        if (err = validator.call('get_intraday_minute_data', args))
           fmt.call({ error: err })
         else
           from_ts = from_date.to_s.include?(' ') ? from_date : "#{from_date} 09:15:00"
           to_ts = to_date.to_s.include?(' ') ? to_date : "#{to_date} 15:30:00"
-          dhan(fmt) do
-            resolve_instrument(exchange_segment, symbol).intraday(
+          dhan_call.call do
+            resolver.call(exchange_segment, symbol).intraday(
               from_date: from_ts, to_date: to_ts, interval: interval
             )
           end
@@ -91,6 +117,11 @@ module DhanMcp
     end
 
     def define_market_ohlc(fmt)
+      normalize = method(:normalized_args)
+      validator = method(:validate)
+      dhan_call = ->(&block) { dhan(fmt, &block) }
+      resolver = method(:resolve_instrument)
+
       @server.define_tool(
         name: 'get_market_ohlc',
         description: 'Retrieve current OHLC for a security.',
@@ -101,17 +132,24 @@ module DhanMcp
           },
           required: %w[exchange_segment symbol]
         }
-      ) do |exchange_segment:, symbol:, **_|
-        args = { exchange_segment: exchange_segment, symbol: symbol }
-        if (err = validate('get_market_ohlc', args))
+      ) do |params: nil, **kwargs|
+        args = normalize.call(params: params, **kwargs)
+        exchange_segment = args[:exchange_segment]
+        symbol = args[:symbol]
+        if (err = validator.call('get_market_ohlc', args))
           fmt.call({ error: err })
         else
-          dhan(fmt) { resolve_instrument(exchange_segment, symbol).ohlc }
+          dhan_call.call { resolver.call(exchange_segment, symbol).ohlc }
         end
       end
     end
 
     def define_option_chain(fmt)
+      normalize = method(:normalized_args)
+      validator = method(:validate)
+      dhan_call = ->(&block) { dhan(fmt, &block) }
+      resolver = method(:resolve_instrument)
+
       @server.define_tool(
         name: 'get_option_chain',
         description: 'Retrieve full option chain for an underlying.',
@@ -123,17 +161,25 @@ module DhanMcp
           },
           required: %w[exchange_segment symbol expiry]
         }
-      ) do |exchange_segment:, symbol:, expiry:, **_|
-        args = { exchange_segment: exchange_segment, symbol: symbol, expiry: expiry }
-        if (err = validate('get_option_chain', args))
+      ) do |params: nil, **kwargs|
+        args = normalize.call(params: params, **kwargs)
+        exchange_segment = args[:exchange_segment]
+        symbol = args[:symbol]
+        expiry = args[:expiry]
+        if (err = validator.call('get_option_chain', args))
           fmt.call({ error: err })
         else
-          dhan(fmt) { resolve_instrument(exchange_segment, symbol).option_chain(expiry: expiry) }
+          dhan_call.call { resolver.call(exchange_segment, symbol).option_chain(expiry: expiry) }
         end
       end
     end
 
     def define_expiry_list(fmt)
+      normalize = method(:normalized_args)
+      validator = method(:validate)
+      dhan_call = ->(&block) { dhan(fmt, &block) }
+      resolver = method(:resolve_instrument)
+
       @server.define_tool(
         name: 'get_expiry_list',
         description: 'Retrieve expiry dates for an underlying. ' \
@@ -145,12 +191,14 @@ module DhanMcp
           },
           required: %w[exchange_segment symbol]
         }
-      ) do |exchange_segment:, symbol:, **_|
-        args = { exchange_segment: exchange_segment, symbol: symbol }
-        if (err = validate('get_expiry_list', args))
+      ) do |params: nil, **kwargs|
+        args = normalize.call(params: params, **kwargs)
+        exchange_segment = args[:exchange_segment]
+        symbol = args[:symbol]
+        if (err = validator.call('get_expiry_list', args))
           fmt.call({ error: err })
         else
-          dhan(fmt) { resolve_instrument(exchange_segment, symbol).expiry_list }
+          dhan_call.call { resolver.call(exchange_segment, symbol).expiry_list }
         end
       end
     end
