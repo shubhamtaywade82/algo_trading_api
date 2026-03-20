@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for closing an open position on DhanHQ via MCP.
     class CloseTrade
+      extend ExecutionHelpers
       def self.name
         'close_trade'
       end
@@ -30,7 +31,7 @@ module Mcp
       def self.execute(args)
         return { error: 'Dhan not configured. Set DHAN_CLIENT_ID and complete login.' } unless dhan_configured?
 
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         payload = build_payload(opts)
 
         place_order(payload)

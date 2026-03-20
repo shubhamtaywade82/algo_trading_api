@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool that returns current system / market readiness flags.
     class SystemStatus
+      extend ExecutionHelpers
       def self.name
         'system_status'
       end
@@ -21,7 +22,8 @@ module Mcp
         }
       end
 
-      def self.execute(_args)
+      def self.execute(args)
+        normalize_args!(name, args)
         now = Time.current
         market_open = market_open?(now)
         active_positions = Positions::ActiveCache.all_positions.count

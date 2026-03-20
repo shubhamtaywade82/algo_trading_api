@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool that modifies an existing position via Trading::PositionManager.
     class ManagePosition
+      extend ExecutionHelpers
       def self.name
         'manage_position'
       end
@@ -31,7 +32,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         security_id = opts[:security_id].to_s
         exchange_segment = opts[:exchange_segment].to_s
         action = opts[:action].to_s

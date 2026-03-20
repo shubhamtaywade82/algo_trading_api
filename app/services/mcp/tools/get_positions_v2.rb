@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Production tool: returns enriched positions from Positions::ActiveCache and MarketCache/Orders::Analyzer.
     class GetPositionsV2
+      extend ExecutionHelpers
       def self.name
         'get_positions'
       end
@@ -21,7 +22,8 @@ module Mcp
         }
       end
 
-      def self.execute(_args)
+      def self.execute(args)
+        normalize_args!(name, args)
         positions = Positions::ActiveCache.all_positions
 
         formatted = positions.map { |pos| format_position(pos) }.compact

@@ -4,6 +4,7 @@ module Mcp
   module Tools
     # Tool for running the strategy scanner via MCP.
     class ScanTradeSetup
+      extend ExecutionHelpers
       def self.name
         'scan_trade_setup'
       end
@@ -27,7 +28,7 @@ module Mcp
       end
 
       def self.execute(args)
-        opts = args.with_indifferent_access
+        opts = normalize_args!(name, args).with_indifferent_access
         instrument = resolve_instrument!(opts[:index_symbol])
         expiry_date = resolve_expiry!(instrument, opts[:expiry_date])
 
