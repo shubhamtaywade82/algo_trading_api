@@ -38,6 +38,8 @@ Layout/TrailingEmptyLines:
 Layout/FirstArgumentIndentation:
   Enabled: false                # ignore first‐arg indentation
 
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
 
 Style/FrozenStringLiteralComment:
   Enabled: false                # disable mandatory frozen_string_literal

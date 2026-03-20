@@ -59,6 +59,7 @@ components:
     JsonRpcRequest:
       type: object
       required: [jsonrpc, method]
+      additionalProperties: true
       properties:
         jsonrpc:
           type: string
@@ -68,10 +69,6 @@ components:
         method:
           type: string
           description: MCP method (initialize, tools/list, tools/call, notifications/initialized)
-        params:
-          type: object
-          additionalProperties: true
-          description: Method-specific parameters
 
     ToolListResponse:
       type: object

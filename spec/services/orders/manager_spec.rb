@@ -5,6 +5,61 @@ require 'rails_helper'
 RSpec.describe Orders::Manager, type: :service do
   include JsonFixtureHelper
 
+  describe '.place_order' do
+    let(:payload) do
+      {
+        security_id: 'OPT123',
+        exchange_segment: 'NSE_FNO',
+        transaction_type: 'BUY',
+        quantity: 75,
+        product_type: 'INTRADAY'
+      }
+    end
+
+    let(:derivative) { instance_double(Derivative, security_id: 'OPT123', exchange_segment: 'NSE_FNO', strike_price: 22500, option_type: 'CE', expiry_date: Date.current, instrument: double) }
+    let(:option_chain) do
+      {
+        oc: {
+          '22500.0' => {
+            'ce' => { 'last_price' => 100, 'top_bid_price' => 99.5, 'top_ask_price' => 100.5, 'oi' => 1000, 'volume' => 500 }
+          }
+        }
+      }
+    end
+
+    before do
+      allow(Derivative).to receive(:find_by!).with(security_id: 'OPT123').and_return(derivative)
+      allow(derivative.instrument).to receive(:fetch_option_chain).and_return(option_chain)
+      allow(Positions::ActiveCache).to receive(:refresh!)
+      allow(Positions::ActiveCache).to receive(:fetch).and_return(nil)
+      allow(Orders::PlaceOrderGuard).to receive(:call).and_return(true)
+      allow(Orders::Gateway).to receive(:place_order).and_return({ order_id: '123' })
+    end
+
+    it 'places a safe order' do
+      result = described_class.place_order(payload)
+      expect(result[:order_id]).to eq('123')
+      expect(Orders::Gateway).to have_received(:place_order).with(hash_including(order_type: 'LIMIT', price: 100.2), any_args)
+    end
+
+    it 'blocks if position exists' do
+      allow(Positions::ActiveCache).to receive(:fetch).and_return({ 'netQty' => 75 })
+      expect { described_class.place_order(payload) }.to raise_error(/Active position exists/)
+    end
+
+    it 'blocks on wide spread' do
+      option_chain[:oc]['22500.0']['ce']['top_ask_price'] = 110
+      expect { described_class.place_order(payload) }.to raise_error(/Wide spread/)
+    end
+  end
+
+  describe '.manage' do
+    it 'calls manage on a new instance' do
+      expect_any_instance_of(described_class).to receive(:manage)
+      described_class.manage(position, analysis)
+    end
+  end
+
   subject(:service_call) { described_class.call(position.deep_dup, analysis.deep_dup) }
 
   let(:position) do

@@ -22,7 +22,8 @@ module Mcp
               quantity: { type: 'integer', description: 'Order quantity (>=1)' },
               order_type: { type: 'string', description: 'MARKET or LIMIT (default LIMIT)', enum: %w[MARKET LIMIT] },
               product_type: { type: 'string', description: 'INTRADAY | MARGIN | CNC' },
-              price: { type: 'number', description: 'Limit price (required when order_type=LIMIT)' }
+              price: { type: 'number', description: 'Limit price (optional; if omitted, system uses LTP + 0.2% buffer)' },
+              max_slippage_percentage: { type: 'number', description: 'Max allowed slippage from LTP (default 0.5%)' }
             },
             required: %w[security_id exchange_segment transaction_type quantity product_type]
           }
@@ -51,15 +52,7 @@ module Mcp
           price: price
         )
 
-        Positions::ActiveCache.refresh! # ensures we check the latest netQty and allowed_to_trade context
-        Orders::PlaceOrderGuard.call(payload, logger: Rails.logger, source: 'mcp_place_order')
-
-        existing = Positions::ActiveCache.fetch(security_id, exchange_segment)
-        if existing.present? && (existing['netQty'] || existing[:net_qty]).to_i != 0
-          return { error: 'Active position exists for this security; refusing to place another order.' }
-        end
-
-        Orders::Gateway.place_order(payload, source: 'mcp_place_order')
+        Orders::Manager.place_order(payload, source: 'mcp_place_order')
           .slice(:dry_run, :blocked, :message, :order_id, :order_status, :payload)
       rescue StandardError => e
         { error: e.message }

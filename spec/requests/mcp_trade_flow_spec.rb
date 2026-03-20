@@ -24,7 +24,7 @@ RSpec.describe 'MCP trade flow', :mcp do
       symbol: 'NIFTY',
       direction: option_type,
       expiry: expiry_date.to_s,
-      selected_strike: selected_strike,
+      selected_strike: { strike_price: selected_strike, last_price: 150.0 },
       iv_rank: 35.0,
       regime: 'normal',
       chain_analysis: { trend: 'up' },
@@ -37,50 +37,16 @@ RSpec.describe 'MCP trade flow', :mcp do
       .with(symbol: 'NIFTY', expiry: expiry_date.to_s)
       .and_return(trade_result)
 
-    derivative = instance_double(
-      Derivative,
-      underlying_symbol: 'NIFTY',
-      expiry_date: expiry_date,
-      strike_price: selected_strike,
-      option_type: option_type,
+    resolver_result = Trading::DerivativeResolver::Result.new(
       security_id: '123456',
       exchange_segment: 'NSE_FNO',
-      lot_size: 75,
-      symbol_name: 'NIFTY26MAR22450CE',
-      display_name: nil,
-      underlying_security_id: '999'
+      trading_symbol: 'NIFTY26MAR22450CE',
+      lot_size: 75
     )
 
-    option_chain = {
-      oc: {
-        selected_strike.to_s => {
-          ce: { oi: 2_500, volume: 800 },
-          pe: { oi: 200, volume: 100 }
-        }
-      }
-    }
+    allow(Trading::DerivativeResolver).to receive(:new).and_return(double(call: resolver_result))
 
-    underlying_instrument = instance_double(Instrument, fetch_option_chain: option_chain)
-
-    allow(Derivative).to receive(:find_by)
-      .with(
-        underlying_symbol: 'NIFTY',
-        expiry_date: expiry_date,
-        strike_price: selected_strike,
-        option_type: option_type
-      )
-      .and_return(derivative)
-
-    allow(Instrument).to receive(:find_by!)
-      .with(security_id: derivative.underlying_security_id.to_s)
-      .and_return(underlying_instrument)
-
-    allow(Positions::ActiveCache).to receive(:refresh!)
-    allow(Positions::ActiveCache).to receive(:fetch)
-      .with(derivative.security_id, derivative.exchange_segment)
-      .and_return(nil)
-
-    allow(Orders::Gateway).to receive(:place_order) do |payload, source:|
+    allow(Orders::Manager).to receive(:place_order) do |payload, source:|
       {
         dry_run: true,
         blocked: false,
@@ -110,7 +76,7 @@ RSpec.describe 'MCP trade flow', :mcp do
     analyze_json = response.parsed_body
     analyze_result = analyze_json['result']['structuredContent']
     expect(analyze_result['proceed']).to eq(true)
-    expect(analyze_result['selected_strike']).to eq(selected_strike)
+    expect(analyze_result['selected_strike']['strike_price']).to eq(selected_strike)
     expect(analyze_result['direction']).to eq(option_type)
 
     # 2) resolve_derivative (args driven by analyze_trade output)
@@ -137,9 +103,9 @@ RSpec.describe 'MCP trade flow', :mcp do
     resolve_json = response.parsed_body
     resolve_result = resolve_json['result']['structuredContent']
 
-    expect(resolve_result['security_id']).to eq(derivative.security_id)
-    expect(resolve_result['exchange_segment']).to eq(derivative.exchange_segment)
-    expect(resolve_result['lot_size']).to eq(derivative.lot_size)
+    expect(resolve_result['security_id']).to eq(resolver_result.security_id)
+    expect(resolve_result['exchange_segment']).to eq(resolver_result.exchange_segment)
+    expect(resolve_result['lot_size']).to eq(resolver_result.lot_size)
 
     # 3) place_order (expects broker identifiers)
     place_body = {
@@ -169,7 +135,7 @@ RSpec.describe 'MCP trade flow', :mcp do
 
     expect(place_result['dry_run']).to eq(true)
     expect(place_result['blocked']).to eq(false)
-    expect(place_result['payload']['exchange_segment']).to eq(derivative.exchange_segment)
+    expect(place_result['payload']['exchange_segment']).to eq(resolver_result.exchange_segment)
   end
 end
 

@@ -14,14 +14,10 @@ RSpec.describe Mcp::Tools::PlaceOrder do
     end
 
     before do
-      allow(Positions::ActiveCache).to receive(:refresh!)
-      allow(Positions::ActiveCache).to receive(:fetch).and_return(nil)
-
-      allow(Orders::PlaceOrderGuard).to receive(:call).and_return(true)
-      allow(Orders::Gateway).to receive(:place_order).and_return(payload_result)
+      allow(Orders::Manager).to receive(:place_order).and_return(payload_result)
     end
 
-    it 'builds payload and delegates to Orders::Gateway.place_order' do
+    it 'builds payload and delegates to Orders::Manager.place_order' do
       result = described_class.execute(
         'security_id' => '1333',
         'exchange_segment' => 'NSE_FNO',
