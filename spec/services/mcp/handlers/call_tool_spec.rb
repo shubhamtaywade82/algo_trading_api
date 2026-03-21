@@ -85,6 +85,25 @@ RSpec.describe Mcp::Handlers::CallTool do
       expect(tool_class.received_args).to eq(symbol: 'NIFTY')
     end
 
+    it 'accepts top-level arguments envelopes used by some OpenAPI action clients' do
+      request = {
+        'jsonrpc' => '2.0',
+        'id' => 5,
+        'method' => 'tools/call',
+        'arguments' => {
+          'name' => 'test_tool',
+          'arguments' => {
+            'symbol' => 'NIFTY'
+          }
+        }
+      }
+
+      response = described_class.call(request, registry: registry)
+
+      expect(response.dig(:result, :isError)).to be(false)
+      expect(tool_class.received_args).to eq(symbol: 'NIFTY')
+    end
+
     it 'returns an MCP error payload for non-hash arguments' do
       request = {
         'jsonrpc' => '2.0',
