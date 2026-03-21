@@ -172,6 +172,7 @@ Available tools include: `get_holdings`, `get_positions`, `get_fund_limits`, `ge
 Full docs, argument shapes, and example `curl` calls: **[docs/MCP.md](docs/MCP.md)**.
 
 The HTTP MCP transport may wrap tool inputs inside a `params` envelope and attach `server_context`; both the production MCP dispatcher and the Dhan MCP tool definitions normalize that payload before validation so live tool calls do not fail on keyword mismatches.
+Some imported OpenAPI action clients also send the tool payload under a top-level `arguments` key instead of `params`; the server now accepts that compatibility shape too, but `params` remains the canonical format documented in `docs/mcp_openapi.yaml`.
 
 ## 🤖 AI Agents (orchestration layer)
 

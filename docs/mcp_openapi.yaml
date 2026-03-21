@@ -70,6 +70,48 @@ components:
           type: string
           description: MCP method (initialize, tools/list, tools/call, notifications/initialized)
 
+    ToolCallParams:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: MCP tool name from `tools/list`.
+        arguments:
+          type: object
+          description: Tool input object matching the tool's `inputSchema`.
+          additionalProperties: true
+        server_context:
+          type: object
+          description: Optional client metadata; ignored by the server.
+          additionalProperties: true
+      additionalProperties: true
+
+    ToolCallRequest:
+      type: object
+      required: [jsonrpc, id, method, params]
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          $ref: "#/components/schemas/JsonRpcId"
+        method:
+          type: string
+          enum: [tools/call]
+        params:
+          $ref: "#/components/schemas/ToolCallParams"
+      additionalProperties: false
+      example:
+        jsonrpc: "2.0"
+        id: 2
+        method: tools/call
+        params:
+          name: analyze_trade
+          arguments:
+            symbol: NIFTY
+            expiry: "2026-03-26"
+
     ToolListResponse:
       type: object
       required: [jsonrpc, id, result]
@@ -188,7 +230,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/JsonRpcRequest"
+              oneOf:
+                - $ref: "#/components/schemas/ToolCallRequest"
+                - $ref: "#/components/schemas/JsonRpcRequest"
+            examples:
+              initialize:
+                summary: MCP initialize
+                value:
+                  jsonrpc: "2.0"
+                  id: 1
+                  method: initialize
+              tools_call:
+                summary: Canonical tool call
+                value:
+                  jsonrpc: "2.0"
+                  id: 2
+                  method: tools/call
+                  params:
+                    name: get_market_sentiment
+                    arguments:
+                      symbol: NIFTY
       responses:
         "200":
           description: OK (tool list / tool call / initialize; or empty for notifications)
@@ -237,7 +298,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/JsonRpcRequest"
+              oneOf:
+                - $ref: "#/components/schemas/ToolCallRequest"
+                - $ref: "#/components/schemas/JsonRpcRequest"
+            examples:
+              initialize:
+                summary: MCP initialize
+                value:
+                  jsonrpc: "2.0"
+                  id: 1
+                  method: initialize
+              tools_call:
+                summary: Canonical tool call
+                value:
+                  jsonrpc: "2.0"
+                  id: 2
+                  method: tools/call
+                  params:
+                    name: get_market_sentiment
+                    arguments:
+                      symbol: NIFTY
       responses:
         "200":
           description: OK (debug tool list / tool call / initialize; or empty for notifications)

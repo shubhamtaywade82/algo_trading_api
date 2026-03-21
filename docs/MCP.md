@@ -33,6 +33,8 @@ Set `MCP_ACCESS_TOKEN` in your environment (e.g. `.env` for local, Render dashbo
 3. **tools/list** — `method: "tools/list"`. Response: `result.tools` (array of name, title, description, inputSchema).
 4. **tools/call** — `method: "tools/call"`, `params.name`, `params.arguments`. Response: `result.content[]` (type: "text", text: JSON string), `result.isError`.
 
+For best compatibility with ChatGPT Actions / imported OpenAPI schemas, send tool calls in the canonical `params` envelope shown in the examples. The server also accepts a compatibility shim where some clients place the same payload under a top-level `arguments` key, but `params` is the documented format.
+
 ## Available tools (8 trading tools)
 
 ### Example: call a tool (no auth)

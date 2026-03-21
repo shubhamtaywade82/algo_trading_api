@@ -11,9 +11,7 @@ module Mcp
           raise ArgumentError, 'Expected Hash' unless args.is_a?(Hash)
 
           payload = args.with_indifferent_access
-          if payload[:params].is_a?(Hash)
-            payload = payload[:params].merge(payload.except(:params, :server_context))
-          end
+          payload = payload[:params].merge(payload.except(:params, :server_context)) if payload[:params].is_a?(Hash)
 
           payload.except(:server_context).deep_symbolize_keys
         end
@@ -27,11 +25,23 @@ module Mcp
             normalize_args(params.except('name', :name, 'server_context', :server_context))
           end
         end
+
+        def extract_call_params(req)
+          return {} unless req.is_a?(Hash)
+
+          if req['params'].is_a?(Hash) || req[:params].is_a?(Hash)
+            req['params'] || req[:params]
+          elsif req['arguments'].is_a?(Hash) || req[:arguments].is_a?(Hash)
+            req['arguments'] || req[:arguments]
+          else
+            req.except('jsonrpc', 'id', 'method', :jsonrpc, :id, :method)
+          end
+        end
       end
 
       def self.call(req, registry: ToolRegistry)
-        params = req['params'] || {}
-        name   = params['name']
+        params = extract_call_params(req)
+        name   = params['name'] || params[:name]
         args   = extract_args(params)
 
         tool = registry.tools.find { |t| t.name == name }
