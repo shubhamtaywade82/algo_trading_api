@@ -322,6 +322,8 @@ GEM
       racc (~> 1.4)
     nokogiri (1.17.2-x86_64-linux)
       racc (~> 1.4)
+    openai (0.17.1)
+      connection_pool
     ostruct (0.6.1)
     parallel (1.26.3)
     parser (3.3.6.0)
@@ -589,6 +591,7 @@ DEPENDENCIES
   matrix
   mcp (~> 0.5)
   memory_profiler
+  openai
   pg (~> 1.1)
   puma (>= 5.0)
   rack-cors

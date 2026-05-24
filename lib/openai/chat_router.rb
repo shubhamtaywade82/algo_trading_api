@@ -41,16 +41,14 @@ module Openai
     # # ------------------------------------------------------------------
     # private_class_method :choose_model, :token_estimate, :default_system
 
-    def self.choose_model(text)
-      token_estimate(text) > TOKENS_LIMIT ? HEAVY : LIGHT
-    end
+        # Build a chat-style messages array that both SDKs can understand (directly or via adapter).
+        chat_messages = build_chat_messages(system, user_prompt, messages)
 
-    # =========================================================
-    # Helpers
-    # =========================================================
-    def self.resolve_model(explicit_model, force, text)
-      return HEAVY if force
-      return explicit_model if explicit_model.present?
+        if stream
+          if Backend.official?
+            return stream_official(mdl, chat_messages, temperature, max_tokens, response_format, tools, tool_choice,
+                                   stream)
+          end
 
       return ollama_model_from_env if using_ollama?
 
@@ -85,8 +83,9 @@ module Openai
     end
     private_class_method :token_estimate
 
-    def self.default_system
-      'You are a helpful assistant specialised in Indian equities & derivatives.'
+      def default_system
+        'You are a helpful assistant specialised in Indian equities & derivatives.'
+      end
     end
   end
 end

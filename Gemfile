@@ -99,7 +99,11 @@ gem 'telegram-bot-ruby'
 gem 'bindata'
 gem 'faye-websocket'
 
-gem 'ruby-openai', require: 'openai'
+# Official OpenAI SDK (preferred for newest models)
+gem 'openai', require: false
+
+# Community SDK you already use (keep for OpenRouter/others)
+gem 'ruby-openai', require: false
 
 # Multi-agent AI orchestration (https://github.com/chatwoot/ai-agents)
 gem 'ai-agents'
