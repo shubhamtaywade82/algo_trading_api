@@ -82,7 +82,7 @@ end
 
 gem 'csv'
 
-gem 'whenever', '~> 1.0', require: false
+gem 'whenever', '~> 1.1', require: false
 
 gem 'kaminari', '~> 1.2'
 
