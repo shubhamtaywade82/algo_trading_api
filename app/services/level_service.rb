@@ -11,10 +11,18 @@ class LevelService < ApplicationService
   end
 
   def fetch_and_store_levels
+    instrument_code = if instrument.respond_to?(:resolve_instrument_code)
+                        instrument.resolve_instrument_code
+                      elsif instrument.respond_to?(:instrument_code_before_type_cast)
+                        instrument.instrument_code_before_type_cast.to_s.upcase
+                      else
+                        instrument.instrument_code.to_s.upcase
+                      end
+
     params = {
       securityId: instrument.security_id,
       exchangeSegment: instrument.exchange_segment,
-      instrument: instrument.instrument_before_type_cast,
+      instrument: instrument_code,
       expiryCode: 0,
       fromDate: from_date,
       toDate: to_date

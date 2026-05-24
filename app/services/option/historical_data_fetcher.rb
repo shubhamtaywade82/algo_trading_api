@@ -16,7 +16,13 @@ module Option
         to_date = Time.zone.today
         from_date = MarketCalendar.from_date_for_last_n_trading_days(to_date, lookback_days)
 
-        instrument_code = instrument.respond_to?(:resolve_instrument_code) ? instrument.resolve_instrument_code : instrument.instrument_before_type_cast
+        instrument_code = if instrument.respond_to?(:resolve_instrument_code)
+                            instrument.resolve_instrument_code
+                          elsif instrument.respond_to?(:instrument_code_before_type_cast)
+                            instrument.instrument_code_before_type_cast.to_s.upcase
+                          else
+                            instrument.instrument_code.to_s.upcase
+                          end
         DhanHQ::Models::HistoricalData.intraday(
           security_id: instrument.security_id,
           exchange_segment: instrument.exchange_segment,
@@ -35,7 +41,13 @@ module Option
         to_date = Time.zone.today
         from_date = MarketCalendar.from_date_for_last_n_trading_days(to_date, lookback_days)
 
-        instrument_code = instrument.respond_to?(:resolve_instrument_code) ? instrument.resolve_instrument_code : instrument.instrument_before_type_cast
+        instrument_code = if instrument.respond_to?(:resolve_instrument_code)
+                            instrument.resolve_instrument_code
+                          elsif instrument.respond_to?(:instrument_code_before_type_cast)
+                            instrument.instrument_code_before_type_cast.to_s.upcase
+                          else
+                            instrument.instrument_code.to_s.upcase
+                          end
         DhanHQ::Models::HistoricalData.daily(
           security_id: instrument.security_id,
           exchange_segment: instrument.exchange_segment,

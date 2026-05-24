@@ -3,6 +3,7 @@
 # Tradable instrument (equity, index, derivative, etc.) with DhanHQ segment and LTP/OHLC helpers.
 class Instrument < ApplicationRecord
   include InstrumentCandleAccessors
+  include InstrumentHelpers
 
   # Associations
   has_one :mis_detail, dependent: :destroy
@@ -12,6 +13,9 @@ class Instrument < ApplicationRecord
   has_many :alerts, dependent: :destroy
   has_many :levels, dependent: :destroy
   has_many :quotes, dependent: :destroy
+  has_many :position_trackers, as: :watchable, dependent: :destroy
+  has_many :watchlist_items, as: :watchable, dependent: :nullify, inverse_of: :watchable
+  has_one :watchlist_item, -> { where(active: true) }, as: :watchable, class_name: 'WatchlistItem'
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivatives, allow_destroy: true
@@ -39,14 +43,50 @@ class Instrument < ApplicationRecord
   }, prefix: true
 
   # Validations
-  validates :security_id, presence: true
+  validates :security_id, presence: true, uniqueness: true
+  validates :symbol_name, presence: true
 
   # Class Methods
+  SEGMENT_FROM_EXCHANGE = {
+    'IDX_I' => 'index',
+    'BSE_IDX' => 'index',
+    'NSE_IDX' => 'index',
+    'I' => 'index',
+    'NSE_EQ' => 'equity',
+    'BSE_EQ' => 'equity',
+    'E' => 'equity',
+    'NSE_FNO' => 'derivatives',
+    'BSE_FNO' => 'derivatives',
+    'D' => 'derivatives',
+    'NSE_CURRENCY' => 'currency',
+    'BSE_CURRENCY' => 'currency',
+    'C' => 'currency',
+    'MCX_COMM' => 'commodity',
+    'M' => 'commodity'
+  }.freeze
+
+  def self.segment_key_for(segment_code)
+    return if segment_code.blank?
+
+    code = segment_code.to_s.upcase.strip
+    SEGMENT_FROM_EXCHANGE[code] || code.downcase
+  end
+
+  def self.find_by_sid_and_segment(security_id:, segment_code:, symbol_name: nil)
+    segment_key = segment_key_for(segment_code)
+    return nil unless security_id.present? && segment_key.present?
+
+    sid = security_id.to_s
+    instrument = find_by(security_id: sid, segment: segment_key)
+    return instrument if instrument.present? || symbol_name.blank?
+
+    find_by(symbol_name: symbol_name.to_s, segment: segment_key)
+  end
 
   # Define searchable attributes for Ransack
   def self.ransackable_attributes(_auth_object = nil)
     %w[
-      instrument
+      instrument_code
       instrument_type
       underlying_symbol
       symbol_name
@@ -76,13 +116,19 @@ class Instrument < ApplicationRecord
     Dhan::MarketDataService.new(self).ltp
   end
 
-  def quote_ltp
-    quote = quotes.order(tick_time: :desc).first
-    return nil unless quote
+  def fetch_fresh_option_chain(expiry)
+    data = DhanHQ::Models::OptionChain.fetch(
+      underlying_scrip: security_id.to_i,
+      underlying_seg: exchange_segment,
+      expiry: expiry
+    )
+    return nil unless data
 
-    quote.ltp.to_s.to_f
+    filtered_data = filter_option_chain_data(data)
+
+    { last_price: data['last_price'], oc: filtered_data }
   rescue StandardError => e
-    Rails.logger.error("Failed to fetch latest quote LTP for Instrument #{security_id}: #{e.message}")
+    Rails.logger.error("Failed to fetch Option Chain for Instrument #{security_id}: #{e.message}")
     nil
   end
 
@@ -113,19 +159,14 @@ class Instrument < ApplicationRecord
     allowed = %w[INDEX FUTIDX OPTIDX EQUITY FUTSTK OPTSTK FUTCOM OPTFUT FUTCUR OPTCUR]
     return instrument_value if allowed.include?(instrument_value)
 
-    # Fallback: try to get from enum mapping if instrument is set
-    if instrument
-      mapped_value = Instrument.instruments[instrument]
-      return mapped_value.to_s if mapped_value && allowed.include?(mapped_value.to_s)
-    end
+      has_call_values = call_data && call_data.except('implied_volatility').values.any? do |v|
+        numeric_value?(v) && v.to_f.positive?
+      end
+      has_put_values = put_data && put_data.except('implied_volatility').values.any? do |v|
+        numeric_value?(v) && v.to_f.positive?
+      end
 
-    # Default fallback based on segment
-    case segment.to_s
-    when 'index' then 'INDEX'
-    when 'equity' then 'EQUITY'
-    when 'derivatives' then 'FUTSTK' # Default for derivatives
-    when 'commodity' then 'FUTCOM' # Default for commodities
-    else 'EQUITY' # Safe default
+      has_call_values || has_put_values
     end
   end
 

@@ -444,10 +444,9 @@ module AlertProcessors
     # Calculate today's realized loss from positions
     def daily_loss_today
       Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
-        positions = DhanHQ::Models::Position.all
-        positions.sum do |pos|
-          pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
-          realized_pnl = pos_hash['realizedProfit'] || pos_hash[:realized_profit] || 0
+        positions = DhanHQ::Models::Position.all.map(&:attributes)
+        positions.sum do |pos_hash|
+          realized_pnl = pos_hash['realizedProfit'] || pos_hash[:realized_profit] || pos_hash['realized_profit'] || 0
           realized_pnl.to_f.negative? ? realized_pnl.to_f : 0
         end
       end
