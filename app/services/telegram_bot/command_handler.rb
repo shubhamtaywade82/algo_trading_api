@@ -153,6 +153,25 @@ module TelegramBot
       notify_analysis_error(e)
     end
 
+    def run_stocks_screener
+      typing_ping
+      # Adjust universe/frame/limits from chat text later if you want.
+      Screeners::StocksScreener.call(
+        universe: :nifty100,
+        session: :live,
+        frame: '15m',
+        lookback: 20,
+        limit: 20,
+        min_price: 80,
+        min_avg_vol: 75_000,
+        optionable: true,
+        push_to_telegram: true
+      )
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ StocksScreener – #{e.class}: #{e.message}"
+      TelegramNotifier.send_message("🚨 Screener error – #{e.message}", chat_id: @cid)
+    end
+
     def positions_brief
       typing_ping
       positions = Dhanhq::API::Portfolio.positions
