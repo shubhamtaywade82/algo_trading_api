@@ -8,7 +8,7 @@ RSpec.describe Strategy::Validator do
       symbol: 'NIFTY',
       direction: 'CE',
       strike: 24_300,
-      expiry: (Date.today + 7).to_s,
+      expiry: (Time.zone.today + 7).to_s,
       entry_price: 62.5,
       stop_loss: 42.0,
       target: 110.0,

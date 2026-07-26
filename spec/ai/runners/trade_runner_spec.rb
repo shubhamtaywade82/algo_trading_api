@@ -5,7 +5,7 @@ require 'rails_helper'
 RSpec.describe AI::Runners::TradeRunner do
   # Build a minimal mock for Agents::RunResult
   let(:run_result) do
-    instance_double('Agents::RunResult',
+    instance_double(Agents::RunResult,
                     output: output_text,
                     context: { current_agent: 'Trade Planner', conversation_history: [] })
   end
@@ -14,7 +14,7 @@ RSpec.describe AI::Runners::TradeRunner do
     let(:output_text) { 'Market is bullish. Here is the setup.' }
 
     before do
-      runner = instance_double('Agents::AgentRunner')
+      runner = instance_double(Agents::AgentRunner)
       allow(Agents::Runner).to receive(:with_agents).and_return(runner)
       allow(runner).to receive(:run).and_return(run_result)
 
@@ -33,7 +33,7 @@ RSpec.describe AI::Runners::TradeRunner do
 
     it 'passes context through to the runner' do
       ctx = { current_agent: 'Trade Planner', conversation_history: [] }
-      runner = instance_double('Agents::AgentRunner')
+      runner = instance_double(Agents::AgentRunner)
       allow(Agents::Runner).to receive(:with_agents).and_return(runner)
       expect(runner).to receive(:run).with(anything, context: ctx).and_return(run_result)
 

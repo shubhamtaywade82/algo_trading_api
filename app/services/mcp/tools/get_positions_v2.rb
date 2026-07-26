@@ -26,7 +26,7 @@ module Mcp
         normalize_args!(name, args)
         positions = Positions::ActiveCache.all_positions
 
-        formatted = positions.map { |pos| format_position(pos) }.compact
+        formatted = positions.filter_map { |pos| format_position(pos) }
 
         {
           count: formatted.size,

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'pp'
-
 namespace :instruments do
   desc 'Import instruments from DhanHQ CSV'
   task import: :environment do
@@ -58,8 +56,8 @@ namespace :instruments do
           pp "  - Order: #{tracker.order_no}, Instrument ID: #{tracker.instrument_id}, Status: #{tracker.status}, Symbol: #{tracker.symbol}"
         end
 
+        pp ''
         if args[:force] == 'true'
-          pp ''
           pp "FORCE mode enabled: Marking active position trackers as 'closed'..."
           active_trackers.update_all(
             status: PositionTracker::STATUSES[:closed],
@@ -67,7 +65,6 @@ namespace :instruments do
           )
           pp "Marked #{active_trackers.count} active tracker(s) as closed."
         else
-          pp ''
           pp 'To force clear (will mark active positions as closed), run:'
           pp '  bin/rails instruments:clear[true]'
           pp 'Or manually close/exit positions first.'

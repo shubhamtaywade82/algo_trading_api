@@ -21,19 +21,19 @@ module AI
         result = {}
 
         if include_exit_logs
-          scope = ExitLog.where('created_at >= ?', since_time).order(created_at: :desc)
+          scope = ExitLog.where(created_at: since_time..).order(created_at: :desc)
           scope = scope.where(trading_symbol: sym) if sym
           result[:exit_logs] = scope.limit(lim).map { |e| format_exit_log(e) }
         end
 
         if include_orders
-          scope = Order.where('created_at >= ?', since_time).order(created_at: :desc)
+          scope = Order.where(created_at: since_time..).order(created_at: :desc)
           scope = scope.where(trading_symbol: sym) if sym
           result[:orders] = scope.limit(lim).map { |o| format_order(o) }
         end
 
         if include_alerts
-          scope = Alert.where('created_at >= ?', since_time).order(created_at: :desc)
+          scope = Alert.where(created_at: since_time..).order(created_at: :desc)
           scope = scope.where("data->>'symbol' = ?", sym) if sym
           result[:alerts] = scope.limit(lim).map { |a| format_alert(a) }
         end

@@ -77,5 +77,5 @@ end
 # Load tools and agents first (runners depend on AI::Agents::*).
 ai_root = Rails.root.join('app/ai')
 %w[tools agents runners].each do |subdir|
-  Dir[ai_root.join(subdir, '*.rb')].sort.each { |f| load f }
+  Dir[ai_root.join(subdir, '*.rb')].each { |f| load f }
 end
