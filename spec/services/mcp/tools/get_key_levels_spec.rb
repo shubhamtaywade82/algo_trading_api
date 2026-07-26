@@ -17,11 +17,11 @@ RSpec.describe Mcp::Tools::GetKeyLevels do
 
     let(:candles) do
       # 8 candles per day -> 16 total, with constant TR so ATR14 is stable.
-      first_day = 8.times.map do |i|
+      first_day = Array.new(8) do |i|
         t = day1 + (i * 5).minutes
         Candle.new(ts: t, open: 100, high: 110, low: 90, close: 100, volume: 1)
       end
-      second_day = 8.times.map do |i|
+      second_day = Array.new(8) do |i|
         t = day2 + (i * 5).minutes
         Candle.new(ts: t, open: 100, high: 110, low: 90, close: 100, volume: 1)
       end
@@ -32,7 +32,7 @@ RSpec.describe Mcp::Tools::GetKeyLevels do
       allow(Instrument).to receive(:segment_index).and_return(segment_index)
       allow(segment_index).to receive(:find_by).with(underlying_symbol: 'NIFTY', exchange: 'nse').and_return(instrument)
 
-      candle_series = instance_double('CandleSeries', candles: candles)
+      candle_series = instance_double(CandleSeries, candles: candles)
       allow(instrument).to receive(:candle_series).and_return(candle_series)
     end
 

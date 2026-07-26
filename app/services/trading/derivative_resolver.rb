@@ -15,7 +15,8 @@ module Trading
     )
 
     SCRIP_PATH = Rails.root.join('tmp/dhan_scrip_master.csv')
-    CACHE = {}
+    # Mutated under CACHE_MUTEX by load_index!, so it cannot be frozen.
+    CACHE = {} # rubocop:disable Style/MutableConstant
     CACHE_MUTEX = Mutex.new
 
     def self.load_index!

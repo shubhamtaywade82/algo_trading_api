@@ -39,7 +39,7 @@ module Trading
 
     def calculate_vwap
       total_vol = @candles.sum { |c| c[:volume].to_f }
-      return @candles.map { |c| c[:close].to_f }.sum / @candles.size.to_f if total_vol.zero?
+      return @candles.sum { |c| c[:close].to_f } / @candles.size.to_f if total_vol.zero?
 
       @candles.sum { |c| c[:close].to_f * c[:volume].to_f } / total_vol
     end

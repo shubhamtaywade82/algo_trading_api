@@ -140,7 +140,7 @@ module Screeners
       prev = previous_daily_ohlc(inst)
 
       atr    = series.atr[:atr]
-      atrpct = atr.to_f.positive? ? (atr.to_f / cc.to_f * 100.0) : 0.0
+      atrpct = atr.to_f.positive? ? (atr.to_f / cc * 100.0) : 0.0
       rsi    = series.rsi[:rsi]
       macd   = series.macd
       boll   = series.bollinger_bands(period: 20)
@@ -156,7 +156,7 @@ module Screeners
         (vols.sum / [vols.size, 1].max).to_i
       end
 
-      rel_vol = avg_vol_20.zero? ? 0.0 : (cv.to_f / avg_vol_20.to_f)
+      rel_vol = avg_vol_20.zero? ? 0.0 : (cv.to_f / avg_vol_20)
 
       {
         symbol: inst.symbol_name,
@@ -172,7 +172,7 @@ module Screeners
           boll: { upper: boll[:upper].to_f, middle: boll[:middle].to_f, lower: boll[:lower].to_f },
           supertrend: st_sig,
           hi20: hi20.to_f, lo20: lo20.to_f,
-          liq_up: !!liq_up, liq_dn: !!liq_dn,
+          liq_up: liq_up, liq_dn: liq_dn,
           rel_vol: rel_vol.to_f, avg_vol_20: avg_vol_20
         }
       }

@@ -94,7 +94,7 @@ module Backtest
         entry_price: entry_price,
         exit_price: exit_price,
         pnl: (pnl * quantity).round(2),
-        status: pnl > 0 ? 'WIN' : 'LOSS'
+        status: pnl.positive? ? 'WIN' : 'LOSS'
       }
     end
   end

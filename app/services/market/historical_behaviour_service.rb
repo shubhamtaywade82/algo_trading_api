@@ -82,7 +82,7 @@ module Market
     def expiry_windows(weeks, symbol)
       today = Time.zone.today
       current_expiry = last_expiry_day(today, symbol)
-      weeks.times.map do |i|
+      Array.new(weeks) do |i|
         expiry = current_expiry - (i * 7)
         { expiry: expiry, from: expiry - 6, to: expiry }
       end.reverse
@@ -149,7 +149,7 @@ module Market
       final_c = closes.last.to_f
 
       peak_idx = highs.index(max_h)
-      post_peak_lows = lows[peak_idx..-1]
+      post_peak_lows = lows[peak_idx..]
       pullback_l = post_peak_lows.min.to_f
 
       {
@@ -171,8 +171,8 @@ module Market
     end
 
     def aggregate_summary(results)
-      valid_ce = results.map { |r| r[:ce] }.compact
-      valid_pe = results.map { |r| r[:pe] }.compact
+      valid_ce = results.pluck(:ce).compact
+      valid_pe = results.pluck(:pe).compact
 
       {
         ce: compute_metrics(valid_ce),
@@ -188,13 +188,13 @@ module Market
       summary = { count: stats_array.size }
 
       keys.each do |key|
-        values = stats_array.map { |s| s[key] }.compact
+        values = stats_array.pluck(key).compact
         summary[key] = (values.sum / values.size).round(2) if values.any?
       end
 
       # Add Absolute P&L per lot based on Open-to-Close
       avg_oc_pct = summary[:open_to_close_pct] || 0.0
-      avg_entry = stats_array.map { |s| s[:entry] }.compact.then { |v| v.sum / v.size }
+      avg_entry = stats_array.pluck(:entry).compact.then { |v| v.sum / v.size }
 
       summary[:avg_pnl_per_lot] = (avg_entry * (avg_oc_pct / 100.0) * @lot_size).round(2)
 

@@ -63,17 +63,14 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
   let(:analyzer_double) { instance_double(Option::ChainAnalyzer, analyze: chain_analysis) }
 
   before do
-    allow(Instrument).to receive(:segment_index).and_return(Instrument)
-    allow(Instrument).to receive(:find_by).and_return(instrument)
+    allow(Instrument).to receive_messages(segment_index: Instrument, find_by: instrument)
 
-    allow(instrument).to receive(:ltp).and_return(spot)
-    allow(instrument).to receive(:expiry_list).and_return([expiry])
+    allow(instrument).to receive_messages(ltp: spot, expiry_list: [expiry])
     allow(instrument).to receive(:fetch_option_chain).with(expiry).and_return(option_chain)
     allow(instrument).to receive(:intraday_ohlc).with(interval: '5', days: 2).and_return(candles)
 
-    allow(Option::ChainAnalyzer).to receive(:estimate_iv_rank).and_return(0.40) # => 40% iv_rank
     allow(Option::HistoricalDataFetcher).to receive(:for_strategy).and_return(historical_data)
-    allow(Option::ChainAnalyzer).to receive(:new).and_return(analyzer_double)
+    allow(Option::ChainAnalyzer).to receive_messages(estimate_iv_rank: 0.40, new: analyzer_double)
 
     allow(Trading::RegimeScorer).to receive(:call).and_return(regime_result)
     allow(Trading::DirectionResolver).to receive(:call).and_return(direction_result)
@@ -245,8 +242,6 @@ end
 
 # frozen_string_literal: true
 
-require 'rails_helper'
-
 RSpec.describe Trading::TradeDecisionEngine, type: :service do
   let(:symbol) { 'NIFTY' }
   let(:expiry) { '2026-03-27' }
@@ -306,16 +301,13 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
   let(:analyzer_double) { instance_double(Option::ChainAnalyzer, analyze: chain_analysis) }
 
   before do
-    allow(Instrument).to receive(:segment_index).and_return(Instrument)
-    allow(Instrument).to receive(:find_by).and_return(instrument)
-    allow(instrument).to receive(:ltp).and_return(spot)
-    allow(instrument).to receive(:expiry_list).and_return([expiry])
+    allow(Instrument).to receive_messages(segment_index: Instrument, find_by: instrument)
+    allow(instrument).to receive_messages(ltp: spot, expiry_list: [expiry])
     allow(instrument).to receive(:fetch_option_chain).with(expiry).and_return(option_chain)
     allow(instrument).to receive(:intraday_ohlc).with(interval: '5', days: 2).and_return(candles)
 
-    allow(Option::ChainAnalyzer).to receive(:estimate_iv_rank).and_return(0.40) # => 40% iv_rank
     allow(Option::HistoricalDataFetcher).to receive(:for_strategy).and_return(historical_data)
-    allow(Option::ChainAnalyzer).to receive(:new).and_return(analyzer_double)
+    allow(Option::ChainAnalyzer).to receive_messages(estimate_iv_rank: 0.40, new: analyzer_double)
 
     allow(Trading::RegimeScorer).to receive(:call).and_return(regime_result)
     allow(Trading::DirectionResolver).to receive(:call).and_return(direction_result)

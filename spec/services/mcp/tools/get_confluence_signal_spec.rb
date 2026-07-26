@@ -13,7 +13,7 @@ RSpec.describe Mcp::Tools::GetConfluenceSignal do
     end
 
     it 'returns nil signal when ConfluenceDetector returns nil' do
-      allow(instrument).to receive(:candle_series).and_return(instance_double('CandleSeries', candles: []))
+      allow(instrument).to receive(:candle_series).and_return(instance_double(CandleSeries, candles: []))
       allow(Market::ConfluenceDetector).to receive(:call).and_return(nil)
 
       result = described_class.execute('symbol' => 'NIFTY', 'interval' => '5')
@@ -39,7 +39,7 @@ RSpec.describe Mcp::Tools::GetConfluenceSignal do
         Candle.new(ts: Time.current, open: 1, high: 2, low: 0, close: 1, volume: 10)
       ]
 
-      allow(instrument).to receive(:candle_series).and_return(instance_double('CandleSeries', candles: candles))
+      allow(instrument).to receive(:candle_series).and_return(instance_double(CandleSeries, candles: candles))
       allow(Market::ConfluenceDetector).to receive(:call).and_return(signal)
 
       result = described_class.execute('symbol' => 'NIFTY')

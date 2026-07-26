@@ -32,7 +32,7 @@ RSpec.describe Orders::PlaceOrderGuard do
       now = Time.zone.parse('2026-03-18 10:00:00')
       travel_to(now) do
         allow(MarketCalendar).to receive(:trading_day?).and_return(true)
-        allow(Positions::ActiveCache).to receive(:all_positions).and_return([instance_double('Position')])
+        allow(Positions::ActiveCache).to receive(:all_positions).and_return([instance_double(Position)])
 
         instrument_double = instance_double(Instrument)
         derivative = instance_double(

@@ -31,8 +31,8 @@ module AI
 
       def filter_positions(positions, filter)
         case filter
-        when 'profitable' then positions.select { |p| p['unrealizedProfit'].to_f > 0 }
-        when 'losing'     then positions.select { |p| p['unrealizedProfit'].to_f < 0 }
+        when 'profitable' then positions.select { |p| p['unrealizedProfit'].to_f.positive? }
+        when 'losing'     then positions.select { |p| p['unrealizedProfit'].to_f.negative? }
         else positions
         end
       end
@@ -49,7 +49,7 @@ module AI
           ltp: p['ltp'].to_f.round(2),
           unrealized_pnl: pnl.round(2),
           pnl_pct: calculate_pnl_pct(p),
-          direction: p['netQty'].to_i > 0 ? 'LONG' : 'SHORT'
+          direction: p['netQty'].to_i.positive? ? 'LONG' : 'SHORT'
         }
       end
 

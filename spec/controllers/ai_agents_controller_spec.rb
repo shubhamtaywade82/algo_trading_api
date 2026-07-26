@@ -2,7 +2,7 @@
 
 require 'rails_helper'
 
-RSpec.describe AiAgentsController, type: :controller do
+RSpec.describe AiAgentsController do
   # Disable token auth unless specifically testing it
   before do
     allow(ENV).to receive(:[]).and_call_original
@@ -11,7 +11,7 @@ RSpec.describe AiAgentsController, type: :controller do
 
   # Minimal Agents::RunResult mock
   def run_result(output)
-    instance_double('Agents::RunResult',
+    instance_double(Agents::RunResult,
                     output: output,
                     context: { current_agent: 'Test', conversation_history: [] })
   end
@@ -25,7 +25,7 @@ RSpec.describe AiAgentsController, type: :controller do
 
     it 'returns 200 with output and context' do
       post :analyze, params: { symbol: 'NIFTY' }, format: :json
-      json = JSON.parse(response.body)
+      json = response.parsed_body
 
       expect(response).to have_http_status(:ok)
       expect(json).to have_key('output')
@@ -49,7 +49,7 @@ RSpec.describe AiAgentsController, type: :controller do
         'symbol' => 'NIFTY', 'direction' => 'CE', 'strike' => 24_300,
         'entry_price' => 62.5, 'stop_loss' => 42.0, 'target' => 110.0,
         'quantity' => 75, 'confidence' => 0.75, 'risk_reward' => 2.3,
-        'product' => 'INTRADAY', 'expiry' => (Date.today + 7).to_s,
+        'product' => 'INTRADAY', 'expiry' => (Time.zone.today + 7).to_s,
         'risk_approved' => true
       }
     end
@@ -66,7 +66,7 @@ RSpec.describe AiAgentsController, type: :controller do
 
     it 'returns 200 with proposal, validation and ready_to_trade flag' do
       post :propose, params: { symbol: 'NIFTY' }, format: :json
-      json = JSON.parse(response.body)
+      json = response.parsed_body
 
       expect(response).to have_http_status(:ok)
       expect(json).to have_key('proposal')
@@ -76,7 +76,7 @@ RSpec.describe AiAgentsController, type: :controller do
 
     it 'sets ready_to_trade to true when proposal is valid' do
       post :propose, params: { symbol: 'NIFTY' }, format: :json
-      json = JSON.parse(response.body)
+      json = response.parsed_body
       expect(json['ready_to_trade']).to be true
     end
   end
@@ -90,7 +90,7 @@ RSpec.describe AiAgentsController, type: :controller do
 
     it 'returns the agent answer' do
       post :ask, params: { question: 'Why did NIFTY CE exit?' }, format: :json
-      json = JSON.parse(response.body)
+      json = response.parsed_body
 
       expect(response).to have_http_status(:ok)
       expect(json['answer']).to include('stop-loss')
@@ -111,7 +111,7 @@ RSpec.describe AiAgentsController, type: :controller do
 
     it 'returns 200 with answer and context' do
       get :positions, format: :json
-      json = JSON.parse(response.body)
+      json = response.parsed_body
 
       expect(response).to have_http_status(:ok)
       expect(json['answer']).to include('profitable')

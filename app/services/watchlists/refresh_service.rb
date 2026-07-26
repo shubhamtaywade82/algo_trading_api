@@ -82,7 +82,7 @@ module Watchlists
         when '1d'  then safe { inst.historical_ohlc }
         else            safe { inst.candle_series(interval: '15') }
         end
-      return nil unless series&.candles&.present?
+      return nil if series&.candles.blank?
 
       close = series.closes.last.to_f
       vol   = series.candles.last.volume.to_i
@@ -99,7 +99,7 @@ module Watchlists
 
       vols = series.candles.last(20).map(&:volume)
       avgv = vols.sum / [vols.size, 1].max
-      relv = avgv.zero? ? 0.0 : vol.to_f / avgv.to_f
+      relv = avgv.zero? ? 0.0 : vol.to_f / avgv
 
       {
         close: close, vol: vol, avg_vol20: avgv, rel_vol: relv,
