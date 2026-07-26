@@ -28,8 +28,19 @@ module DhanMcp
 
     def validate
       case @tool_name
-      when 'get_holdings', 'get_positions', 'get_fund_limits', 'get_order_list', 'get_edis_inquiry'
+      when 'get_holdings', 'get_positions', 'get_fund_limits', 'get_order_list', 'get_edis_inquiry',
+           'get_global_holdings', 'get_global_funds', 'get_global_orders', 'get_global_trades',
+           'get_global_market_status'
         reject_extra_keys([])
+      when 'get_global_order_estimate'
+        # Global Stocks carries no exchange segment; security_id is a ticker
+        # and quantity may be fractional.
+        validate_required(%i[security_id transaction_type quantity price]) do
+          reject_blank_string(:security_id) ||
+            reject_transaction_type ||
+            reject_positive_number(:quantity) ||
+            reject_positive_number(:price)
+        end
       when 'get_order_by_id'
         validate_required(%i[order_id]) { reject_blank_string(:order_id) }
       when 'get_order_by_correlation_id'
@@ -95,6 +106,22 @@ module DhanMcp
       return nil if val.present? && val.to_s.strip != ''
 
       "#{key} must be non-empty."
+    end
+
+    def reject_transaction_type
+      side = @args[:transaction_type].to_s.strip.upcase
+      return nil if %w[BUY SELL].include?(side)
+
+      'transaction_type must be BUY or SELL.'
+    end
+
+    # Global Stocks quantities are floats (fractional shares), so this accepts
+    # any positive number rather than an integer.
+    def reject_positive_number(key)
+      value = @args[key]
+      return nil if value.is_a?(Numeric) ? value.to_f.positive? : value.to_s.strip.match?(/\A\d*\.?\d+\z/) && value.to_f.positive?
+
+      "#{key} must be a positive number."
     end
 
     def reject_exchange_segment

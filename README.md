@@ -164,6 +164,38 @@ All broker order placement is centralized in `Orders::Gateway`.
 > `DhanHQ::LiveTradingDisabledError` on every mutation until `LIVE_TRADING=true`
 > is also set.
 
+### Tradable books
+
+`Orders::Gateway` routes an order to the right DhanHQ surface for its asset class:
+
+| asset class | method | DhanHQ surface | currency |
+|---|---|---|---|
+| equity, index, options, futures, currency, commodity | `place_order` / `place_super_order` | `Models::Order` / `SuperOrder` | INR |
+| US equities | `place_global_order` | `Models::GlobalStocks::Order` | USD |
+| multi-leg basket (≤ 15 legs) | `place_basket_order` | `Models::MultiOrder` | INR |
+
+`Gateway.place(payload)` infers the book: an `INX_EQ` segment, or a non-numeric
+`security_id` (a ticker like `AAPL`) with no segment, routes to Global Stocks.
+US orders carry no exchange segment, product type or validity, take float
+quantities for fractional shares, and support the notional `AMOUNT` order type.
+
+### Failed writes are never retried
+
+DhanHQ ≥ 3.2 stopped auto-retrying order placement/modify/cancel — the API has
+no idempotency key, so a timed-out `POST /v2/orders` may already have reached
+the exchange. The gateway returns `reconcilable: true` with the
+`correlation_id` instead; reconcile via `GET /v2/orders/external/{id}` before
+resubmitting. `DHAN_AUTO_CORRELATION_ID` (default on) stamps an id so that
+lookup always works. Set `DHAN_RETRY_WRITES=true` only if you accept duplicates.
+
+### Rehearsal mode
+
+`DHAN_DRY_RUN=true` puts the **SDK** in dry-run: every state-changing request is
+suppressed and placements return a simulated `DRYRUN-…` id, while reads still
+hit the live API — so a full strategy can be rehearsed against real prices.
+This is distinct from `PLACE_ORDER=false`, which short-circuits in this app
+before the SDK is called at all.
+
 ## 🤖 MCP (Model Context Protocol)
 
 The app exposes a **read-only DhanHQ MCP server** over HTTP so AI assistants (e.g. Cursor) and other MCP clients can call broker and market tools via JSON-RPC.

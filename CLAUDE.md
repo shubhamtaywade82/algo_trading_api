@@ -63,7 +63,9 @@ Override via env: `ALLOC_PCT`, `RISK_PER_TRADE_PCT`, `DAILY_MAX_LOSS_PCT`.
 - Business logic lives in `app/services/`, not controllers
 - Risk calculations must be **pure functions** (no DB side effects inside calculation logic)
 - All order state transitions must be logged
-- **Order placement invariant**: every live order placement must go through `Orders::Gateway` (guards both `PLACE_ORDER` and the SDK's `LIVE_TRADING`). No direct `DhanHQ::Models::Order.new/save`, `Order.place`, or `SuperOrder.create` outside the gateway.
+- **Order placement invariant**: every live order placement must go through `Orders::Gateway` (guards both `PLACE_ORDER` and the SDK's `LIVE_TRADING`). No direct `DhanHQ::Models::Order.new/save`, `Order.place`, `SuperOrder.create`, `GlobalStocks::Order.place`, or `MultiOrder.create` outside the gateway.
+- **Never retry a failed order write.** DhanHQ ≥ 3.2 stopped auto-retrying writes because the API has no idempotency key — a timed-out placement may already be live. The gateway returns `reconcilable: true`; reconcile by `correlation_id` instead.
+- **SDK skills that mutate** (`square_off_all`, `square_off_position`, tagged `risk "destructive_write"`) bypass the gateway by design, so they must be invoked through `Dhan::SkillsService`, which applies the same gates.
 - Use `after_commit`, never `after_save`, for side effects (emails, queues)
 - `Time.current` everywhere, never `Time.now`
 - `rescue StandardError`, never `rescue Exception`

@@ -26,6 +26,32 @@ DhanHQ.configure do |config|
     Rails.logger.warn "[DHAN] Hard auth failure detected: #{error.class}"
     Dhan::TokenManager.force_refresh!
   end
+
+  # ----------------------------------------------------------
+  # Write safety (DhanHQ >= 3.2)
+  # ----------------------------------------------------------
+
+  # The SDK stopped auto-retrying order placement/modify/cancel because the
+  # Dhan API has no idempotency key: a timed-out POST /v2/orders may already
+  # have reached the exchange, so a retry can place a second real order.
+  # Leave this off and reconcile instead — Orders::Gateway returns
+  # `reconcilable: true` on transient write failures. Reads keep their backoff.
+  config.retry_non_idempotent_writes = ENV['DHAN_RETRY_WRITES'] == 'true'
+
+  # Stamp a correlationId on placements that lack one so a timed-out order can
+  # be resolved via GET /v2/orders/external/{correlation-id}. Defaults on here
+  # because it is what makes the reconciliation path above actually usable.
+  config.auto_correlation_id = ENV.fetch('DHAN_AUTO_CORRELATION_ID', 'true') == 'true'
+
+  # SDK-level dry run: suppresses every state-changing request and answers
+  # placements with a simulated DRYRUN-... id, while reads still hit the live
+  # API. This is a rehearsal mode, distinct from the app's PLACE_ORDER gate —
+  # PLACE_ORDER short-circuits before the SDK is called at all.
+  config.dry_run = ENV['DHAN_DRY_RUN'] == 'true'
+end
+
+if DhanHQ.configuration.dry_run
+  Rails.logger.warn '[DHAN] DRY RUN enabled — no state-changing request will reach the broker.'
 end
 
 # ------------------------------------------------------------
