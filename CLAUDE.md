@@ -75,6 +75,21 @@ of what this repo already does. Don't re-open them without a concrete reason.
   webhook → `Alert` → `AlertProcessorFactory` → `AlertProcessors::*` → `Orders::Gateway`.
   New asset classes are added as processors, not as a parallel strategy loop.
 
+## Live feed and paper trading
+
+- **`Live::MarketFeedHub`** owns one WebSocket per process (wraps
+  `DhanHQ::WS::Client`); ticks land in `Live::TickCache`. Readers must check
+  `running? && connected?` and fall back to REST — nothing starts the feed
+  automatically. `connected?` requires a recent *frame*, not just a live socket.
+- **A reconnect clears `TickCache`.** Never mark or trade against a price from
+  before the gap.
+- **`PAPER_TRADING=true`** routes `Orders::Gateway` to `Paper::Broker`. Paper
+  mode bypasses `PLACE_ORDER`/`LIVE_TRADING` on purpose: nothing reaches the
+  broker, so those gates have nothing to protect. Paper fills are `Order` rows
+  with a `PAPER-` id; `Paper::Positions` derives the book from them.
+- Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
+  mode simulates fills, positions and P&L with real charges.
+
 ## Critical rules
 
 - **DhanHQ only** — no Delta Exchange references anywhere in this repo
