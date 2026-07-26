@@ -227,6 +227,36 @@ RSpec.describe Paper::Exchange do
       expect(entry.reload.metadata['exit_leg']).to eq('STOP_LOSS')
     end
 
+    # IndexOrderPayloadBuilder.build_super emits target/stop at the top level,
+    # not nested. Only reading a nested :super_order_params meant every real
+    # super order was recorded as a plain order and its legs never fired, so
+    # the position ran on forever.
+    it 'recognises the flat payload the app actually builds' do
+      exchange.place(buy_market.merge(order_type: 'LIMIT', price: 1_500.0,
+                                      target_price: 1_550.0, stop_loss_price: 1_470.0, trailing_jump: 5.0))
+
+      entry = account.paper_orders.last
+      expect(entry.order_category).to eq('super')
+      expect(entry.super_order_params).to include('target_price' => 1_550.0, 'stop_loss_price' => 1_470.0)
+    end
+
+    it 'closes a flat-payload super order on its target' do
+      exchange.place(buy_market.merge(order_type: 'LIMIT', price: 1_500.0,
+                                      target_price: 1_550.0, stop_loss_price: 1_470.0))
+
+      Live::TickCache.put('NSE_EQ', '1333', ltp: 1_555.0)
+      exchange.process_tick(security_id: '1333', exchange_segment: 'NSE_EQ', ltp: 1_555.0)
+
+      expect(account.paper_orders.where(order_category: 'super').first.reload.metadata['exit_leg']).to eq('TARGET')
+      expect(account.paper_positions.find_by(security_id: '1333').net_qty).to eq(0)
+    end
+
+    it 'is not treated as a super order without target or stop' do
+      exchange.place(buy_market.merge(order_type: 'LIMIT', price: 1_500.0))
+
+      expect(account.paper_orders.last.order_category).to eq('regular')
+    end
+
     it 'leaves the entry open between the levels' do
       exchange.place(super_entry)
 

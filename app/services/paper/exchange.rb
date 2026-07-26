@@ -176,11 +176,31 @@ module Paper
         remaining_quantity: params[:quantity].to_i,
         price: params[:price],
         trigger_price: params[:trigger_price],
-        order_category: params[:super_order_params].present? ? 'super' : (params[:order_category] || 'regular'),
-        super_order_params: params[:super_order_params],
+        order_category: super_params(params).present? ? 'super' : (params[:order_category] || 'regular'),
+        super_order_params: super_params(params),
         metadata: params[:metadata] || {},
         placed_at: Time.current
       )
+    end
+
+    # Normalises a super order's target/stop into one nested hash.
+    #
+    # The app builds these payloads flat — IndexOrderPayloadBuilder.build_super
+    # emits `target_price:`/`stop_loss_price:`/`trailing_jump:` at the top level,
+    # which is what the DhanHQ super-order API takes. Only looking for a nested
+    # `super_order_params:` key meant every real super order was recorded as a
+    # plain order, so its legs were never simulated and the position ran on
+    # forever.
+    #
+    # @return [Hash, nil] nested leg params, or nil when this is not a super order
+    def super_params(params)
+      nested = params[:super_order_params]
+      return nested.to_h.symbolize_keys if nested.present?
+
+      flat = params.slice(:target_price, :stop_loss_price, :trailing_jump).compact
+      return nil if flat[:target_price].blank? && flat[:stop_loss_price].blank?
+
+      flat
     end
 
     # Tries to fill now; anything unfilled rests.
