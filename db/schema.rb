@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_01_31_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_26_141749) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -306,6 +306,78 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_31_100000) do
     t.index ["alert_id"], name: "index_orders_on_alert_id"
   end
 
+  create_table "paper_accounts", force: :cascade do |t|
+    t.string "name", default: "Default Paper Account", null: false
+    t.decimal "initial_capital", precision: 14, scale: 2, default: "1000000.0", null: false
+    t.decimal "available_balance", precision: 14, scale: 2, default: "1000000.0", null: false
+    t.decimal "utilized_margin", precision: 14, scale: 2, default: "0.0", null: false
+    t.decimal "blocked_margin", precision: 14, scale: 2, default: "0.0", null: false
+    t.decimal "realized_pnl", precision: 14, scale: 2, default: "0.0", null: false
+    t.decimal "total_charges", precision: 14, scale: 2, default: "0.0", null: false
+    t.string "status", default: "active", null: false
+    t.jsonb "config", default: {}, null: false
+    t.datetime "reset_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "paper_orders", force: :cascade do |t|
+    t.bigint "paper_account_id", null: false
+    t.string "correlation_id"
+    t.string "status", default: "initiated", null: false
+    t.string "transaction_type", null: false
+    t.string "exchange_segment", null: false
+    t.string "product_type", null: false
+    t.string "order_type", null: false
+    t.string "validity", default: "DAY"
+    t.string "security_id", null: false
+    t.string "trading_symbol"
+    t.integer "quantity", null: false
+    t.integer "filled_qty", default: 0, null: false
+    t.integer "remaining_quantity"
+    t.decimal "price", precision: 15, scale: 4
+    t.decimal "trigger_price", precision: 15, scale: 4
+    t.decimal "average_traded_price", precision: 15, scale: 4
+    t.decimal "slippage_applied", precision: 15, scale: 4, default: "0.0"
+    t.decimal "charges", precision: 12, scale: 4, default: "0.0"
+    t.string "order_category", default: "regular", null: false
+    t.jsonb "super_order_params"
+    t.jsonb "fill_details", default: [], null: false
+    t.jsonb "rejection_reason"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "placed_at"
+    t.datetime "filled_at"
+    t.datetime "cancelled_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["correlation_id"], name: "index_paper_orders_on_correlation_id"
+    t.index ["paper_account_id", "status"], name: "index_paper_orders_on_paper_account_id_and_status"
+    t.index ["paper_account_id"], name: "index_paper_orders_on_paper_account_id"
+    t.index ["security_id", "status"], name: "index_paper_orders_on_security_id_and_status"
+  end
+
+  create_table "paper_positions", force: :cascade do |t|
+    t.bigint "paper_account_id", null: false
+    t.string "security_id", null: false
+    t.string "trading_symbol"
+    t.string "exchange_segment", null: false
+    t.string "product_type", null: false
+    t.string "position_type", default: "CLOSED", null: false
+    t.integer "net_qty", default: 0, null: false
+    t.integer "buy_qty", default: 0, null: false
+    t.integer "sell_qty", default: 0, null: false
+    t.decimal "buy_avg", precision: 15, scale: 4, default: "0.0"
+    t.decimal "sell_avg", precision: 15, scale: 4, default: "0.0"
+    t.decimal "ltp", precision: 15, scale: 4
+    t.decimal "realized_profit", precision: 14, scale: 2, default: "0.0", null: false
+    t.decimal "unrealized_profit", precision: 14, scale: 2, default: "0.0", null: false
+    t.decimal "margin_used", precision: 14, scale: 2, default: "0.0", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["paper_account_id", "security_id", "product_type"], name: "idx_paper_pos_acct_sec_prod", unique: true
+    t.index ["paper_account_id"], name: "index_paper_positions_on_paper_account_id"
+  end
+
   create_table "positions", force: :cascade do |t|
     t.bigint "instrument_id"
     t.string "trading_symbol", null: false
@@ -379,6 +451,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_31_100000) do
   add_foreign_key "levels", "instruments", validate: false
   add_foreign_key "mis_details", "instruments", validate: false
   add_foreign_key "orders", "alerts"
+  add_foreign_key "paper_orders", "paper_accounts"
+  add_foreign_key "paper_positions", "paper_accounts"
   add_foreign_key "positions", "instruments", validate: false
   add_foreign_key "quotes", "instruments", validate: false
   add_foreign_key "swing_picks", "instruments", validate: false

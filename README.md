@@ -214,25 +214,47 @@ switch is at the gateway, every caller — alert processors, MCP tools,
 shape is identical to a live placement.
 
 ```bash
-PAPER_TRADING=true PAPER_SLIPPAGE_PCT=0.05 bin/rails s
-bin/rails live:paper_book    # positions, P&L and charges
-bin/rails live:paper_reset   # clear paper fills (live orders untouched)
+PAPER_TRADING=true bin/rails s
+bin/rails live:paper_book    # positions, working orders, P&L and charges
+bin/rails live:paper_reset   # reset the book to its starting capital
 ```
 
 This is a step beyond the SDK's `DHAN_DRY_RUN`, which suppresses the request and
-returns a `DRYRUN-…` id without modelling the outcome. Here an order actually
-fills:
+returns a `DRYRUN-…` id without modelling the outcome. `Paper::Exchange` is a
+simulated exchange over **real market data**:
 
-- against the current LTP (WebSocket cache first, REST fallback)
-- with slippage applied **against the taker** — buys fill higher, sells lower
-- a non-marketable LIMIT **rests unfilled** rather than filling
-- fills persist as `Order` rows with a `PAPER-` id, so positions survive restarts
-- P&L marks against the live feed and applies the **real Dhan charge schedule**
-  via `Charges::Calculator`
+- **Fills** against the live LTP (WebSocket cache first, REST fallback), with
+  slippage applied **against the taker** — buys fill higher, sells lower.
+- **Resting orders.** A non-marketable limit and an un-elected stop rest, then
+  fill when a later tick reaches them. This is driven by the market feed, so
+  `bin/rails live:feed` must be running for resting orders to work.
+- **Super orders.** Once the entry fills, a tick through the target or stop
+  closes the position, whichever comes first.
+- **Virtual capital and margin.** Orders are rejected when the book cannot fund
+  them; margin is blocked on placement and released on fill or cancel.
+- **Real Dhan charges** per fill, including the STT asymmetry (sell-side for
+  intraday and F&O, both sides for delivery) that makes an intraday P&L look
+  better than it is when ignored.
+- **Partial fills**, optional, with a configurable fill probability.
 
-**What it does not model:** partial fills, queue position, or order-book depth.
-A large order fills entirely at one price, so paper results flatter size more
-than reality would.
+Configure per account through `PaperAccount.current.config`:
+
+| key | values | default |
+|---|---|---|
+| `slippage_model` | `fixed_bps`, `spread_based`, `volume_based`, `none` | `fixed_bps` |
+| `slippage_bps` | 0–100 | 5 |
+| `fill_probability` | 0.0–1.0 | 1.0 |
+| `partial_fill_enabled` | true/false | false |
+| `market_hours_enforced` | true/false | true |
+
+`spread_based` uses half the live bid/ask from the feed's depth — the most
+honest model when depth is available. `volume_based` applies square-root market
+impact for sizing studies.
+
+**What it does not model:** queue position, and margin is a flat per-segment
+approximation rather than SPAN. It is conservative for option buying and
+**understates naked option selling**, where real SPAN is far higher — don't use
+paper margin to size a short-vol strategy.
 
 ### Alert routing by asset class
 

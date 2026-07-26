@@ -35,26 +35,36 @@ namespace :live do
     pp Live::MarketFeedHub.instance.health
   end
 
-  desc 'Show simulated paper positions and P&L'
+  desc 'Show simulated paper positions, working orders and P&L'
   task paper_book: :environment do
     positions = Paper::Positions.open
     if positions.empty?
       puts 'No open paper positions.'
     else
       positions.each do |p|
-        puts format('%-10s %-8s net=%-8s avg=%-10s ltp=%-10s unreal=%-10s charges=%s',
-                    p[:exchange_segment], p[:security_id], p[:net_qty],
-                    p[:buy_avg], p[:ltp], p[:unrealized_pnl], p[:charges])
+        puts format('%-10s %-8s %-7s net=%-7s avg=%-10s ltp=%-10s unreal=%-10s real=%s',
+                    p[:exchange_segment], p[:security_id], p[:position_type], p[:net_qty],
+                    p[:buy_avg], p[:ltp], p[:unrealized_pnl], p[:realized_pnl])
       end
     end
+
+    working = Paper::Positions.open_orders
+    if working.any?
+      puts "\nWorking orders:"
+      working.each do |o|
+        puts format('  #%-6s %-4s %-18s qty=%-6s filled=%-6s px=%-10s status=%s',
+                    o[:id], o[:side], o[:order_type], o[:quantity], o[:filled_qty], o[:price], o[:status])
+      end
+    end
+
     puts
     pp Paper::Positions.summary
   end
 
-  desc 'Clear the simulated paper book (paper fills only; live orders are untouched)'
+  desc 'Reset the simulated paper book to its starting capital'
   task paper_reset: :environment do
-    deleted = Paper::Positions.reset!
-    puts "🧹 removed #{deleted} paper fills"
+    account = Paper::Positions.reset!
+    puts "🧹 paper book reset to ₹#{account.initial_capital.to_f.round(2)}"
   end
 
   # SYMBOLS=NSE_FNO:49081,IDX_I:13

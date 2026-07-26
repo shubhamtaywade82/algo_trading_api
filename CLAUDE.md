@@ -83,12 +83,16 @@ of what this repo already does. Don't re-open them without a concrete reason.
   automatically. `connected?` requires a recent *frame*, not just a live socket.
 - **A reconnect clears `TickCache`.** Never mark or trade against a price from
   before the gap.
-- **`PAPER_TRADING=true`** routes `Orders::Gateway` to `Paper::Broker`. Paper
+- **`PAPER_TRADING=true`** routes `Orders::Gateway` to `Paper::Exchange`. Paper
   mode bypasses `PLACE_ORDER`/`LIVE_TRADING` on purpose: nothing reaches the
-  broker, so those gates have nothing to protect. Paper fills are `Order` rows
-  with a `PAPER-` id; `Paper::Positions` derives the book from them.
+  broker, so those gates have nothing to protect.
+- Paper state lives in `paper_accounts` / `paper_orders` / `paper_positions`
+  (single account, like `DhanAccessToken`), never in the live `orders` table —
+  a simulated fill must never be readable as a real position.
+- **Resting orders and super-order legs are driven by the feed.** `live:feed`
+  has to be running or a limit/stop will never fill and marks will go stale.
 - Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
-  mode simulates fills, positions and P&L with real charges.
+  mode simulates fills, margin, positions and P&L with real charges.
 
 ## Critical rules
 
