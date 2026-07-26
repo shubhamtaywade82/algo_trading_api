@@ -43,6 +43,15 @@ module Orders
   # second real order. Transient failures surface as `:error` results carrying
   # `reconcilable: true` — the caller must reconcile against the order book
   # (by `correlation_id`) before resubmitting. Do not add a retry here.
+  #
+  # ## Paper trading
+  #
+  # With `PAPER_TRADING=true` the domestic paths route to {Paper::Broker},
+  # which fills against the live feed with a slippage assumption and persists
+  # the fill as an Order row. Because the switch lives here, every caller gets
+  # paper behaviour without changing code and the result shape is unchanged.
+  # Paper mode intentionally bypasses PLACE_ORDER/LIVE_TRADING: nothing reaches
+  # the broker, so those gates have nothing to protect.
   class Gateway
     # Asset classes that route to the domestic (INR) order API.
     DOMESTIC_ASSET_CLASSES = %i[equity index options futures currency commodity].freeze
@@ -76,6 +85,7 @@ module Orders
       # @param source [String] caller identifier for logs
       # @return [Hash] result hash with :dry_run or :order details
       def place_order(payload, logger: Rails.logger, source: nil)
+        return Paper::Broker.place(payload, source: source) if Paper::Broker.enabled?
         return blocked_result(payload, logger: logger, source: source) unless place_order_enabled?(logger: logger, source: source)
 
         submit(payload, logger: logger, source: source, book: :domestic) do
@@ -92,6 +102,8 @@ module Orders
       # @param source [String] caller identifier for logs
       # @return [Hash] result hash with :dry_run or :order details
       def place_super_order(payload, logger: Rails.logger, source: nil)
+        # Paper mode fills the entry leg; the SL/target legs are not simulated.
+        return Paper::Broker.place(payload, source: source) if Paper::Broker.enabled?
         return blocked_result(payload, logger: logger, source: source) unless place_order_enabled?(logger: logger, source: source)
 
         submit(payload, logger: logger, source: source, book: :domestic) do

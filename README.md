@@ -179,6 +179,61 @@ All broker order placement is centralized in `Orders::Gateway`.
 US orders carry no exchange segment, product type or validity, take float
 quantities for fractional shares, and support the notional `AMOUNT` order type.
 
+## 📡 Live market feed
+
+`Live::MarketFeedHub` owns one WebSocket per process, wrapping
+`DhanHQ::WS::Client`. Decoded ticks land in `Live::TickCache` (in-process,
+30s TTL) and readers consult it before falling back to REST — so
+`Instrument#ltp` is free while the feed is up.
+
+```bash
+bin/rails live:feed MODE=quote SYMBOLS=NSE_FNO:49081,IDX_I:13
+bin/rails live:feed SUBSCRIBE_WATCHLIST=true   # subscribe every active watchlist item
+bin/rails live:feed_health                     # one-shot health snapshot
+```
+
+Nothing starts the feed automatically. A process that never starts it degrades
+to REST, which is why every reader checks `running? && connected?` first.
+
+Two behaviours worth knowing:
+
+- **Health is judged on frame arrival, not socket state.** A feed can stay
+  connected while the server stops publishing, so `connected?` also requires a
+  frame within 45s.
+- **A reconnect clears the tick cache.** Prices from before the gap must not be
+  traded on, so the cache is dropped and subscriptions replayed.
+
+Dhan caps a connection at 5,000 instruments; the hub refuses subscriptions past
+that rather than silently dropping them.
+
+## 🧪 Paper trading
+
+`PAPER_TRADING=true` routes `Orders::Gateway` to `Paper::Broker`. Because the
+switch is at the gateway, every caller — alert processors, MCP tools,
+`Orders::Executor` — gets paper behaviour with no code change, and the result
+shape is identical to a live placement.
+
+```bash
+PAPER_TRADING=true PAPER_SLIPPAGE_PCT=0.05 bin/rails s
+bin/rails live:paper_book    # positions, P&L and charges
+bin/rails live:paper_reset   # clear paper fills (live orders untouched)
+```
+
+This is a step beyond the SDK's `DHAN_DRY_RUN`, which suppresses the request and
+returns a `DRYRUN-…` id without modelling the outcome. Here an order actually
+fills:
+
+- against the current LTP (WebSocket cache first, REST fallback)
+- with slippage applied **against the taker** — buys fill higher, sells lower
+- a non-marketable LIMIT **rests unfilled** rather than filling
+- fills persist as `Order` rows with a `PAPER-` id, so positions survive restarts
+- P&L marks against the live feed and applies the **real Dhan charge schedule**
+  via `Charges::Calculator`
+
+**What it does not model:** partial fills, queue position, or order-book depth.
+A large order fills entirely at one price, so paper results flatter size more
+than reality would.
+
 ### Alert routing by asset class
 
 `AlertProcessorFactory` maps an alert's `instrument_type` to a processor:
