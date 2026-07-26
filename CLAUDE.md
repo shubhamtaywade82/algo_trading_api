@@ -56,6 +56,25 @@ app/
 
 Override via env: `ALLOC_PCT`, `RISK_PER_TRADE_PCT`, `DAILY_MAX_LOSS_PCT`.
 
+## Architecture decisions
+
+These were evaluated against the TradingOS reference design and settled in favour
+of what this repo already does. Don't re-open them without a concrete reason.
+
+- **Single account, not multi-user.** There is no `User` model, `DhanAccessToken`
+  is a single row, and the SDK's configuration is a process-global singleton that
+  cannot hold two accounts' credentials at once. A per-user `ClientFactory` would
+  require process-per-account. Keep the global config.
+- **`Strategy` is the option-strategy playbook catalogue** (`name`, `objective`,
+  `risk`, `reward`, ...) consumed by `Option::StrategySuggester`. It is *not* a
+  deployment lifecycle. Service classes nest under it by reopening the class
+  (`class Strategy; class Validator`) — never `module Strategy`, which raises
+  `TypeError: Strategy is not a module`. A deployed-automation concept, if ever
+  needed, takes a different name.
+- **Signal-driven, not a polling engine.** Execution flows
+  webhook → `Alert` → `AlertProcessorFactory` → `AlertProcessors::*` → `Orders::Gateway`.
+  New asset classes are added as processors, not as a parallel strategy loop.
+
 ## Critical rules
 
 - **DhanHQ only** — no Delta Exchange references anywhere in this repo

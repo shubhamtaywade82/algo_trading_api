@@ -179,6 +179,25 @@ All broker order placement is centralized in `Orders::Gateway`.
 US orders carry no exchange segment, product type or validity, take float
 quantities for fractional shares, and support the notional `AMOUNT` order type.
 
+### Alert routing by asset class
+
+`AlertProcessorFactory` maps an alert's `instrument_type` to a processor:
+
+| `instrument_type` | processor | book |
+|---|---|---|
+| `stock` | `AlertProcessors::Stock` | NSE/BSE equity |
+| `index` | `AlertProcessors::Index` | index options |
+| `futures` | `AlertProcessors::McxCommodity` | MCX commodity |
+| `global_equity` | `AlertProcessors::GlobalEquity` | US equity (USD) |
+
+`GlobalEquity` is deliberately unlike the others: US tickers are not in the
+`instruments` scrip master (the alert's ticker *is* the `security_id`), sizing
+reads the USD `GlobalStocks::Funds` balance rather than the domestic fund limit,
+quantities are fractional, and the open check uses `GlobalStocks::MarketStatus`
+because `MarketCalendar` only knows NSE/BSE hours. The SDK does not run its risk
+pipeline on this book, so the processor's own guards are the only pre-trade
+limits — it fails closed when market status is unavailable.
+
 ### Failed writes are never retried
 
 DhanHQ ≥ 3.2 stopped auto-retrying order placement/modify/cancel — the API has
