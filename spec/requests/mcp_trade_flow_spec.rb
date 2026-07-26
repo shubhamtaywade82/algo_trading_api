@@ -46,7 +46,10 @@ RSpec.describe 'MCP trade flow', :mcp do
 
     allow(Trading::DerivativeResolver).to receive(:new).and_return(double(call: resolver_result))
 
-    allow(Orders::Manager).to receive(:place_order) do |payload, _source:|
+    # `_source:` would declare a keyword literally named `_source`; the caller
+    # passes `source:`, so the stub raised "missing keyword: :_source" and the
+    # tool returned an error hash instead of the dry-run result.
+    allow(Orders::Manager).to receive(:place_order) do |payload, **|
       {
         dry_run: true,
         blocked: false,

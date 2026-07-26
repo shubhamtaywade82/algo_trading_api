@@ -20,7 +20,7 @@ RSpec.describe Option::ChainAnalyzer, type: :service do
       exchange: 'NSE',
       security_id: '13',
       underlying_symbol: 'NIFTY',
-      instrument: 'INDEX'
+      instrument_code: 'INDEX'
     )
   end
 

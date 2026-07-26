@@ -20,7 +20,7 @@ module InstrumentsImport
           next
         end
 
-        parent_code = InstrumentTypeMapping.underlying_for(row[:instrument])
+        parent_code = InstrumentTypeMapping.underlying_for(row[:instrument_code])
         key = [parent_code.to_s.upcase, sym]
 
         if (pid = lookup[key])
@@ -37,7 +37,7 @@ module InstrumentsImport
     private
 
     def build_instrument_lookup
-      Instrument.pluck(:id, :instrument, :underlying_symbol).each_with_object({}) do |(id, inst, sym), h|
+      Instrument.pluck(:id, :instrument_code, :underlying_symbol).each_with_object({}) do |(id, inst, sym), h|
         next if sym.blank?
 
         key = [inst.to_s.strip.upcase, sym.to_s.strip.upcase]

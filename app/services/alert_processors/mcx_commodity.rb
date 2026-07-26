@@ -17,7 +17,7 @@ module AlertProcessors
     # 1. use display_name → Date helper for the expiry calendar
     # ------------------------------------------------------------------
     def db_expiry_list
-      Instrument.mcx.instrument_options_commodity
+      Instrument.mcx.instrument_code_options_commodity
                 .where(underlying_symbol: instrument.underlying_symbol)
                 .pluck(:display_name)
                 .filter_map { |n| parse_expiry(n) }
@@ -49,7 +49,7 @@ module AlertProcessors
     # 2. derivative & lot-size helpers – purely regex-based
     # ------------------------------------------------------------------
     def fetch_derivative(strike, expiry, dir)
-      Instrument.mcx.instrument_options_commodity.find do |row|
+      Instrument.mcx.instrument_code_options_commodity.find do |row|
         next unless (m = DISPLAY_RE.match(row.display_name))
         next unless m[:cp].starts_with?(dir.to_s.upcase[0]) # C or P
         next unless to_date(expiry) == parse_expiry(row.display_name)

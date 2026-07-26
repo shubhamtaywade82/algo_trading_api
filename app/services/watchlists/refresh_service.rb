@@ -46,7 +46,7 @@ module Watchlists
 
     def scan_universe
       out = []
-      scope = Instrument.nse.instrument_equity
+      scope = Instrument.nse.instrument_code_equity
 
       scope.in_batches(of: @cfg[:batch_size]) do |batch|
         batch.each do |inst|

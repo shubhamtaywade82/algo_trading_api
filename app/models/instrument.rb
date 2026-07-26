@@ -23,24 +23,19 @@ class Instrument < ApplicationRecord
   accepts_nested_attributes_for :order_features, allow_destroy: true
 
   # Enums (explicit attribute types for Rails 8)
-  attribute :exchange, :string
-  attribute :segment, :string
-  attribute :instrument, :string
-
-  enum :exchange, { nse: 'NSE', bse: 'BSE', mcx: 'MCX' }
-  enum :segment, { index: 'I', equity: 'E', currency: 'C', derivatives: 'D', commodity: 'M' }, prefix: true
-  enum :instrument, {
-    index: 'INDEX',
-    futures_index: 'FUTIDX',
-    options_index: 'OPTIDX',
-    equity: 'EQUITY',
-    futures_stock: 'FUTSTK',
-    options_stock: 'OPTSTK',
-    futures_currency: 'FUTCUR',
-    options_currency: 'OPTCUR',
-    futures_commodity: 'FUTCOM',
-    options_commodity: 'OPTFUT'
-  }, prefix: true
+  #
+  # `exchange`, `segment` and `instrument_code` are declared once, in
+  # InstrumentHelpers, which both Instrument and Derivative include. Declaring
+  # them again here raised "you tried to define an enum named exchange ...
+  # already defined by another enum" and made the class unloadable.
+  #
+  # There is no `instrument` column — the scrip master's INSTRUMENT field is
+  # stored in `instrument_code` — so the enum lives on that column and the
+  # scopes are `instrument_code_*`.
+  #
+  # Do not re-declare `attribute :exchange, :string` (etc.) here: the concern
+  # is included above, so a later `attribute` call resets the attribute type
+  # and silently discards the enum's value mapping.
 
   # Validations
   validates :security_id, presence: true, uniqueness: true
@@ -151,22 +146,26 @@ class Instrument < ApplicationRecord
   end
 
   def resolve_instrument_code
-    # Get the enum value (e.g., 'OPTCUR' from 'options_currency' key)
-    # instrument_before_type_cast returns the database value directly (e.g., 'EQUITY', 'OPTCUR')
-    instrument_value = instrument_before_type_cast.to_s
+    # instrument_code_before_type_cast returns the database value directly
+    # (e.g. 'EQUITY', 'OPTCUR') rather than the enum key.
+    instrument_value = instrument_code_before_type_cast.to_s
 
     # Validate it's one of the allowed values for DhanHQ API
     allowed = %w[INDEX FUTIDX OPTIDX EQUITY FUTSTK OPTSTK FUTCOM OPTFUT FUTCUR OPTCUR]
     return instrument_value if allowed.include?(instrument_value)
 
-      has_call_values = call_data && call_data.except('implied_volatility').values.any? do |v|
-        numeric_value?(v) && v.to_f.positive?
-      end
-      has_put_values = put_data && put_data.except('implied_volatility').values.any? do |v|
-        numeric_value?(v) && v.to_f.positive?
-      end
+    # Fallback: map through the enum when the raw column holds a key rather
+    # than a DhanHQ code.
+    mapped_value = Instrument.instrument_codes[instrument_code]
+    return mapped_value.to_s if mapped_value && allowed.include?(mapped_value.to_s)
 
-      has_call_values || has_put_values
+    # Default fallback based on segment.
+    case segment.to_s
+    when 'index' then 'INDEX'
+    when 'equity' then 'EQUITY'
+    when 'derivatives' then 'FUTSTK'
+    when 'commodity' then 'FUTCOM'
+    else 'EQUITY'
     end
   end
 

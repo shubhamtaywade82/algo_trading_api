@@ -134,7 +134,7 @@ RSpec.describe AlertProcessors::Stock, type: :service do
       }
     end
 
-    it 'creates order via DhanHQ and guards with eDIS' do
+    it 'creates order via DhanHQ and guards with eDIS', :with_order_placement do
       pr = processor(strategy_type: 'swing', signal_type: 'long_exit')
       allow(pr).to receive(:build_order_payload).and_return(payload)
       allow(pr).to receive(:ensure_edis!)

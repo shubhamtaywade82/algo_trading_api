@@ -22,8 +22,12 @@ RSpec.describe Mcp::Handlers::CallTool do
     end
 
     let(:registry) do
+      # Bind to a local first: the block passed to Class.new is class_eval'd,
+      # so `self` is the new class and the `tool_class` let-method is not in
+      # scope inside it.
+      klass = tool_class
       Class.new do
-        define_singleton_method(:tools) { [tool_class] }
+        define_singleton_method(:tools) { [klass] }
       end
     end
 

@@ -12,7 +12,7 @@ RSpec.describe AlertProcessors::Index, type: :service do
       exchange: 'NSE',
       security_id: '13',
       underlying_symbol: 'NIFTY',
-      instrument: 'INDEX'
+      instrument_code: 'INDEX'
     )
   end
 
@@ -108,7 +108,8 @@ RSpec.describe AlertProcessors::Index, type: :service do
     context 'when processing is successful' do
       before { allow(processor).to receive(:place_super_order!).and_return(true) }
 
-      it 'places an order and updates alert status to processed', vcr: { cassette_name: 'dhan/option_expiry_list' } do
+      it 'places an order and updates alert status to processed',
+         :with_order_placement, vcr: { cassette_name: 'dhan/option_expiry_list' } do
         expect { processor.call }.to change { alert.reload.status }
           .from('pending').to('processed')
       end
