@@ -44,12 +44,15 @@ module Trading
       iv_rank_pct = (iv_rank_raw.to_f * 100).round(1)
 
       regime = Trading::RegimeScorer.call(spot: spot, candles: candles, iv_rank: iv_rank_pct)
-      return no_trade_with(regime.reason, symbol: @symbol, expiry: expiry_to_use, iv_rank: iv_rank_pct, spot: spot, regime: regime) if regime.state == :no_trade
+      if regime.state == :no_trade
+        return no_trade_with(regime.reason, symbol: @symbol, expiry: expiry_to_use, iv_rank: iv_rank_pct, spot: spot,
+                                            regime: regime)
+      end
 
       dir_result = Trading::DirectionResolver.call(spot: spot, candles: candles, option_chain: chain)
       unless dir_result.direction
         return no_trade_with("No directional signal: #{dir_result.reason}", symbol: @symbol, expiry: expiry_to_use, iv_rank: iv_rank_pct,
-                              spot: spot, regime: regime)
+                                                                            spot: spot, regime: regime)
       end
 
       direction = dir_result.direction
@@ -57,7 +60,7 @@ module Trading
       entry_check = Trading::EntryValidator.call(direction: direction, candles: candles)
       unless entry_check.valid
         return no_trade_with("Entry not confirmed: #{entry_check.reason}", symbol: @symbol, direction: direction, expiry: expiry_to_use, iv_rank: iv_rank_pct,
-                              spot: spot, regime: regime)
+                                                                           spot: spot, regime: regime)
       end
 
       historical = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: 'intraday')
@@ -72,7 +75,7 @@ module Trading
       analysis = analyzer.analyze(signal_type: direction.downcase.to_sym, strategy_type: 'intraday')
       unless analysis[:proceed]
         return no_trade_with("Chain analysis blocked: #{analysis[:reason]}", symbol: @symbol, direction: direction, expiry: expiry_to_use, iv_rank: iv_rank_pct,
-                              spot: spot, regime: regime, chain_analysis: safe_chain_analysis(analysis))
+                                                                             spot: spot, regime: regime, chain_analysis: safe_chain_analysis(analysis))
       end
 
       Result.new(

@@ -3,7 +3,7 @@
 module Market
   # Service for updating technical analysis (ATR, Trend, Confluence) for key indices.
   class AnalysisUpdater < ApplicationService
-    INTERVAL  = '5'.freeze # 5-minute candles
+    INTERVAL  = '5' # 5-minute candles
     SYMBOLS   = %w[NIFTY BANKNIFTY SENSEX].freeze
 
     def call

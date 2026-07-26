@@ -21,7 +21,7 @@ namespace :instruments do
       pp "BSE Instruments: #{Instrument.bse.count}"
       pp "NSE Derivatives: #{Derivative.nse.count}"
       pp "BSE Derivatives: #{Derivative.bse.count}"
-      pp "Options: #{Derivative.where(option_type: ['CE', 'PE']).count}"
+      pp "Options: #{Derivative.where(option_type: %w[CE PE]).count}"
       pp "Futures: #{Derivative.where(option_type: nil).where.not(expiry_date: nil).count}"
       pp "Instruments: #{Instrument.count}"
       pp "Derivatives: #{Derivative.count}"

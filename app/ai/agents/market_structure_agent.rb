@@ -17,7 +17,7 @@ module AI
     #   "confidence": 0.72
     # }
     module MarketStructureAgent
-      INSTRUCTIONS = <<~PROMPT.freeze
+      INSTRUCTIONS = <<~PROMPT
         You are a professional NSE/BSE market structure analyst specializing in index trading.
 
         Your task is to analyze the market using technical data and produce a structured assessment.
@@ -47,10 +47,10 @@ module AI
 
       def self.build
         ::Agents::Agent.new(
-          name:         'Market Structure Analyst',
+          name: 'Market Structure Analyst',
           instructions: INSTRUCTIONS,
-          model:        ::Agents.configuration.default_model,
-          tools:        [
+          model: ::Agents.configuration.default_model,
+          tools: [
             AI::Tools::DhanCandleTool.new,
             AI::Tools::MarketSentimentTool.new
           ]

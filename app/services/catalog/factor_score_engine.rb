@@ -36,10 +36,10 @@ module Catalog
     def load_instruments
       Rails.logger.debug '[INFO] Loading instruments from database'
       @symbols = Instrument.where(exchange: 'NSE', segment: 'E', instrument: 'EQUITY')
-                           .select(:security_id, :symbol_name)
-                           .distinct
-                           .limit(500)
-                           .map { |i| { security_id: i.security_id, symbol: i.symbol_name } }
+        .select(:security_id, :symbol_name)
+        .distinct
+        .limit(500)
+        .map { |i| { security_id: i.security_id, symbol: i.symbol_name } }
       Rails.logger.debug { "[INFO] Loaded #{@symbols.size} instruments" }
     end
 

@@ -11,7 +11,7 @@ module AI
       param :signal_type, type: 'string', desc: 'Signal direction for strike recommendation: ce (bullish), pe (bearish)', required: false
 
       def perform(_ctx, symbol:, expiry: nil, signal_type: 'ce')
-        sym  = symbol.to_s.upcase
+        sym = symbol.to_s.upcase
         stype = signal_type.to_s.presence || 'ce'
 
         instrument = Instrument.segment_index.find_by(underlying_symbol: sym)
@@ -29,31 +29,31 @@ module AI
         historical = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: 'intraday')
         analyzer   = Option::ChainAnalyzer.new(
           chain,
-          expiry:          expiry,
+          expiry: expiry,
           underlying_spot: ltp,
-          iv_rank:         iv_rank,
+          iv_rank: iv_rank,
           historical_data: historical
         )
 
         analysis  = analyzer.analyze(strategy_type: 'intraday', signal_type: stype.to_sym)
         sentiment = Market::SentimentAnalysis.call(
-          option_chain:    chain,
-          expiry:         expiry,
-          spot:           ltp,
-          iv_rank:        iv_rank,
+          option_chain: chain,
+          expiry: expiry,
+          spot: ltp,
+          iv_rank: iv_rank,
           historical_data: historical
         )
 
         {
-          symbol:        sym,
-          expiry:        expiry,
-          ltp:           ltp.round(2),
-          iv_rank:       iv_rank&.round(2),
-          pcr:           compute_pcr(chain),
-          sentiment:     sentiment[:bias]&.to_s,
-          best_strike:   analysis[:best_strike],
-          top_strikes:   analysis[:strikes]&.first(3),
-          trend:         analysis[:trend],
+          symbol: sym,
+          expiry: expiry,
+          ltp: ltp.round(2),
+          iv_rank: iv_rank&.round(2),
+          pcr: compute_pcr(chain),
+          sentiment: sentiment[:bias]&.to_s,
+          best_strike: analysis[:best_strike],
+          top_strikes: analysis[:strikes]&.first(3),
+          trend: analysis[:trend],
           chain_summary: summarize_chain(chain, ltp)
         }
       rescue StandardError => e
@@ -93,10 +93,10 @@ module AI
             strike: strike,
             ce_ltp: row.dig('ce', 'last_price').to_f.round(2),
             pe_ltp: row.dig('pe', 'last_price').to_f.round(2),
-            ce_oi:  row.dig('ce', 'oi').to_i,
-            pe_oi:  row.dig('pe', 'oi').to_i,
-            ce_iv:  row.dig('ce', 'implied_volatility').to_f.round(2),
-            pe_iv:  row.dig('pe', 'implied_volatility').to_f.round(2)
+            ce_oi: row.dig('ce', 'oi').to_i,
+            pe_oi: row.dig('pe', 'oi').to_i,
+            ce_iv: row.dig('ce', 'implied_volatility').to_f.round(2),
+            pe_iv: row.dig('pe', 'implied_volatility').to_f.round(2)
           }
         end
       end

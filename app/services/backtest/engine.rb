@@ -38,10 +38,10 @@ module Backtest
     private
 
     def simulate_strategy(instrument, bars)
-      # This is a very simplified simulation. 
+      # This is a very simplified simulation.
       # In a real backtest, we'd iterate bar by bar and maintain state.
       trades = []
-      
+
       # For demonstration, let's say we find "signals" using HolyGrail
       # We need at least 100 bars for HolyGrail
       close_prices = bars['close']
@@ -50,14 +50,14 @@ module Backtest
       # Sliding window backtest
       (100...close_prices.size).step(1).each do |i|
         window = slice_bars(bars, i - 100, 100)
-        
+
         begin
           analysis = Indicators::HolyGrail.call(candles: window)
           if analysis.proceed?
             # Simulate a trade
             trades << execute_simulated_trade(instrument, bars, i, analysis.bias)
           end
-        rescue StandardError => e
+        rescue StandardError
           # Skip errors during simulation
           next
         end
@@ -77,16 +77,16 @@ module Backtest
       }
     end
 
-    def execute_simulated_trade(instrument, bars, index, bias)
+    def execute_simulated_trade(_instrument, bars, index, bias)
       entry_price = bars['close'][index].to_f
       # Very simple: exit after 5 bars or at end of day
       exit_index = [index + 5, bars['close'].size - 1].min
       exit_price = bars['close'][exit_index].to_f
-      
+
       pnl = bias == :bullish ? (exit_price - entry_price) : (entry_price - exit_price)
       # Scale by some quantity
-      quantity = 50 
-      
+      quantity = 50
+
       {
         entry_time: Time.zone.at(bars['timestamp'][index]),
         exit_time: Time.zone.at(bars['timestamp'][exit_index]),

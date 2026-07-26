@@ -40,9 +40,7 @@ module Mcp
         validate!(security_id: security_id, exchange_segment: exchange_segment, action: action)
 
         params = {}
-        if opts.key?(:trail_pct) && opts[:trail_pct].present?
-          params[:trail_pct] = opts[:trail_pct].to_f
-        end
+        params[:trail_pct] = opts[:trail_pct].to_f if opts.key?(:trail_pct) && opts[:trail_pct].present?
 
         result = Trading::PositionManager.call(
           security_id: security_id,

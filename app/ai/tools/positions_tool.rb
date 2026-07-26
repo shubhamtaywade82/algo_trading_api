@@ -17,8 +17,8 @@ module AI
         total_pnl = formatted.sum { |p| p[:unrealized_pnl] }
 
         {
-          count:     formatted.length,
-          filter:    filter,
+          count: formatted.length,
+          filter: filter,
           total_pnl: total_pnl.round(2),
           positions: formatted,
           timestamp: Time.current.strftime('%Y-%m-%dT%H:%M:%S%z')
@@ -40,16 +40,16 @@ module AI
       def format_position(p)
         pnl = p['unrealizedProfit'].to_f
         {
-          symbol:         p['tradingSymbol'],
-          security_id:    p['securityId'],
-          exchange:       p['exchangeSegment'],
-          product:        p['productType'],
-          quantity:       p['netQty'].to_i,
-          buy_avg:        p['buyAvg'].to_f.round(2),
-          ltp:            p['ltp'].to_f.round(2),
+          symbol: p['tradingSymbol'],
+          security_id: p['securityId'],
+          exchange: p['exchangeSegment'],
+          product: p['productType'],
+          quantity: p['netQty'].to_i,
+          buy_avg: p['buyAvg'].to_f.round(2),
+          ltp: p['ltp'].to_f.round(2),
           unrealized_pnl: pnl.round(2),
-          pnl_pct:        calculate_pnl_pct(p),
-          direction:      p['netQty'].to_i > 0 ? 'LONG' : 'SHORT'
+          pnl_pct: calculate_pnl_pct(p),
+          direction: p['netQty'].to_i > 0 ? 'LONG' : 'SHORT'
         }
       end
 

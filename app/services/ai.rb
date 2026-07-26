@@ -68,8 +68,11 @@ class Ai < ApplicationService
   # Broker-aware system prompt for an LLM that will call DhanHQ tools.
   # @param capabilities [Array<String>, nil]
   def self.system_prompt(capabilities: nil)
-    capabilities ? DhanHQ::AI::PromptHelpers.system_prompt(capabilities: capabilities)
-                 : DhanHQ::AI::PromptHelpers.system_prompt
+    if capabilities
+      DhanHQ::AI::PromptHelpers.system_prompt(capabilities: capabilities)
+    else
+      DhanHQ::AI::PromptHelpers.system_prompt
+    end
   end
 
   # Renders holdings/positions/funds into a prompt-ready portfolio summary.

@@ -4,20 +4,20 @@ require 'rails_helper'
 
 RSpec.describe Trading::RegimeScorer, type: :service do
   # Build synthetic candles with controllable high/low/close values
-  def build_candles(count, high: 22100.0, low: 21900.0, close: 22000.0)
+  def build_candles(count, high: 22_100.0, low: 21_900.0, close: 22_000.0)
     Array.new(count) { { open: close - 10, high: high, low: low, close: close, volume: 1000 } }
   end
 
   # Build trending candles: ascending closes for bullish EMA bias
-  def build_trending_candles(count, base: 22000.0, step: 10.0, high_offset: 100.0, low_offset: 100.0)
+  def build_trending_candles(count, base: 22_000.0, step: 10.0, high_offset: 100.0, low_offset: 100.0)
     Array.new(count).each_with_index.map do |_, i|
       c = base + (i * step)
       { open: c - 5, high: c + high_offset, low: c - low_offset, close: c, volume: 1000 }
     end
   end
 
-  let(:spot) { 22000.0 }
-  let(:healthy_candles) { build_candles(20, high: 22200.0, low: 21800.0, close: 22000.0) }
+  let(:spot) { 22_000.0 }
+  let(:healthy_candles) { build_candles(20, high: 22_200.0, low: 21_800.0, close: 22_000.0) }
 
   describe '#call' do
     context 'when IV rank is below minimum threshold (< 20)' do
@@ -61,7 +61,7 @@ RSpec.describe Trading::RegimeScorer, type: :service do
     context 'when average range is below minimum (< 0.2% of spot)' do
       it 'returns no_trade with market too quiet message' do
         # Range of 10 points on 22000 spot = 0.045% — below 0.2% threshold
-        tight_candles = build_candles(10, high: 22005.0, low: 21995.0, close: 22000.0)
+        tight_candles = build_candles(10, high: 22_005.0, low: 21_995.0, close: 22_000.0)
         result = described_class.call(spot: spot, candles: tight_candles, iv_rank: 40.0)
         expect(result.state).to eq(:no_trade)
         expect(result.reason).to include('Market too quiet')
@@ -79,7 +79,7 @@ RSpec.describe Trading::RegimeScorer, type: :service do
     context 'trend detection' do
       it 'detects bullish trend when close is above EMA20' do
         # Build 25 candles with ascending closes so last close exceeds EMA20
-        candles = build_trending_candles(25, base: 21000.0, step: 50.0, high_offset: 200.0, low_offset: 200.0)
+        candles = build_trending_candles(25, base: 21_000.0, step: 50.0, high_offset: 200.0, low_offset: 200.0)
         result = described_class.call(spot: candles.last[:close], candles: candles, iv_rank: 40.0)
         expect(result.state).to eq(:tradeable)
         expect(result.trend).to eq(:bullish)
@@ -87,7 +87,7 @@ RSpec.describe Trading::RegimeScorer, type: :service do
 
       it 'detects bearish trend when close is below EMA20' do
         # Build 25 descending candles
-        candles = build_trending_candles(25, base: 23000.0, step: -50.0, high_offset: 200.0, low_offset: 200.0)
+        candles = build_trending_candles(25, base: 23_000.0, step: -50.0, high_offset: 200.0, low_offset: 200.0)
         result = described_class.call(spot: candles.last[:close], candles: candles, iv_rank: 40.0)
         expect(result.state).to eq(:tradeable)
         expect(result.trend).to eq(:bearish)
@@ -95,7 +95,7 @@ RSpec.describe Trading::RegimeScorer, type: :service do
 
       it 'falls back to :range when fewer than 20 candles (no EMA20)' do
         # Only 10 candles — can't compute EMA20
-        candles = build_candles(10, high: 22300.0, low: 21700.0, close: 22000.0)
+        candles = build_candles(10, high: 22_300.0, low: 21_700.0, close: 22_000.0)
         result = described_class.call(spot: spot, candles: candles, iv_rank: 40.0)
         expect(result.state).to eq(:tradeable)
         expect(result.trend).to eq(:range)

@@ -33,7 +33,7 @@ module Orders
 
     def place_order
       validate_payload!
-      
+
       # 0. Check for existing position
       Positions::ActiveCache.refresh!
       existing = Positions::ActiveCache.fetch(@security_id, @payload[:exchange_segment])
@@ -43,14 +43,14 @@ module Orders
 
       # 1. Fetch live market data for guards
       market_data = fetch_market_data
-      
+
       # 2. Apply Guards
       validate_liquidity!(market_data)
       validate_spread!(market_data)
-      
+
       # 3. Handle Order Type & Slippage
       final_payload = adjust_payload_for_safety(market_data)
-      
+
       # 4. Final check with existing PlaceOrderGuard (for position limits etc)
       Orders::PlaceOrderGuard.call(final_payload, source: @source)
 
@@ -91,9 +91,9 @@ module Orders
       raise 'Market data unavailable' if chain.blank?
 
       oc = chain[:oc] || chain['oc']
-      strike_row = oc.with_indifferent_access[derivative.strike_price.to_f.to_s] || 
+      strike_row = oc.with_indifferent_access[derivative.strike_price.to_f.to_s] ||
                    oc.with_indifferent_access[derivative.strike_price.to_i.to_s]
-      
+
       raise 'Strike data unavailable' if strike_row.blank?
 
       leg_key = derivative.option_type.downcase
@@ -119,23 +119,24 @@ module Orders
       spread = (market_data[:ask] - market_data[:bid]).abs
       max_spread_pct = ENV.fetch('EXECUTION_MAX_SPREAD_PCT', 0.02).to_f
 
-      raise "Wide spread (#{(spread/ltp*100).round(2)}%)" if spread > (ltp * max_spread_pct)
+      raise "Wide spread (#{(spread / ltp * 100).round(2)}%)" if spread > (ltp * max_spread_pct)
     end
 
     def adjust_payload_for_safety(market_data)
       ltp = market_data[:ltp]
       max_slippage = @payload[:max_slippage_percentage]&.to_f || ENV.fetch('EXECUTION_MAX_SLIPPAGE_PCT', 0.5).to_f
-      
+
       adjusted = @payload.dup
       adjusted[:order_type] = 'LIMIT' # Force LIMIT
-      
+
       if @payload[:price].present?
         requested_price = @payload[:price].to_f
-        max_allowed_price = ltp * (1 + max_slippage / 100.0)
-        
+        max_allowed_price = ltp * (1 + (max_slippage / 100.0))
+
         if @payload[:transaction_type].to_s.upcase == 'BUY' && requested_price > max_allowed_price
           raise "Price too high (Slippage check: requested #{requested_price} > max #{max_allowed_price.round(2)})"
         end
+
         adjusted[:price] = requested_price
       else
         buffer = ltp * 0.002

@@ -23,9 +23,9 @@ RSpec.describe Market::SentimentAnalysis do
 
       before do
         allow(analyzer).to receive(:analyze).with(signal_type: :ce, strategy_type: strategy_type)
-                                            .and_return(call_result)
+          .and_return(call_result)
         allow(analyzer).to receive(:analyze).with(signal_type: :pe, strategy_type: strategy_type)
-                                            .and_return(put_result)
+          .and_return(put_result)
       end
 
       it 'reports bullish bias and preferred CE signal' do

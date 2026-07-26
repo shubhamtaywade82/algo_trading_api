@@ -13,7 +13,7 @@ module AI
     #
     # Handoff is transparent — the user never knows which specialist answered.
     module SupervisorAgent
-      INSTRUCTIONS = <<~PROMPT.freeze
+      INSTRUCTIONS = <<~PROMPT
         You are the Supervisor Agent for an algorithmic trading AI system on NSE/BSE.
 
         You coordinate a cluster of specialist AI agents. Based on the user's request:
@@ -37,9 +37,9 @@ module AI
 
       def self.build
         ::Agents::Agent.new(
-          name:         'Trading Supervisor',
+          name: 'Trading Supervisor',
           instructions: INSTRUCTIONS,
-          model:        ::Agents.configuration.default_model
+          model: ::Agents.configuration.default_model
         )
       end
     end

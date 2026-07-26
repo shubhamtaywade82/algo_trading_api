@@ -50,9 +50,7 @@ DhanHQ.configure do |config|
   config.dry_run = ENV['DHAN_DRY_RUN'] == 'true'
 end
 
-if DhanHQ.configuration.dry_run
-  Rails.logger.warn '[DHAN] DRY RUN enabled — no state-changing request will reach the broker.'
-end
+Rails.logger.warn '[DHAN] DRY RUN enabled — no state-changing request will reach the broker.' if DhanHQ.configuration.dry_run
 
 # ------------------------------------------------------------
 # Logger Configuration

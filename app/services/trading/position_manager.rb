@@ -52,7 +52,7 @@ module Trading
       return failure('LTP unavailable for trailing SL') if ltp.zero?
 
       long = analysis[:long]
-      new_trigger = long ? ltp * (1 - trail_pct / 100.0) : ltp * (1 + trail_pct / 100.0)
+      new_trigger = long ? ltp * (1 - (trail_pct / 100.0)) : ltp * (1 + (trail_pct / 100.0))
       new_trigger = new_trigger.round(2)
 
       Orders::Adjuster.call(position, { trigger_price: new_trigger })

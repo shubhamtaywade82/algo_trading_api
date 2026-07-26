@@ -136,17 +136,17 @@ module Option
 
     def atm_strikes
       strikes_with_oi.select { |strike| (strike[:strike_price] - @current_price).abs <= 50 }
-                     .sort_by { |strike| -strike[:oi] }
+        .sort_by { |strike| -strike[:oi] }
     end
 
     def itm_strikes
       strikes_with_oi.select { |strike| strike[:strike_price] < @current_price }
-                     .sort_by { |strike| -strike[:oi] }
+        .sort_by { |strike| -strike[:oi] }
     end
 
     def otm_strikes
       strikes_with_oi.select { |strike| strike[:strike_price] > @current_price }
-                     .sort_by { |strike| -strike[:oi] }
+        .sort_by { |strike| -strike[:oi] }
     end
 
     def strikes_with_oi

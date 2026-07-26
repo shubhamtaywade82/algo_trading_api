@@ -78,7 +78,7 @@ RSpec.describe Trading::PositionManager, type: :service do
     end
 
     it 'computes new trigger at default 5% below LTP for long position' do
-      expected_trigger = (150.0 * (1 - 5.0 / 100.0)).round(2)
+      expected_trigger = (150.0 * (1 - (5.0 / 100.0))).round(2)
       allow(Orders::Adjuster).to receive(:call).and_return(true)
 
       result = described_class.call(
@@ -95,7 +95,7 @@ RSpec.describe Trading::PositionManager, type: :service do
 
     it 'computes new trigger at custom trail_pct above LTP for short position' do
       allow(Orders::Analyzer).to receive(:call).with(position).and_return({ ltp: 150.0, long: false })
-      expected_trigger = (150.0 * (1 + 3.0 / 100.0)).round(2)
+      expected_trigger = (150.0 * (1 + (3.0 / 100.0))).round(2)
       allow(Orders::Adjuster).to receive(:call).and_return(true)
 
       result = described_class.call(

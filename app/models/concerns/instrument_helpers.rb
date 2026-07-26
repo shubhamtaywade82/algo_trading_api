@@ -125,13 +125,17 @@ module InstrumentHelpers
         4.times do
           sleep(0.05) # 50ms intervals
           cached_ltp = Live::TickCache.ltp(segment, security_id)
-          if cached_ltp.present? && cached_ltp.to_f.positive?
-            Rails.logger.debug { "[InstrumentHelpers] Got LTP from TickCache after subscription for #{segment}:#{security_id}: ₹#{cached_ltp}" }
-            return cached_ltp.to_f
+          next unless cached_ltp.present? && cached_ltp.to_f.positive?
+
+          Rails.logger.debug do
+            "[InstrumentHelpers] Got LTP from TickCache after subscription for #{segment}:#{security_id}: ₹#{cached_ltp}"
           end
+          return cached_ltp.to_f
         end
       rescue StandardError => e
-        Rails.logger.debug { "[InstrumentHelpers] WebSocket subscription failed for #{segment}:#{security_id}: #{e.message}, falling back to API" }
+        Rails.logger.debug do
+          "[InstrumentHelpers] WebSocket subscription failed for #{segment}:#{security_id}: #{e.message}, falling back to API"
+        end
       end
     end
 
@@ -148,9 +152,7 @@ module InstrumentHelpers
     # Suppress 429 rate limit errors (expected during high load)
     error_msg = e.message.to_s
     is_rate_limit = error_msg.include?('429') || error_msg.include?('rate limit') || error_msg.include?('Rate limit')
-    unless is_rate_limit
-      Rails.logger.error("Failed to fetch LTP from API for #{self.class.name} #{security_id}: #{error_msg}")
-    end
+    Rails.logger.error("Failed to fetch LTP from API for #{self.class.name} #{security_id}: #{error_msg}") unless is_rate_limit
     nil
   end
 
@@ -258,9 +260,7 @@ module InstrumentHelpers
     # Suppress 429 rate limit errors (expected during high load)
     error_msg = e.message.to_s
     is_rate_limit = error_msg.include?('429') || error_msg.include?('rate limit') || error_msg.include?('Rate limit')
-    unless is_rate_limit
-      Rails.logger.error("Failed to fetch LTP from API for #{self.class.name} #{security_id}: #{error_msg}")
-    end
+    Rails.logger.error("Failed to fetch LTP from API for #{self.class.name} #{security_id}: #{error_msg}") unless is_rate_limit
     nil
   end
 

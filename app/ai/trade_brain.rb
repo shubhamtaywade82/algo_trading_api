@@ -50,7 +50,7 @@ module AI
     def propose(symbol:, direction: nil, context: nil)
       dir_hint = direction ? " Preferred direction: #{direction}." : ''
       input    = "Generate a concrete options trade setup for #{symbol}.#{dir_hint} " \
-                 "Include specific strike, entry, stop-loss, and target."
+                 'Include specific strike, entry, stop-loss, and target.'
 
       result   = AI::Runners::TradeRunner.run(input, context: context || {})
       proposal = AI::Runners::TradeRunner.extract_proposal(result.output)
@@ -58,10 +58,10 @@ module AI
       Rails.logger.info "[TradeBrain] propose(#{symbol}) → proposal=#{proposal.inspect}"
 
       {
-        result:     result,
-        output:     result.output,
-        context:    result.context,
-        proposal:   proposal,
+        result: result,
+        output: result.output,
+        context: result.context,
+        proposal: proposal,
         validation: proposal ? Strategy::Validator.validate(proposal) : nil
       }
     end
@@ -72,8 +72,8 @@ module AI
     # @return [Agents::RunResult]
     def review_positions(context: nil)
       result = AI::Runners::OperatorRunner.run(
-        "Review all current open positions. Assess P&L, risk level, " \
-        "and flag any positions that should be considered for exit.",
+        'Review all current open positions. Assess P&L, risk level, ' \
+        'and flag any positions that should be considered for exit.',
         context: context || {}
       )
 
@@ -112,13 +112,13 @@ module AI
       trade_result = propose(symbol: symbol)
 
       {
-        symbol:     symbol,
-        timestamp:  Time.current.iso8601,
-        analysis:   analysis.output,
-        positions:  positions.output,
-        proposal:   trade_result[:proposal],
+        symbol: symbol,
+        timestamp: Time.current.iso8601,
+        analysis: analysis.output,
+        positions: positions.output,
+        proposal: trade_result[:proposal],
         validation: trade_result[:validation],
-        context:    trade_result.dig(:result, :context)
+        context: trade_result.dig(:result, :context)
       }
     end
   end

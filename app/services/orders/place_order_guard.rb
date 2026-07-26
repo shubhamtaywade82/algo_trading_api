@@ -44,8 +44,8 @@ module Orders
     def market_open?(time)
       return false unless MarketCalendar.trading_day?(time.to_date)
 
-      minutes = time.hour * 60 + time.min
-      minutes >= 9 * 60 + 15 && minutes <= 15 * 60 + 30
+      minutes = (time.hour * 60) + time.min
+      minutes >= (9 * 60) + 15 && minutes <= (15 * 60) + 30
     end
 
     def resolve_derivative!
@@ -147,11 +147,13 @@ module Orders
       max_deviation_pct = ENV.fetch('EXECUTION_MAX_PRICE_DEVIATION_PCT', 0.02).to_f
       deviation_pct = ((provided_price - last_price).abs / last_price)
 
-      raise "Limit price deviates from LTP by #{(deviation_pct * 100).round(2)}% > #{(max_deviation_pct * 100).round(2)}%" if deviation_pct > max_deviation_pct
-
-      unless PriceMath.valid_tick?(provided_price)
-        raise "Provided price #{provided_price} is not on the valid tick size"
+      if deviation_pct > max_deviation_pct
+        raise "Limit price deviates from LTP by #{(deviation_pct * 100).round(2)}% > #{(max_deviation_pct * 100).round(2)}%"
       end
+
+      return if PriceMath.valid_tick?(provided_price)
+
+      raise "Provided price #{provided_price} is not on the valid tick size"
     end
   end
 end

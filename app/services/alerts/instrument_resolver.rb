@@ -32,9 +32,9 @@ module Alerts
     def resolve_futures(exch)
       root = @params[:ticker].to_s.gsub(/\d+!$/, '')
       Instrument.where(exchange: exch, segment: 'M')
-                .where(underlying_symbol: [root, "#{root}M"])
-                .order(lot_size: :desc)
-                .first
+        .where(underlying_symbol: [root, "#{root}M"])
+        .order(lot_size: :desc)
+        .first
     end
 
     def segment_from_alert_type(instrument_type)

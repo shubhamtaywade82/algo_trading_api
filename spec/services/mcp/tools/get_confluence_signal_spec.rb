@@ -30,7 +30,7 @@ RSpec.describe Mcp::Tools::GetConfluenceSignal do
         max_score: 14,
         level: :medium,
         factors: [factor],
-        close: 22000.0,
+        close: 22_000.0,
         atr: 50.0,
         timestamp: Time.current
       )

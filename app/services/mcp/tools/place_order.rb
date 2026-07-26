@@ -41,7 +41,8 @@ module Mcp
         order_type = opts[:order_type].presence&.upcase || 'LIMIT'
         price = opts[:price]
 
-        validate!(security_id: security_id, exchange_segment: exchange_segment, transaction_type: transaction_type, quantity: quantity, product_type: product_type, order_type: order_type, price: price)
+        validate!(security_id: security_id, exchange_segment: exchange_segment, transaction_type: transaction_type, quantity: quantity,
+                  product_type: product_type, order_type: order_type, price: price)
 
         payload = build_payload(
           security_id: security_id,
@@ -70,9 +71,9 @@ module Mcp
           raise ArgumentError, 'product_type is required' if product_type.blank?
           raise ArgumentError, 'order_type must be MARKET or LIMIT' unless %w[MARKET LIMIT].include?(order_type)
 
-          if order_type == 'LIMIT' && (price.nil? || price.to_f <= 0)
-            raise ArgumentError, 'price is required and must be > 0 for LIMIT orders'
-          end
+          return unless order_type == 'LIMIT' && (price.nil? || price.to_f <= 0)
+
+          raise ArgumentError, 'price is required and must be > 0 for LIMIT orders'
         end
 
         def build_payload(security_id:, exchange_segment:, transaction_type:, quantity:, product_type:, order_type:, price:)

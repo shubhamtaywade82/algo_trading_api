@@ -38,7 +38,11 @@ class Strategy
     end
 
     def initialize(proposal)
-      @p = proposal.with_indifferent_access rescue proposal.to_h.with_indifferent_access
+      @p = begin
+        proposal.with_indifferent_access
+      rescue StandardError
+        proposal.to_h.with_indifferent_access
+      end
     end
 
     def validate
@@ -113,7 +117,7 @@ class Strategy
 
     def check_confidence
       confidence = @p[:confidence].to_f
-      return [] if confidence.zero?  # not provided — skip
+      return [] if confidence.zero? # not provided — skip
 
       confidence >= MIN_CONFIDENCE ? [] : ["confidence #{confidence} is below minimum #{MIN_CONFIDENCE}"]
     end

@@ -47,8 +47,8 @@ module Mcp
         def market_open?(time)
           return false unless MarketCalendar.trading_day?(time.to_date)
 
-          minutes = time.hour * 60 + time.min
-          minutes >= 9 * 60 + 15 && minutes <= 15 * 60 + 30
+          minutes = (time.hour * 60) + time.min
+          minutes >= (9 * 60) + 15 && minutes <= (15 * 60) + 30
         end
       end
     end

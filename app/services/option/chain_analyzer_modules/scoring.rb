@@ -106,7 +106,7 @@ module Option
 
       def local_iv_zscore(strike_iv, strike)
         neighbours = @option_chain[:oc].keys.map(&:to_f)
-                                       .select { |s| (s - strike).abs <= 3 * 100 }
+          .select { |s| (s - strike).abs <= 3 * 100 }
         ivs = neighbours.map do |s|
           @option_chain[:oc][format('%.6f', s)]['ce']['implied_volatility'].to_f
         end

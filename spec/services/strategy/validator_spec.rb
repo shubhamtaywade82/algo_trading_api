@@ -5,17 +5,17 @@ require 'rails_helper'
 RSpec.describe Strategy::Validator do
   let(:valid_proposal) do
     {
-      symbol:       'NIFTY',
-      direction:    'CE',
-      strike:       24300,
-      expiry:       (Date.today + 7).to_s,
-      entry_price:  62.5,
-      stop_loss:    42.0,
-      target:       110.0,
-      quantity:     75,
-      product:      'INTRADAY',
-      confidence:   0.75,
-      risk_reward:  2.3,
+      symbol: 'NIFTY',
+      direction: 'CE',
+      strike: 24_300,
+      expiry: (Date.today + 7).to_s,
+      entry_price: 62.5,
+      stop_loss: 42.0,
+      target: 110.0,
+      quantity: 75,
+      product: 'INTRADAY',
+      confidence: 0.75,
+      risk_reward: 2.3,
       risk_approved: true
     }
   end

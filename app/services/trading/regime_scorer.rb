@@ -8,7 +8,7 @@ module Trading
 
     LOW_IV_THRESHOLD  = 20.0
     HIGH_IV_THRESHOLD = 80.0
-    MIN_RANGE_PCT     = 0.2   # minimum avg 5-candle range as % of spot
+    MIN_RANGE_PCT     = 0.2 # minimum avg 5-candle range as % of spot
 
     def initialize(spot:, candles:, iv_rank:)
       @spot    = spot.to_f
@@ -53,7 +53,7 @@ module Trading
 
       multiplier = 2.0 / (period + 1)
       ema = closes.first(period).sum / period.to_f
-      closes[period..].each { |c| ema = (c - ema) * multiplier + ema }
+      closes[period..].each { |c| ema = ((c - ema) * multiplier) + ema }
       ema
     end
 

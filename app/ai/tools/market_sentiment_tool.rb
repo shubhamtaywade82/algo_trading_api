@@ -28,10 +28,10 @@ module AI
                       expiry = instrument.expiry_list&.first
                       historical = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: 'intraday')
                       Market::SentimentAnalysis.call(
-                        option_chain:    chain,
-                        expiry:         expiry,
-                        spot:           spot,
-                        iv_rank:        iv_rank,
+                        option_chain: chain,
+                        expiry: expiry,
+                        spot: spot,
+                        iv_rank: iv_rank,
                         historical_data: historical
                       )
                     else
@@ -40,13 +40,13 @@ module AI
 
         pcr = compute_pcr(chain)
         {
-          symbol:    sym,
-          ltp:       instrument.ltp.to_f.round(2),
-          vix:       vix,
+          symbol: sym,
+          ltp: instrument.ltp.to_f.round(2),
+          vix: vix,
           vix_level: categorize_vix(vix),
-          pcr:       pcr&.round(3),
+          pcr: pcr&.round(3),
           sentiment: sentiment[:bias]&.to_s,
-          bias:      derive_bias(pcr, sentiment[:bias], vix),
+          bias: derive_bias(pcr, sentiment[:bias], vix),
           timestamp: Time.current.strftime('%Y-%m-%dT%H:%M:%S%z')
         }
       rescue StandardError => e

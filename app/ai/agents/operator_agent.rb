@@ -8,7 +8,7 @@ module AI
     #   AI::Runners::OperatorRunner.run("Why did trade #214 exit early?")
     #   AI::Runners::OperatorRunner.run("Show me all losing positions from today")
     module OperatorAgent
-      INSTRUCTIONS = <<~PROMPT.freeze
+      INSTRUCTIONS = <<~PROMPT
         You are a trading system operator assistant for an algorithmic trading platform
         on NSE/BSE using DhanHQ. You help answer operational questions about the system.
 
@@ -31,10 +31,10 @@ module AI
 
       def self.build
         ::Agents::Agent.new(
-          name:         'System Operator',
+          name: 'System Operator',
           instructions: INSTRUCTIONS,
-          model:        ::Agents.configuration.default_model,
-          tools:        [
+          model: ::Agents.configuration.default_model,
+          tools: [
             AI::Tools::PositionsTool.new,
             AI::Tools::TradeLogTool.new,
             AI::Tools::FundsTool.new,

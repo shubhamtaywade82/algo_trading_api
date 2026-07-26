@@ -39,8 +39,8 @@ module AI
         end
 
         result.merge(
-          symbol:    sym || 'all',
-          since:     since_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+          symbol: sym || 'all',
+          since: since_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
           timestamp: Time.current.strftime('%Y-%m-%dT%H:%M:%S%z')
         )
       rescue StandardError => e
@@ -51,10 +51,10 @@ module AI
 
       def format_exit_log(e)
         {
-          id:         e.id,
-          symbol:     e.trading_symbol,
-          reason:     e.exit_reason,
-          pnl:        e.try(:pnl)&.to_f&.round(2),
+          id: e.id,
+          symbol: e.trading_symbol,
+          reason: e.exit_reason,
+          pnl: e.try(:pnl)&.to_f&.round(2),
           exit_price: e.try(:exit_price)&.to_f&.round(2),
           created_at: e.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
         }
@@ -62,23 +62,23 @@ module AI
 
       def format_order(o)
         {
-          id:               o.id,
-          dhan_order_id:    o.try(:dhan_order_id) || o.try(:order_id),
-          symbol:           o.try(:trading_symbol),
+          id: o.id,
+          dhan_order_id: o.try(:dhan_order_id) || o.try(:order_id),
+          symbol: o.try(:trading_symbol),
           transaction_type: o.try(:transaction_type),
-          product_type:     o.try(:product_type),
-          quantity:         o.try(:quantity),
-          price:            o.try(:price)&.to_f&.round(2),
-          status:           o.try(:order_status),
-          created_at:       o.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
+          product_type: o.try(:product_type),
+          quantity: o.try(:quantity),
+          price: o.try(:price)&.to_f&.round(2),
+          status: o.try(:order_status),
+          created_at: o.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
         }
       end
 
       def format_alert(a)
         {
-          id:         a.id,
-          data:       a.data,
-          processed:  a.try(:processed),
+          id: a.id,
+          data: a.data,
+          processed: a.try(:processed),
           created_at: a.created_at.strftime('%Y-%m-%dT%H:%M:%S%z')
         }
       end

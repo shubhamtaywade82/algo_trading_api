@@ -3,7 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe Trading::DirectionResolver, type: :service do
-  let(:spot) { 22100.0 }
+  let(:spot) { 22_100.0 }
 
   # Build candles for VWAP calculation
   def build_candles(close:, volume: 1000)
@@ -12,7 +12,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
   # Build option chain in DhanHQ nested format:
   #   { oc: { "22000.000000" => { "ce" => { "oi" => N }, "pe" => { "oi" => N } } }, last_price: spot }
-  def build_chain(ce_oi:, pe_oi:, spot: 22000.0)
+  def build_chain(ce_oi:, pe_oi:, spot: 22_000.0)
     {
       last_price: spot,
       oc: {
@@ -27,7 +27,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
   describe '#call' do
     context 'when both price and OI biases are bullish' do
       it 'returns CE direction' do
-        candles = build_candles(close: 21900.0) # spot > vwap => bullish price
+        candles = build_candles(close: 21_900.0) # spot > vwap => bullish price
         chain = build_chain(ce_oi: 100_000, pe_oi: 500_000) # PE > CE OI => bullish OI
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)
@@ -39,7 +39,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
     context 'when both price and OI biases are bearish' do
       it 'returns PE direction' do
-        candles = build_candles(close: 22300.0) # spot < vwap => bearish price
+        candles = build_candles(close: 22_300.0) # spot < vwap => bearish price
         chain = build_chain(ce_oi: 500_000, pe_oi: 100_000) # CE > PE OI => bearish OI
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)
@@ -51,7 +51,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
     context 'when price is bullish but OI is bearish (no confirmation)' do
       it 'returns nil direction' do
-        candles = build_candles(close: 21900.0) # bullish price
+        candles = build_candles(close: 21_900.0) # bullish price
         chain = build_chain(ce_oi: 500_000, pe_oi: 100_000) # bearish OI
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)
@@ -62,7 +62,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
     context 'when price is bearish but OI is bullish (no confirmation)' do
       it 'returns nil direction' do
-        candles = build_candles(close: 22300.0) # bearish price
+        candles = build_candles(close: 22_300.0) # bearish price
         chain = build_chain(ce_oi: 100_000, pe_oi: 500_000) # bullish OI
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)
@@ -72,7 +72,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
     context 'when all candles have zero volume' do
       it 'falls back to simple average for VWAP' do
-        candles = build_candles(close: 21900.0, volume: 0)
+        candles = build_candles(close: 21_900.0, volume: 0)
         chain = build_chain(ce_oi: 100_000, pe_oi: 500_000)
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)
@@ -82,8 +82,8 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
     context 'when option chain is empty or OC has no strikes' do
       it 'returns neutral OI bias and no direction' do
-        candles = build_candles(close: 21900.0)
-        chain = { last_price: 22000.0, oc: {} }
+        candles = build_candles(close: 21_900.0)
+        chain = { last_price: 22_000.0, oc: {} }
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)
         expect(result.oi_bias).to eq(:neutral)
@@ -93,7 +93,7 @@ RSpec.describe Trading::DirectionResolver, type: :service do
 
     context 'when CE OI equals PE OI' do
       it 'returns neutral OI bias' do
-        candles = build_candles(close: 21900.0)
+        candles = build_candles(close: 21_900.0)
         chain = build_chain(ce_oi: 200_000, pe_oi: 200_000)
 
         result = described_class.call(spot: spot, candles: candles, option_chain: chain)

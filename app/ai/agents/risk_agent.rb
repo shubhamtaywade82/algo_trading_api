@@ -16,7 +16,7 @@ module AI
     #   "adjusted_stop_loss": <number or null>
     # }
     module RiskAgent
-      INSTRUCTIONS = <<~PROMPT.freeze
+      INSTRUCTIONS = <<~PROMPT
         You are a risk management AI for an algorithmic trading system on NSE/BSE.
 
         Your job is to review a trade proposal and determine if it should be approved,
@@ -57,10 +57,10 @@ module AI
 
       def self.build
         ::Agents::Agent.new(
-          name:         'Risk Manager',
+          name: 'Risk Manager',
           instructions: INSTRUCTIONS,
-          model:        ::Agents.configuration.default_model,
-          tools:        [
+          model: ::Agents.configuration.default_model,
+          tools: [
             AI::Tools::FundsTool.new,
             AI::Tools::PositionsTool.new
           ]
