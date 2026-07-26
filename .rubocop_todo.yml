@@ -51,7 +51,10 @@ Lint/UnusedBlockArgument:
 Metrics/AbcSize:
   Max: 40
   Exclude:
+    - 'app/ai/tools/dhan_candle_tool.rb'
+    - 'app/ai/tools/trade_log_tool.rb'
     - 'app/controllers/market_sentiment_controller.rb'
+    - 'app/models/concerns/instrument_helpers.rb'
     - 'app/services/alert_processors/index.rb'
     - 'app/services/alert_processors/mcx_commodity.rb'
     - 'app/services/alert_processors/stock.rb'
@@ -61,12 +64,19 @@ Metrics/AbcSize:
     - 'app/services/indicators/holy_grail.rb'
     - 'app/services/indicators/supertrend.rb'
     - 'app/services/market/analysis_service.rb'
+    - 'app/services/market/intraday_behaviour_service.rb'
+    - 'app/services/market/intraday_synchronizer.rb'
     - 'app/services/market/prompt_builder.rb'
     - 'app/services/option/chain_analyzer.rb'
+    - 'app/services/option/chain_analyzer_modules/strike_filtering.rb'
+    - 'app/services/option/chain_analyzer_modules/validations.rb'
     - 'app/services/orders/bracket_placer.rb'
     - 'app/services/orders/executor.rb'
     - 'app/services/portfolio_insights/institutional_analyzer.rb'
     - 'app/services/position_insights/analyzer.rb'
+    - 'app/services/screeners/stocks_screener.rb'
+    - 'app/services/trading/trade_decision_engine.rb'
+    - 'app/services/watchlists/refresh_service.rb'
     - 'spec/support/csv_mock_helper.rb'
 
 # Offense count: 1
@@ -92,26 +102,42 @@ Metrics/ClassLength:
 Metrics/CyclomaticComplexity:
   Max: 10
   Exclude:
+    - 'app/ai/tools/dhan_candle_tool.rb'
+    - 'app/ai/tools/market_sentiment_tool.rb'
+    - 'app/ai/tools/option_chain_tool.rb'
+    - 'app/ai/tools/trade_log_tool.rb'
+    - 'app/controllers/ai_agents_controller.rb'
     - 'app/controllers/market_sentiment_controller.rb'
     - 'app/models/concerns/instrument_helper.rb'
+    - 'app/models/concerns/instrument_helpers.rb'
     - 'app/services/alert_processors/index.rb'
     - 'app/services/alert_processors/index_quantity_calculator.rb'
     - 'app/services/alert_processors/stock.rb'
     - 'app/services/catalog/factor_score_engine.rb'
     - 'app/services/charges/calculator.rb'
+    - 'app/services/dhan/market_data_service.rb'
     - 'app/services/dhan_mcp/argument_validator.rb'
     - 'app/services/indicators/adaptive_supertrend.rb'
     - 'app/services/indicators/holy_grail.rb'
     - 'app/services/indicators/supertrend.rb'
     - 'app/services/market/analysis_service.rb'
+    - 'app/services/market/intraday_behaviour_service.rb'
+    - 'app/services/market/intraday_synchronizer.rb'
     - 'app/services/market/prompt_builder.rb'
+    - 'app/services/mcp/tools/get_key_levels.rb'
+    - 'app/services/mcp/tools/get_market_sentiment.rb'
     - 'app/services/option/chain_analyzer.rb'
+    - 'app/services/option/chain_analyzer_modules/strike_filtering.rb'
     - 'app/services/orders/adjuster.rb'
     - 'app/services/orders/executor.rb'
+    - 'app/services/orders/manager.rb'
+    - 'app/services/orders/place_order_guard.rb'
     - 'app/services/orders/risk_manager.rb'
     - 'app/services/portfolio_insights/institutional_analyzer.rb'
     - 'app/services/position_insights/analyzer.rb'
     - 'app/services/telegram_bot/command_handler.rb'
+    - 'app/services/trading/trade_decision_engine.rb'
+    - 'lib/openai/client.rb'
     - 'spec/support/csv_mock_helper.rb'
 
 # Offense count: 1
@@ -126,6 +152,8 @@ Metrics/MethodLength:
 Metrics/ModuleLength:
   Max: 162
   Exclude:
+    - 'app/models/concerns/instrument_helpers.rb'
+    - 'app/services/option/chain_analyzer_modules/strike_filtering.rb'
     - 'spec/support/test_instruments_importer.rb'
 
 # Offense count: 1
@@ -140,19 +168,29 @@ Metrics/ParameterLists:
 Metrics/PerceivedComplexity:
   Max: 12
   Exclude:
+    - 'app/ai/tools/dhan_candle_tool.rb'
+    - 'app/ai/tools/trade_log_tool.rb'
     - 'app/controllers/market_sentiment_controller.rb'
+    - 'app/models/concerns/instrument_helpers.rb'
     - 'app/services/alert_processors/index.rb'
     - 'app/services/alert_processors/index_quantity_calculator.rb'
+    - 'app/services/dhan/market_data_service.rb'
     - 'app/services/dhan_mcp/argument_validator.rb'
     - 'app/services/indicators/adaptive_supertrend.rb'
     - 'app/services/indicators/holy_grail.rb'
     - 'app/services/indicators/supertrend.rb'
     - 'app/services/market/analysis_service.rb'
+    - 'app/services/market/intraday_behaviour_service.rb'
+    - 'app/services/market/intraday_synchronizer.rb'
     - 'app/services/market/prompt_builder.rb'
     - 'app/services/option/chain_analyzer.rb'
+    - 'app/services/option/chain_analyzer_modules/strike_filtering.rb'
     - 'app/services/orders/adjuster.rb'
     - 'app/services/orders/executor.rb'
+    - 'app/services/orders/manager.rb'
     - 'app/services/portfolio_insights/institutional_analyzer.rb'
+    - 'app/services/trading/trade_decision_engine.rb'
+    - 'lib/openai/client.rb'
     - 'spec/support/csv_mock_helper.rb'
 
 # Offense count: 1
@@ -178,6 +216,7 @@ Naming/VariableName:
 RSpec/AnyInstance:
   Exclude:
     - 'spec/integration/full_exit_flow_spec.rb'
+    - 'spec/services/orders/manager_spec.rb'
     - 'spec/services/telegram_bot/manual_signal_trigger_spec.rb'
     - 'spec/support/stubs.rb'
 
@@ -200,13 +239,20 @@ RSpec/LetSetup:
   Exclude:
     - 'spec/services/telegram_bot/manual_signal_trigger_spec.rb'
 
+# Offense count: 1
+RSpec/MultipleDescribes:
+  Exclude:
+    - 'spec/services/trading/trade_decision_engine_spec.rb'
+
 # Offense count: 23
 # Configuration parameters: Max, AllowedGroups.
 RSpec/NestedGroups:
   Exclude:
+    - 'spec/jobs/market_analysis_job_spec.rb'
     - 'spec/services/alert_processors/capital_aware_sizing_spec.rb'
     - 'spec/services/dhan_mcp/argument_validator_spec.rb'
     - 'spec/services/option/chain_analyzer_spec.rb'
+    - 'spec/services/trading/entry_validator_spec.rb'
 
 # Offense count: 1
 # Configuration parameters: AllowedPatterns.
@@ -224,11 +270,14 @@ RSpec/ReceiveMessages:
 RSpec/RepeatedExampleGroupDescription:
   Exclude:
     - 'spec/services/alert_processors/capital_aware_sizing_spec.rb'
+    - 'spec/services/trading/trade_decision_engine_spec.rb'
 
 # Offense count: 1
 RSpec/StubbedMock:
   Exclude:
+    - 'spec/ai/runners/trade_runner_spec.rb'
     - 'spec/jobs/levels_update_job_spec.rb'
+    - 'spec/services/mcp/tools/manage_position_spec.rb'
 
 # Offense count: 14
 RSpec/SubjectStub:

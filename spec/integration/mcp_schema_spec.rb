@@ -36,8 +36,6 @@ RSpec.describe 'MCP Schema Consistency', type: :integration do
   # Optional: Ensure tools in Ruby are at least mentioned in your GPT instructions or OpenAPI
   # For now, let's just make sure they are valid JSON-RPC compatible
   it 'validates tool execution signature' do
-    tools.each do |tool_class|
-      expect(tool_class).to respond_to(:execute), "Tool #{tool_class} must implement self.execute(args)"
-    end
+    expect(tools).to all(respond_to(:execute))
   end
 end

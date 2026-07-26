@@ -15,7 +15,10 @@ class Instrument < ApplicationRecord
   has_many :quotes, dependent: :destroy
   has_many :position_trackers, as: :watchable, dependent: :destroy
   has_many :watchlist_items, as: :watchable, dependent: :nullify, inverse_of: :watchable
-  has_one :watchlist_item, -> { where(active: true) }, as: :watchable, class_name: 'WatchlistItem'
+  # Scoped view over the rows already owned by :watchlist_items above, so it
+  # carries the same :dependent option.
+  has_one :watchlist_item, -> { where(active: true) },
+          as: :watchable, class_name: 'WatchlistItem', dependent: :nullify, inverse_of: :watchable
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivatives, allow_destroy: true

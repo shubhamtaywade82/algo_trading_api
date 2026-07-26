@@ -6,6 +6,7 @@
 # Runners are loaded explicitly so AI::Runners is available (Zeitwerk would not
 # autoload them into this AI module because it is defined in this initializer).
 module AI
+  # Entry points for the agent cluster: analyze, propose and ask.
   module TradeBrain
     module_function
 

@@ -56,7 +56,8 @@ module Orders
       raise "Unknown derivative for security_id=#{security_id}" unless derivative
 
       unless derivative.exchange_segment.to_s == exchange_segment
-        raise "Exchange segment mismatch for security_id=#{security_id} (expected=#{exchange_segment}, actual=#{derivative.exchange_segment})"
+        raise "Exchange segment mismatch for security_id=#{security_id} " \
+              "(expected=#{exchange_segment}, actual=#{derivative.exchange_segment})"
       end
 
       derivative

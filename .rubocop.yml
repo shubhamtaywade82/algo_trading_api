@@ -55,6 +55,30 @@ Style/MultilineBlockChain:
 # 3. Metrics (Complexity / Size) – see .rubocop_todo.yml for Max and Exclude
 ################################################################################
 
+# Rake `namespace`/`task` blocks are file scaffolding, not methods; their length
+# says nothing about complexity. Merge with the todo list rather than replace it.
+Metrics/BlockLength:
+  inherit_mode:
+    merge:
+      - Exclude
+  Exclude:
+    - '**/*.rake'
+
+# Every long signature in this codebase is keyword-only (order params, OHLC
+# query params, screener options). Keyword args are named at the call site, so
+# they do not carry the positional-argument readability cost this cop targets.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+# Migration `change` methods are declarative column lists; ABC size measures
+# nothing useful there.
+Metrics/AbcSize:
+  inherit_mode:
+    merge:
+      - Exclude
+  Exclude:
+    - 'db/migrate/**/*'
+
 ################################################################################
 # 4. Security / Rails adjustments
 ################################################################################
