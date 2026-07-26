@@ -155,8 +155,22 @@ module Live
       return if segment.blank? || security_id.blank?
 
       Live::TickCache.put(segment, security_id, tick)
+      drive_paper_book(segment, security_id, tick[:ltp])
     rescue StandardError => e
       Rails.logger.error("[MarketFeedHub] tick handling failed: #{e.message}")
+    end
+
+    # In paper mode the feed *is* the matching engine's clock: without this a
+    # resting limit or stop would never fill, and open positions would never
+    # mark. Failures are contained so a simulation bug cannot take down the
+    # feed for live trading.
+    def drive_paper_book(segment, security_id, ltp)
+      return unless Paper::Broker.enabled?
+      return if ltp.blank?
+
+      Paper::Exchange.process_tick(security_id: security_id, exchange_segment: segment, ltp: ltp)
+    rescue StandardError => e
+      Rails.logger.error("[MarketFeedHub] paper tick processing failed for #{security_id}: #{e.message}")
     end
 
     # Replays the tracked set onto the client. The SDK resubscribes on its own

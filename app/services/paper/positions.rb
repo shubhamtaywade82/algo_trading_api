@@ -1,134 +1,76 @@
 # frozen_string_literal: true
 
 module Paper
-  # Reconstructs net positions and P&L from simulated fills.
+  # Read model over the simulated book.
   #
-  # Paper fills are stored as ordinary `Order` rows with a `PAPER-` prefixed
-  # id, so positions are derived rather than tracked: net quantity and the
-  # weighted-average entry come from aggregating those rows. That keeps paper
-  # state in one place and means a restart loses nothing.
-  #
-  # Unrealised P&L marks against the live feed via {Live::TickCache}, falling
-  # back to the cross-process cache, so a paper book reprices exactly as a live
-  # one would. Charges are the real Dhan schedule via {Charges::Calculator} —
-  # a paper P&L that ignored brokerage and STT would flatter every strategy.
+  # Positions are now maintained incrementally by {Paper::Exchange} as fills
+  # arrive, rather than being re-derived from order rows on every read. That
+  # matters because margin is blocked and released against them and because
+  # marks have to survive a restart.
   class Positions < ApplicationService
-    PAPER_ID_PREFIX = 'PAPER-'
-
     class << self
-      # @return [Array<Hash>] one entry per instrument with a non-zero net qty
+      # @return [Array<Hash>] positions with a non-zero net quantity
       def open
-        all.reject { |position| position[:net_qty].zero? }
+        account.paper_positions.open_positions.map { |position| serialize(position) }
       end
 
-      # @return [Array<Hash>] every instrument touched, including flat ones
+      # @return [Array<Hash>] every position, including flat ones
       def all
-        paper_fills.group_by { |order| [order.exchange_segment, order.security_id] }
-          .map { |(segment, security_id), fills| build_position(segment, security_id, fills) }
+        account.paper_positions.map { |position| serialize(position) }
       end
 
-      # @return [Hash] realised, unrealised and net totals across the book
+      # @return [Hash] capital, P&L and charge totals for the book
       def summary
-        positions = all
-        realised = positions.sum { |p| p[:realized_pnl] }
-        unrealised = positions.sum { |p| p[:unrealized_pnl] }
-        charges = positions.sum { |p| p[:charges] }
-
+        acct = account
         {
-          open_positions: positions.count { |p| !p[:net_qty].zero? },
-          realized_pnl: realised.round(2),
-          unrealized_pnl: unrealised.round(2),
-          charges: charges.round(2),
-          net_pnl: (realised + unrealised - charges).round(2)
+          initial_capital: acct.initial_capital.to_f,
+          available_balance: acct.available_balance.to_f,
+          blocked_margin: acct.blocked_margin.to_f,
+          open_positions: acct.paper_positions.open_positions.count,
+          realized_pnl: acct.realized_pnl.to_f.round(2),
+          unrealized_pnl: acct.unrealized_pnl.round(2),
+          charges: acct.total_charges.to_f.round(2),
+          net_pnl: (acct.realized_pnl.to_f + acct.unrealized_pnl - acct.total_charges.to_f).round(2),
+          current_capital: acct.current_capital.round(2)
         }
       end
 
-      # Clears the simulated book. Paper-only by construction — the scope
-      # cannot match a live order id.
-      def reset!
-        paper_fills.delete_all
+      # @return [Array<Hash>] orders still working
+      def open_orders
+        account.paper_orders.open_orders.map do |order|
+          {
+            id: order.id, security_id: order.security_id, side: order.transaction_type,
+            order_type: order.order_type, quantity: order.quantity, filled_qty: order.filled_qty,
+            price: order.price&.to_f, trigger_price: order.trigger_price&.to_f, status: order.status
+          }
+        end
       end
+
+      # Returns the book to its starting capital.
+      delegate :reset!, to: :account
 
       private
 
-      def paper_fills
-        Order.where(order_status: 'TRADED').where('dhan_order_id LIKE ?', "#{PAPER_ID_PREFIX}%")
+      def account
+        PaperAccount.current
       end
 
-      def build_position(segment, security_id, fills)
-        # Order#transaction_type is an enum, so it reads back as the key
-        # ("buy"), never the DB value ("BUY"). Use the enum predicates rather
-        # than comparing strings.
-        buys = fills.select(&:transaction_type_buy?)
-        sells = fills.select(&:transaction_type_sell?)
-
-        buy_qty = buys.sum { |f| f.filled_qty.to_i }
-        sell_qty = sells.sum { |f| f.filled_qty.to_i }
-        net_qty = buy_qty - sell_qty
-
-        buy_avg = weighted_average(buys)
-        sell_avg = weighted_average(sells)
-        ltp = mark_price(segment, security_id) || buy_avg
-
-        # Realised on the matched quantity only; the open leg is unrealised.
-        matched = [buy_qty, sell_qty].min
-        realized = matched.positive? ? ((sell_avg - buy_avg) * matched) : 0.0
-        unrealized = net_qty.zero? ? 0.0 : (ltp - entry_for(net_qty, buy_avg, sell_avg)) * net_qty
-
+      def serialize(position)
         {
-          exchange_segment: segment,
-          security_id: security_id,
-          net_qty: net_qty,
-          buy_qty: buy_qty,
-          sell_qty: sell_qty,
-          buy_avg: buy_avg.round(2),
-          sell_avg: sell_avg.round(2),
-          ltp: ltp.to_f.round(2),
-          realized_pnl: realized.round(2),
-          unrealized_pnl: unrealized.round(2),
-          charges: charges_for(fills).round(2)
+          exchange_segment: position.exchange_segment,
+          security_id: position.security_id,
+          trading_symbol: position.trading_symbol,
+          product_type: position.product_type,
+          position_type: position.position_type,
+          net_qty: position.net_qty,
+          buy_qty: position.buy_qty,
+          sell_qty: position.sell_qty,
+          buy_avg: position.buy_avg.to_f.round(2),
+          sell_avg: position.sell_avg.to_f.round(2),
+          ltp: position.ltp.to_f.round(2),
+          realized_pnl: position.realized_profit.to_f.round(2),
+          unrealized_pnl: position.unrealized_profit.to_f.round(2)
         }
-      end
-
-      # A short position's unrealised P&L runs the other way, so the entry
-      # reference is the sell average.
-      def entry_for(net_qty, buy_avg, sell_avg)
-        net_qty.positive? ? buy_avg : sell_avg
-      end
-
-      def weighted_average(fills)
-        qty = fills.sum { |f| f.filled_qty.to_i }
-        return 0.0 if qty.zero?
-
-        fills.sum { |f| f.average_traded_price.to_f * f.filled_qty.to_i } / qty
-      end
-
-      def mark_price(segment, security_id)
-        Live::RedisPnlCache.instance.ltp(segment: segment, security_id: security_id)
-      rescue StandardError
-        nil
-      end
-
-      # Real Dhan charges per fill, so a paper strategy is judged on the same
-      # cost base as a live one.
-      def charges_for(fills)
-        fills.sum do |fill|
-          Charges::Calculator.call(
-            {
-              'securityId' => fill.security_id,
-              'exchangeSegment' => fill.exchange_segment,
-              'productType' => fill.product_type
-            },
-            {
-              entry_price: fill.average_traded_price.to_f,
-              ltp: fill.average_traded_price.to_f,
-              quantity: fill.filled_qty.to_i
-            }
-          ).to_f
-        rescue StandardError => e
-          Rails.logger.debug { "[Paper::Positions] charge calc failed for order #{fill.id}: #{e.message}" }
-          0.0
-        end
       end
     end
   end
