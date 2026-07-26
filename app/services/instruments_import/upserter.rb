@@ -30,7 +30,7 @@ module InstrumentsImport
         batch_size: BATCH_SIZE,
         on_duplicate_key_update: {
           conflict_target: %i[security_id symbol_name exchange segment],
-          columns: %i[display_name isin instrument instrument_type underlying_symbol series lot_size tick_size asm_gsm_flag
+          columns: %i[display_name isin instrument_code instrument_type underlying_symbol series lot_size tick_size asm_gsm_flag
                       asm_gsm_category mtf_leverage updated_at]
         }
       )
@@ -49,7 +49,7 @@ module InstrumentsImport
         batch_size: BATCH_SIZE,
         on_duplicate_key_update: {
           conflict_target: %i[security_id symbol_name exchange segment],
-          columns: %i[display_name isin instrument instrument_type underlying_symbol underlying_security_id series expiry_date strike_price
+          columns: %i[display_name isin instrument_code instrument_type underlying_symbol underlying_security_id series expiry_date strike_price
                       option_type lot_size expiry_flag tick_size asm_gsm_flag instrument_id updated_at]
         }
       )

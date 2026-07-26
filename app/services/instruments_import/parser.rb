@@ -53,7 +53,7 @@ module InstrumentsImport
         symbol_name: row['SYMBOL_NAME'],
         display_name: row['DISPLAY_NAME'],
         isin: row['ISIN'],
-        instrument: row['INSTRUMENT'],
+        instrument_code: row['INSTRUMENT'],
         instrument_type: row['INSTRUMENT_TYPE'],
         underlying_symbol: row['UNDERLYING_SYMBOL'],
         underlying_security_id: row['UNDERLYING_SECURITY_ID'],

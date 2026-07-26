@@ -155,9 +155,65 @@ The system includes comprehensive webhook testing tools:
 
 All broker order placement is centralized in `Orders::Gateway`.
 
-- Live order execution is allowed only when `PLACE_ORDER=true`.
-- When disabled, the gateway blocks placement, logs the attempt, and returns a deterministic dry-run style response.
+- Live order execution requires **both** `PLACE_ORDER=true` (this app's gate) and
+  `LIVE_TRADING=true` (the DhanHQ SDK's own gate, added in gem 2.7).
+- When either is disabled, the gateway blocks placement, logs the attempt, and returns a deterministic dry-run style response naming the switch that blocked it.
 - New order flows must call the gateway instead of invoking `DhanHQ::Models::Order` / `SuperOrder` directly.
+
+> Setting only `PLACE_ORDER=true` will not place orders — the SDK raises
+> `DhanHQ::LiveTradingDisabledError` on every mutation until `LIVE_TRADING=true`
+> is also set.
+
+### Tradable books
+
+`Orders::Gateway` routes an order to the right DhanHQ surface for its asset class:
+
+| asset class | method | DhanHQ surface | currency |
+|---|---|---|---|
+| equity, index, options, futures, currency, commodity | `place_order` / `place_super_order` | `Models::Order` / `SuperOrder` | INR |
+| US equities | `place_global_order` | `Models::GlobalStocks::Order` | USD |
+| multi-leg basket (≤ 15 legs) | `place_basket_order` | `Models::MultiOrder` | INR |
+
+`Gateway.place(payload)` infers the book: an `INX_EQ` segment, or a non-numeric
+`security_id` (a ticker like `AAPL`) with no segment, routes to Global Stocks.
+US orders carry no exchange segment, product type or validity, take float
+quantities for fractional shares, and support the notional `AMOUNT` order type.
+
+### Alert routing by asset class
+
+`AlertProcessorFactory` maps an alert's `instrument_type` to a processor:
+
+| `instrument_type` | processor | book |
+|---|---|---|
+| `stock` | `AlertProcessors::Stock` | NSE/BSE equity |
+| `index` | `AlertProcessors::Index` | index options |
+| `futures` | `AlertProcessors::McxCommodity` | MCX commodity |
+| `global_equity` | `AlertProcessors::GlobalEquity` | US equity (USD) |
+
+`GlobalEquity` is deliberately unlike the others: US tickers are not in the
+`instruments` scrip master (the alert's ticker *is* the `security_id`), sizing
+reads the USD `GlobalStocks::Funds` balance rather than the domestic fund limit,
+quantities are fractional, and the open check uses `GlobalStocks::MarketStatus`
+because `MarketCalendar` only knows NSE/BSE hours. The SDK does not run its risk
+pipeline on this book, so the processor's own guards are the only pre-trade
+limits — it fails closed when market status is unavailable.
+
+### Failed writes are never retried
+
+DhanHQ ≥ 3.2 stopped auto-retrying order placement/modify/cancel — the API has
+no idempotency key, so a timed-out `POST /v2/orders` may already have reached
+the exchange. The gateway returns `reconcilable: true` with the
+`correlation_id` instead; reconcile via `GET /v2/orders/external/{id}` before
+resubmitting. `DHAN_AUTO_CORRELATION_ID` (default on) stamps an id so that
+lookup always works. Set `DHAN_RETRY_WRITES=true` only if you accept duplicates.
+
+### Rehearsal mode
+
+`DHAN_DRY_RUN=true` puts the **SDK** in dry-run: every state-changing request is
+suppressed and placements return a simulated `DRYRUN-…` id, while reads still
+hit the live API — so a full strategy can be rehearsed against real prices.
+This is distinct from `PLACE_ORDER=false`, which short-circuits in this app
+before the SDK is called at all.
 
 ## 🤖 MCP (Model Context Protocol)
 

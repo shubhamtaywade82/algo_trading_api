@@ -4,7 +4,7 @@ FactoryBot.define do
   factory :instrument do
     security_id { '2885' }
     isin { 'INE002A01018' }
-    instrument { 'equity' }
+    instrument_code { 'equity' }
     instrument_type { 'ES' }
     underlying_security_id { nil }
     underlying_symbol { 'RELIANCE' }
@@ -28,7 +28,7 @@ FactoryBot.define do
     trait :nifty do
       security_id { '13' }
       isin { '1' }
-      instrument { 'index' }
+      instrument_code { 'index' }
       instrument_type { 'INDEX' }
       underlying_symbol { 'NIFTY' }
       symbol_name { 'NIFTY' }
@@ -46,7 +46,7 @@ FactoryBot.define do
     trait :banknifty do
       security_id { '25' }
       isin { '2' }
-      instrument { 'index' }
+      instrument_code { 'index' }
       instrument_type { 'INDEX' }
       underlying_symbol { 'BANKNIFTY' }
       symbol_name { 'BANKNIFTY' }
@@ -64,7 +64,7 @@ FactoryBot.define do
     trait :nifty_option_call do
       security_id { '35024' }
       isin { 'NA' }
-      instrument { 'options_index' }
+      instrument_code { 'options_index' }
       instrument_type { 'OP' }
       underlying_symbol { 'NIFTY' }
       symbol_name { 'NIFTY-Feb2025-29200-CE' }
@@ -82,7 +82,7 @@ FactoryBot.define do
     trait :nifty_option_put do
       security_id { '35025' }
       isin { 'NA' }
-      instrument { 'options_index' }
+      instrument_code { 'options_index' }
       instrument_type { 'OP' }
       underlying_symbol { 'NIFTY' }
       symbol_name { 'NIFTY-Feb2025-29200-PE' }

@@ -24,7 +24,10 @@ class Alert < ApplicationRecord
     spot: 'spot',
     swap: 'swap',
     option: 'option',
-    commodity: 'commodity'
+    commodity: 'commodity',
+    # US equities on DhanHQ's Global Stocks book (USD, fractional shares).
+    # Routed to AlertProcessors::GlobalEquity, not the domestic pipeline.
+    global_equity: 'global_equity'
   }, prefix: :instrument
 
   enum :status, { pending: 'pending', processed: 'processed', failed: 'failed', skipped: 'skipped' }

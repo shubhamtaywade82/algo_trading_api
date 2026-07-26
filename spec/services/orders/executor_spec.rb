@@ -27,6 +27,7 @@ RSpec.describe Orders::Executor, type: :service do
 
   it 'creates order and exit log, sends Telegram' do
     orig_place_order = ENV.fetch('PLACE_ORDER', nil)
+    orig_live_trading = ENV.fetch('LIVE_TRADING', nil)
     order_double = double(
       'Order',
       save: true,
@@ -40,16 +41,19 @@ RSpec.describe Orders::Executor, type: :service do
     stub_const('DhanHQ::Models::Order', order_class)
     allow(Charges::Calculator).to receive(:call).and_return(0)
     ENV['PLACE_ORDER'] = 'true'
+    ENV['LIVE_TRADING'] = 'true'
 
     expect(TelegramNotifier).to receive(:send_message).once
     described_class.call(position, 'StopLoss_30%', analysis)
   ensure
     ENV['PLACE_ORDER'] = orig_place_order
+    ENV['LIVE_TRADING'] = orig_live_trading
   end
 
   # integration-style: runs real Charges::Calculator, stubs external only (Dhan order, Telegram)
   it 'uses real charges and notifies with correct net PnL' do
     orig_place_order = ENV.fetch('PLACE_ORDER', nil)
+    orig_live_trading = ENV.fetch('LIVE_TRADING', nil)
     order_double = double(
       'Order',
       save: true,
@@ -63,6 +67,7 @@ RSpec.describe Orders::Executor, type: :service do
     stub_const('DhanHQ::Models::Order', order_class)
     allow(TelegramNotifier).to receive(:send_message)
     ENV['PLACE_ORDER'] = 'true'
+    ENV['LIVE_TRADING'] = 'true'
 
     described_class.call(position, 'StopLoss_30%', analysis)
 
@@ -73,5 +78,6 @@ RSpec.describe Orders::Executor, type: :service do
     )
   ensure
     ENV['PLACE_ORDER'] = orig_place_order
+    ENV['LIVE_TRADING'] = orig_live_trading
   end
 end

@@ -80,7 +80,7 @@ module Dhan
       params[:expiry_code] = 0 if instrument_code.to_s.match?(/^(FUT|OPT)/) && expiry_date.nil?
 
       log_debug("Fetching Historical OHLC for Instrument #{@instrument.security_id} with params: #{params.inspect}")
-      DhanHQ::Models::HistoricalData.daily(params)
+      CandleNormalizer.columnar(DhanHQ::Models::HistoricalData.daily(params))
     rescue StandardError => e
       log_error("Failed to fetch Historical OHLC for Instrument #{@instrument.security_id}: #{e.message}")
       nil
@@ -117,8 +117,10 @@ module Dhan
 
       log_debug("Fetching Intraday OHLC for Instrument #{@instrument.security_id} with params: #{params.inspect}")
       response = DhanHQ::Models::HistoricalData.intraday(params)
-      
-      data = response.is_a?(Hash) ? response.with_indifferent_access : {}
+
+      # DhanHQ >= 3.0 returns an Array of candle hashes here; fold it back into
+      # the columnar shape the rest of the app indexes into.
+      data = CandleNormalizer.columnar(response) || {}
       log_debug("Raw Intraday OHLC response: #{data.keys.inspect}")
       data
     rescue StandardError => e
@@ -222,7 +224,31 @@ module Dhan
 
       last_price = data.is_a?(Hash) ? (data['last_price'] || data[:last_price]) : nil
       oc_data = data.is_a?(Hash) ? (data['oc'] || data[:oc]) : nil
+      # DhanHQ >= 3.0 replaced the `oc` strike-keyed hash with a sorted
+      # `strikes` array of { strike:, call:, put: }. Fold it back so the
+      # analyzers keep receiving the strike-keyed shape they index into.
+      oc_data ||= strikes_to_oc(data['strikes'] || data[:strikes])
       [last_price, oc_data]
+    end
+
+    # @param strikes [Array<Hash>, nil]
+    # @return [HashWithIndifferentAccess, nil] strike-keyed legs, or nil
+    def strikes_to_oc(strikes)
+      return nil unless strikes.is_a?(Array)
+
+      strikes.each_with_object({}.with_indifferent_access) do |row, out|
+        next unless row.is_a?(Hash)
+
+        strike = row['strike'] || row[:strike]
+        next if strike.nil?
+
+        # Callers index strikes by their original API formatting, e.g.
+        # `oc[format('%.6f', 23_000.0)]` in Option::ChainAnalyzer scoring.
+        out[format('%.6f', strike.to_f)] = {
+          'ce' => row['call'] || row[:call],
+          'pe' => row['put'] || row[:put]
+        }
+      end
     end
 
     def filter_option_chain_data(data)

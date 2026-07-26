@@ -27,6 +27,7 @@ class DhanMcpService
     DhanMcp::OrderTools.define(@server, self).define(fmt)
     DhanMcp::MarketTools.define(@server, self).define(fmt)
     DhanMcp::AccountTools.define(@server, self).define(fmt)
+    DhanMcp::GlobalStocksTools.define(@server, self).define(fmt)
     self
   end
 

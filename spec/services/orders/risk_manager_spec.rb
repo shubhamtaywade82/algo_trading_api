@@ -136,7 +136,7 @@ RSpec.describe Orders::RiskManager, type: :service do
                           symbol_name: 'NIFTY',
                           display_name: 'Nifty 50',
                           isin: '1',
-                          instrument: 'index',
+                          instrument_code: 'index',
                           instrument_type: 'INDEX',
                           underlying_symbol: 'NIFTY',
                           underlying_security_id: 'null',
