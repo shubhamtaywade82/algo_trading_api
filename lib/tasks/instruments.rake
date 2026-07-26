@@ -59,10 +59,12 @@ namespace :instruments do
         pp ''
         if args[:force] == 'true'
           pp "FORCE mode enabled: Marking active position trackers as 'closed'..."
+          # rubocop:disable Rails/SkipsModelValidations -- bulk close, callbacks would re-open trackers
           active_trackers.update_all(
             status: PositionTracker::STATUSES[:closed],
             updated_at: Time.current
           )
+          # rubocop:enable Rails/SkipsModelValidations
           pp "Marked #{active_trackers.count} active tracker(s) as closed."
         else
           pp 'To force clear (will mark active positions as closed), run:'

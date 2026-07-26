@@ -12,17 +12,17 @@ RSpec.describe Mcp::Tools::GetKeyLevels do
       )
     end
 
-    let(:day1) { Time.zone.parse('2026-03-17 09:15:00') }
-    let(:day2) { Time.zone.parse('2026-03-18 09:15:00') }
+    let(:session_one) { Time.zone.parse('2026-03-17 09:15:00') }
+    let(:session_two) { Time.zone.parse('2026-03-18 09:15:00') }
 
     let(:candles) do
       # 8 candles per day -> 16 total, with constant TR so ATR14 is stable.
       first_day = Array.new(8) do |i|
-        t = day1 + (i * 5).minutes
+        t = session_one + (i * 5).minutes
         Candle.new(ts: t, open: 100, high: 110, low: 90, close: 100, volume: 1)
       end
       second_day = Array.new(8) do |i|
-        t = day2 + (i * 5).minutes
+        t = session_two + (i * 5).minutes
         Candle.new(ts: t, open: 100, high: 110, low: 90, close: 100, volume: 1)
       end
       first_day + second_day

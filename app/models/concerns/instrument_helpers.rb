@@ -3,6 +3,8 @@
 require 'bigdecimal'
 require 'date'
 
+# Shared market-data helpers for Instrument and Derivative: LTP lookup, quote
+# and OHLC fetching, and exchange/segment resolution against the DhanHQ API.
 module InstrumentHelpers
   extend ActiveSupport::Concern
 

@@ -4,7 +4,8 @@ module AI
   module Tools
     # Fetches and analyzes the option chain for an index via existing ChainAnalyzer.
     class OptionChainTool < ::Agents::Tool
-      description 'Fetch and analyze the option chain for an NSE index (NIFTY, BANKNIFTY, FINNIFTY). Returns IV rank, ATM strike data, PCR, and recommended strikes.'
+      description 'Fetch and analyze the option chain for an NSE index (NIFTY, BANKNIFTY, FINNIFTY). ' \
+                  'Returns IV rank, ATM strike data, PCR, and recommended strikes.'
 
       param :symbol,      type: 'string', desc: 'Index symbol: NIFTY, BANKNIFTY, or FINNIFTY'
       param :expiry,      type: 'string', desc: 'Expiry date YYYY-MM-DD (optional, defaults to nearest)', required: false

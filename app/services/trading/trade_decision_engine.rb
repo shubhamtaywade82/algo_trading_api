@@ -41,55 +41,33 @@ module Trading
       return no_trade('Option chain OC data empty') if oc.blank?
 
       iv_rank_raw = Option::ChainAnalyzer.estimate_iv_rank(chain)
-      iv_rank_pct = (iv_rank_raw.to_f * 100).round(1)
 
-      regime = Trading::RegimeScorer.call(spot: spot, candles: candles, iv_rank: iv_rank_pct)
-      if regime.state == :no_trade
-        return no_trade_with(regime.reason, symbol: @symbol, expiry: expiry_to_use, iv_rank: iv_rank_pct, spot: spot,
-                                            regime: regime)
-      end
+      # Context accumulated as each stage passes, so every early return reports
+      # everything known at that point.
+      ctx = { symbol: @symbol, expiry: expiry_to_use, iv_rank: (iv_rank_raw.to_f * 100).round(1), spot: spot }
+
+      regime = Trading::RegimeScorer.call(spot: spot, candles: candles, iv_rank: ctx[:iv_rank])
+      ctx[:regime] = regime
+      return no_trade_with(regime.reason, **ctx) if regime.state == :no_trade
 
       dir_result = Trading::DirectionResolver.call(spot: spot, candles: candles, option_chain: chain)
-      unless dir_result.direction
-        return no_trade_with("No directional signal: #{dir_result.reason}", symbol: @symbol, expiry: expiry_to_use, iv_rank: iv_rank_pct,
-                                                                            spot: spot, regime: regime)
-      end
+      return no_trade_with("No directional signal: #{dir_result.reason}", **ctx) unless dir_result.direction
 
-      direction = dir_result.direction
+      ctx[:direction] = dir_result.direction
 
-      entry_check = Trading::EntryValidator.call(direction: direction, candles: candles)
-      unless entry_check.valid
-        return no_trade_with("Entry not confirmed: #{entry_check.reason}", symbol: @symbol, direction: direction, expiry: expiry_to_use, iv_rank: iv_rank_pct,
-                                                                           spot: spot, regime: regime)
-      end
+      entry_check = Trading::EntryValidator.call(direction: ctx[:direction], candles: candles)
+      return no_trade_with("Entry not confirmed: #{entry_check.reason}", **ctx) unless entry_check.valid
 
-      historical = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: 'intraday')
-      analyzer = Option::ChainAnalyzer.new(
-        chain,
-        expiry: expiry_to_use,
-        underlying_spot: spot,
-        iv_rank: iv_rank_raw,
-        historical_data: historical
-      )
-
-      analysis = analyzer.analyze(signal_type: direction.downcase.to_sym, strategy_type: 'intraday')
-      unless analysis[:proceed]
-        return no_trade_with("Chain analysis blocked: #{analysis[:reason]}", symbol: @symbol, direction: direction, expiry: expiry_to_use, iv_rank: iv_rank_pct,
-                                                                             spot: spot, regime: regime, chain_analysis: safe_chain_analysis(analysis))
-      end
+      analysis = analyze_chain(instrument, chain, ctx, iv_rank_raw)
+      ctx[:chain_analysis] = safe_chain_analysis(analysis)
+      return no_trade_with("Chain analysis blocked: #{analysis[:reason]}", **ctx) unless analysis[:proceed]
 
       Result.new(
         proceed: true,
-        symbol: @symbol,
-        direction: direction,
-        expiry: expiry_to_use,
         selected_strike: analysis[:selected],
-        iv_rank: iv_rank_pct,
-        regime: regime,
-        chain_analysis: safe_chain_analysis(analysis),
-        spot: spot,
         reason: nil,
-        timestamp: Time.current
+        timestamp: Time.current,
+        **ctx
       )
     rescue StandardError => e
       Rails.logger.error("[TradeDecisionEngine] #{@symbol}: #{e.message}\n#{e.backtrace&.first(3)&.join("\n")}")
@@ -97,6 +75,19 @@ module Trading
     end
 
     private
+
+    def analyze_chain(instrument, chain, ctx, iv_rank_raw)
+      historical = Option::HistoricalDataFetcher.for_strategy(instrument, strategy_type: 'intraday')
+      analyzer = Option::ChainAnalyzer.new(
+        chain,
+        expiry: ctx[:expiry],
+        underlying_spot: ctx[:spot],
+        iv_rank: iv_rank_raw,
+        historical_data: historical
+      )
+
+      analyzer.analyze(signal_type: ctx[:direction].downcase.to_sym, strategy_type: 'intraday')
+    end
 
     def resolve_instrument
       if @symbol == 'SENSEX'

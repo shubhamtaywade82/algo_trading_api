@@ -1,3 +1,4 @@
+# Creates the watchlist_items join table.
 class CreateWatchlistItems < ActiveRecord::Migration[8.0]
   def change
     create_table :watchlist_items do |t|

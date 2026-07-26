@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 module Screeners
+  # Scans the equities universe and returns per-symbol snapshots with technical
+  # indicators, filtered by price, volume and optionability rules.
   class StocksScreener < ApplicationService
     DEFAULT_FRAME       = '15m'
     DEFAULT_LOOKBACK    = 20

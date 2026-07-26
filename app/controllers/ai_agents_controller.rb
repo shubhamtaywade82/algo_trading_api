@@ -102,7 +102,7 @@ class AiAgentsController < ApplicationController
   end
 
   def require_param!(key)
-    val = params[key].to_s.strip.presence || params[:ai_agent]&.dig(key)&.to_s&.strip.presence
+    val = params[key].to_s.strip.presence || params[:ai_agent]&.dig(key).to_s.strip.presence
     render json: { error: "#{key} is required" }, status: :unprocessable_entity if val.blank?
     val
   end

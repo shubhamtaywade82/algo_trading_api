@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 module Watchlists
+  # Rebuilds a watchlist from a fresh universe scan: scores candidates, upserts
+  # the top entries and prunes the ones that no longer qualify.
   class RefreshService < ApplicationService
     DEFAULTS = {
       min_price: 80.0,
@@ -38,7 +40,7 @@ module Watchlists
       selected = scan_universe # array of {instrument:, score:, metrics:, bucket:}
       upsert_items(wl, selected.first(@limit))
       prune_items(wl, selected.map { _1[:instrument].id }) if @prune
-      wl.touch
+      wl.touch # rubocop:disable Rails/SkipsModelValidations -- bumping refreshed_at only
       true
     end
 

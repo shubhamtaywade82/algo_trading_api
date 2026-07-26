@@ -42,9 +42,11 @@ namespace :live do
       puts 'No open paper positions.'
     else
       positions.each do |p|
-        puts format('%-10s %-8s %-7s net=%-7s avg=%-10s ltp=%-10s unreal=%-10s real=%s',
-                    p[:exchange_segment], p[:security_id], p[:position_type], p[:net_qty],
-                    p[:buy_avg], p[:ltp], p[:unrealized_pnl], p[:realized_pnl])
+        puts format('%<segment>-10s %<security_id>-8s %<position_type>-7s net=%<net_qty>-7s ' \
+                    'avg=%<buy_avg>-10s ltp=%<ltp>-10s unreal=%<unrealized>-10s real=%<realized>s',
+                    segment: p[:exchange_segment], security_id: p[:security_id],
+                    position_type: p[:position_type], net_qty: p[:net_qty], buy_avg: p[:buy_avg],
+                    ltp: p[:ltp], unrealized: p[:unrealized_pnl], realized: p[:realized_pnl])
       end
     end
 
@@ -52,8 +54,10 @@ namespace :live do
     if working.any?
       puts "\nWorking orders:"
       working.each do |o|
-        puts format('  #%-6s %-4s %-18s qty=%-6s filled=%-6s px=%-10s status=%s',
-                    o[:id], o[:side], o[:order_type], o[:quantity], o[:filled_qty], o[:price], o[:status])
+        puts format('  #%<id>-6s %<side>-4s %<order_type>-18s qty=%<quantity>-6s ' \
+                    'filled=%<filled_qty>-6s px=%<price>-10s status=%<status>s',
+                    id: o[:id], side: o[:side], order_type: o[:order_type], quantity: o[:quantity],
+                    filled_qty: o[:filled_qty], price: o[:price], status: o[:status])
       end
     end
 

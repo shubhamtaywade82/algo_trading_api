@@ -1,3 +1,4 @@
+# Creates the watchlists table.
 class CreateWatchlists < ActiveRecord::Migration[8.0]
   def change
     create_table :watchlists do |t|
