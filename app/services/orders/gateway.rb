@@ -123,6 +123,7 @@ module Orders
       # @param source [String] caller identifier for logs
       # @return [Hash] result hash with :dry_run or :order details
       def place_global_order(payload, logger: Rails.logger, source: nil)
+        return Paper::Broker.place(payload, source: source) if Paper::Broker.enabled?
         return blocked_result(payload, logger: logger, source: source) unless place_order_enabled?(logger: logger, source: source)
 
         submit(payload, logger: logger, source: source, book: :global) do
@@ -140,6 +141,9 @@ module Orders
       # @param source [String] caller identifier for logs
       # @return [Hash] result hash with :dry_run, :accepted/:rejected, or :error
       def place_basket_order(legs, logger: Rails.logger, source: nil)
+        # Each leg is simulated independently; the real API's partial-acceptance
+        # semantics are not modelled, so every leg either fills or rests.
+        return paper_basket(legs, source: source) if Paper::Broker.enabled?
         return blocked_result(legs, logger: logger, source: source) unless place_order_enabled?(logger: logger, source: source)
 
         submit(legs, logger: logger, source: source, book: :basket) do
@@ -233,6 +237,17 @@ module Orders
           order_id: order.order_id || order.id,
           order_status: order.order_status || (order.respond_to?(:status) ? order.status : nil),
           raw: order
+        }
+      end
+
+      def paper_basket(legs, source: nil)
+        results = Array(legs).map { |leg| Paper::Broker.place(leg, source: source) }
+        accepted = results.reject { |r| r[:error] }
+        {
+          dry_run: false, paper: true, book: :basket,
+          order_ids: accepted.filter_map { |r| r[:order_id] },
+          accepted: accepted, rejected: results.select { |r| r[:error] },
+          all_accepted: results.none? { |r| r[:error] }
         }
       end
 
