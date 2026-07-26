@@ -5,7 +5,7 @@ FactoryBot.define do
     has_options { false }
     has_futures { false }
     position { 1 }
-    tags { "MyString" }
+    tags { 'MyString' }
     active { false }
   end
 end

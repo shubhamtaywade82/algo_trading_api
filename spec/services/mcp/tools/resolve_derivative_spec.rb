@@ -6,7 +6,7 @@ RSpec.describe Mcp::Tools::ResolveDerivative do
   describe '.execute' do
     let(:expiry_date) { Date.iso8601('2026-03-26') }
     let(:symbol) { 'NIFTY' }
-    let(:strike) { 22450 }
+    let(:strike) { 22_450 }
     let(:option_type) { 'CE' }
 
     let(:derivative) do
@@ -72,7 +72,7 @@ RSpec.describe Mcp::Tools::ResolveDerivative do
 
     it 'rejects invalid option_type' do
       allow(Trading::DerivativeResolver).to receive(:new).and_raise('Invalid option_type')
-      
+
       result = described_class.execute(
         'symbol' => symbol,
         'expiry' => expiry_date.to_s,

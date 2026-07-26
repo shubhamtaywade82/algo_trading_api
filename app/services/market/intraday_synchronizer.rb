@@ -32,7 +32,7 @@ module Market
       # 2. Fetch Option Data for each strike and type
       # We create a map: timestamp -> { spot: price, ce_atm: price, pe_atm: price, ... }
       sync_map = {}
-      
+
       # Initialize map with spot data
       spot_data['timestamp'].each_with_index do |ts, i|
         sync_map[ts] = {
@@ -48,7 +48,7 @@ module Market
 
       # Fetch Options
       @strikes.each do |strike_name|
-        ['CALL', 'PUT'].each do |type|
+        %w[CALL PUT].each do |type|
           opt_data = Dhan::MarketDataService.new(instrument).rolling_ohlc(
             from_date: @date.to_s,
             to_date: opt_to_date.to_s,
@@ -57,20 +57,20 @@ module Market
             option_type: type,
             expiry_code: 1 # Current week
           )
-          
+
           next if opt_data.blank? || opt_data[:timestamp].blank?
 
-          suffix = "#{type == 'CALL' ? 'ce' : 'pe'}_#{strike_name.downcase.gsub('+', 'p').gsub('-', 'm')}"
-          
+          suffix = "#{type == 'CALL' ? 'ce' : 'pe'}_#{strike_name.downcase.tr('+', 'p').tr('-', 'm')}"
+
           opt_data[:timestamp].each_with_index do |ts, i|
-            if sync_map[ts]
-              sync_map[ts][suffix.to_sym] = {
-                o: opt_data[:open][i],
-                h: opt_data[:high][i],
-                l: opt_data[:low][i],
-                c: opt_data[:close][i]
-              }
-            end
+            next unless sync_map[ts]
+
+            sync_map[ts][suffix.to_sym] = {
+              o: opt_data[:open][i],
+              h: opt_data[:high][i],
+              l: opt_data[:low][i],
+              c: opt_data[:close][i]
+            }
           end
           # Prevent rate limit if many strikes
           sleep 0.2

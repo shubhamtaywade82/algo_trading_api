@@ -8,10 +8,8 @@ Rails.application.config.after_initialize do
   # We run this in a background thread to not block boot, but it's safe because
   # DerivativeResolver.call will wait/load it if called before it's ready.
   Thread.new do
-    begin
-      Trading::DerivativeResolver.load_index!
-    rescue => e
-      Rails.logger.error "Failed to load Trading::DerivativeResolver index: #{e.message}"
-    end
+    Trading::DerivativeResolver.load_index!
+  rescue StandardError => e
+    Rails.logger.error "Failed to load Trading::DerivativeResolver index: #{e.message}"
   end
 end

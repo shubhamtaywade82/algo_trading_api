@@ -58,7 +58,7 @@ module Trading
 
       # Try cache first
       self.class.load_index! if CACHE.empty?
-      
+
       key = [@symbol, @expiry, @strike, @option_type].join(':')
       data = CACHE[key]
 
@@ -76,7 +76,7 @@ module Trading
       raise 'Invalid symbol' unless %w[NIFTY BANKNIFTY SENSEX FINNIFTY MIDCPNIFTY].include?(@symbol)
       raise 'Invalid option_type' unless %w[CE PE].include?(@option_type)
       raise 'Invalid strike' if @strike <= 0
-      raise 'Invalid expiry format (expected YYYY-MM-DD)' unless @expiry =~ /^\d{4}-\d{2}-\d{2}$/
+      raise 'Invalid expiry format (expected YYYY-MM-DD)' unless /^\d{4}-\d{2}-\d{2}$/.match?(@expiry)
     end
 
     def find_in_csv

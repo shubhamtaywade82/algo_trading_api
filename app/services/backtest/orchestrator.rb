@@ -18,7 +18,7 @@ module Backtest
         Rails.logger.info "[Backtest] Batch #{index + 1}/#{chunks.size}: #{chunk[:from]} to #{chunk[:to]}"
         result = run_batch(chunk)
         all_trades.concat(result[:trades]) if result[:trades].present?
-        
+
         # Respect rate limits if necessary
         sleep 0.5
       end
@@ -31,7 +31,7 @@ module Backtest
     def generate_monthly_chunks
       end_date = Time.zone.today - 1
       start_date = end_date - @years.years
-      
+
       chunks = []
       curr = start_date
       while curr < end_date
@@ -59,11 +59,11 @@ module Backtest
       total_pnl = trades.sum { |t| t[:pnl].to_f }
       wins = trades.count { |t| t[:status] == 'WIN' }
       win_rate = (wins.to_f / trades.size * 100).round(2)
-      
+
       # Simple Max Drawdown calculation
       equity_curve = [@initial_capital]
       trades.each { |t| equity_curve << (equity_curve.last + t[:pnl].to_f) }
-      
+
       peak = @initial_capital
       max_dd = 0.0
       equity_curve.each do |val|

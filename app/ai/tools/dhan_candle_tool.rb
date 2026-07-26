@@ -24,27 +24,27 @@ module AI
 
         recent = series.candles.last(lim).map do |c|
           {
-            ts:     c.timestamp&.strftime('%Y-%m-%dT%H:%M:%S'),
-            open:   c.open.to_f.round(2),
-            high:   c.high.to_f.round(2),
-            low:    c.low.to_f.round(2),
-            close:  c.close.to_f.round(2),
+            ts: c.timestamp&.strftime('%Y-%m-%dT%H:%M:%S'),
+            open: c.open.to_f.round(2),
+            high: c.high.to_f.round(2),
+            low: c.low.to_f.round(2),
+            close: c.close.to_f.round(2),
             volume: c.volume.to_f.round(0)
           }
         end
 
         {
-          symbol:     sym,
-          interval:   interval,
-          count:      recent.length,
-          candles:    recent,
+          symbol: sym,
+          interval: interval,
+          count: recent.length,
+          candles: recent,
           indicators: {
-            rsi:        series.rsi[:rsi]&.round(2),
-            macd:       series.macd.transform_values { |v| v&.round(4) },
+            rsi: series.rsi[:rsi]&.round(2),
+            macd: series.macd.transform_values { |v| v&.round(4) },
             supertrend: series.supertrend_signal,
-            boll:       series.bollinger_bands(period: 20).transform_values { |v| v&.round(2) },
-            atr:        series.atr[:atr]&.round(2),
-            ema14:      series.moving_average(14)[:ema]&.round(2)
+            boll: series.bollinger_bands(period: 20).transform_values { |v| v&.round(2) },
+            atr: series.atr[:atr]&.round(2),
+            ema14: series.moving_average(14)[:ema]&.round(2)
           },
           ltp: series.closes.last&.round(2)
         }

@@ -141,8 +141,10 @@ module Dhan
       def extract_expiry_time(response)
         data = response.is_a?(Hash) ? (response['data'] || response) : {}
         raw = data['expiryTime'] || data[:expiryTime] || data['expiry_time'] || data[:expiry_time]
-        raise DhanHQ::InvalidAuthenticationError,
-              "Dhan token response missing expiryTime. Keys: #{safe_response_keys(response)}" if raw.blank?
+        if raw.blank?
+          raise DhanHQ::InvalidAuthenticationError,
+                "Dhan token response missing expiryTime. Keys: #{safe_response_keys(response)}"
+        end
 
         Time.zone.parse(raw.to_s)
       end

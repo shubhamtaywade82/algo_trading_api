@@ -83,7 +83,7 @@ module Screeners
       # 1) explicit symbols
       if @symbols.present?
         return universe_scope.where(symbol_name: @symbols)
-                             .or(universe_scope.where(underlying_symbol: @symbols))
+            .or(universe_scope.where(underlying_symbol: @symbols))
       end
 
       # 2) watch list by name
@@ -195,7 +195,7 @@ module Screeners
       end
     end
 
-    def push_telegram(text, md)
+    def push_telegram(text, _md)
       hdr = <<~HDR
         🧭 *Stocks Screener* (#{@session.to_s.humanize}, #{@frame}, Lkb #{@lookback})
         Rules: min ₹#{@min_price}, avgVol≥#{@min_avgvol}, optionable=#{@optionable}

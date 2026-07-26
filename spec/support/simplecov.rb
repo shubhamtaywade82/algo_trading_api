@@ -1,7 +1,7 @@
 require 'simplecov'
 
 SimpleCov.start 'rails' do
-  enable_coverage :branch        # line + branch coverage
+  enable_coverage :branch # line + branch coverage
   # Current suite coverage is ~35% line coverage. Default to a realistic
   # baseline while still allowing local/CI overrides.
   minimum_coverage ENV.fetch('SIMPLECOV_MIN_COVERAGE', 30).to_i

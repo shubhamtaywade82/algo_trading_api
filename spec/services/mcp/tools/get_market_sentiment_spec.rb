@@ -8,7 +8,7 @@ RSpec.describe Mcp::Tools::GetMarketSentiment do
 
     let(:option_chain) do
       {
-        last_price: 22000.0,
+        last_price: 22_000.0,
         oc: {
           '22000.000000' => {
             'ce' => { 'oi' => 100_000, 'implied_volatility' => 0.15 },
@@ -21,7 +21,7 @@ RSpec.describe Mcp::Tools::GetMarketSentiment do
     let(:instrument) do
       instance_double(
         Instrument,
-        ltp: 22000.0,
+        ltp: 22_000.0,
         expiry_list: ['2026-03-27'],
         fetch_option_chain: option_chain
       )

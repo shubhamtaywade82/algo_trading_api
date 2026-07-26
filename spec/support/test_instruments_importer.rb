@@ -194,8 +194,8 @@ module TestInstrumentsImporter
     puts "  Total Margin Requirements: #{MarginRequirement.count}"
     puts '  By Instrument Type:'
     MarginRequirement.joins(:instrument)
-                     .group('instruments.instrument_type')
-                     .count.each do |type, count|
+      .group('instruments.instrument_type')
+      .count.each do |type, count|
       puts "    Instrument Type: #{type} => #{count} Margin Requirements"
     end
   end

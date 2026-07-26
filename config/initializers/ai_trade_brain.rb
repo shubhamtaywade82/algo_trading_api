@@ -25,10 +25,10 @@ module AI
       proposal = AI::Runners::TradeRunner.extract_proposal(result.output)
       Rails.logger.info "[TradeBrain] propose(#{symbol}) → proposal=#{proposal.inspect}"
       {
-        result:     result,
-        output:     result.output,
-        context:    result.context,
-        proposal:   proposal,
+        result: result,
+        output: result.output,
+        context: result.context,
+        proposal: proposal,
         validation: proposal ? Strategy::Validator.validate(proposal) : nil
       }
     end
@@ -60,13 +60,13 @@ module AI
       positions    = review_positions
       trade_result = propose(symbol: symbol)
       {
-        symbol:     symbol,
-        timestamp:  Time.current.iso8601,
-        analysis:   analysis.output,
-        positions:  positions.output,
-        proposal:   trade_result[:proposal],
+        symbol: symbol,
+        timestamp: Time.current.iso8601,
+        analysis: analysis.output,
+        positions: positions.output,
+        proposal: trade_result[:proposal],
         validation: trade_result[:validation],
-        context:    trade_result.dig(:result, :context)
+        context: trade_result.dig(:result, :context)
       }
     end
   end

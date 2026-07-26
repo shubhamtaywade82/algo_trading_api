@@ -32,7 +32,7 @@ class AiAgentsController < ApplicationController
 
     render json: {
       output: result.output.presence || (error ? "Error: #{error.message}" : nil),
-      error:  error&.message,
+      error: error&.message,
       context: result.context
     }
   rescue NoMethodError => e
@@ -40,7 +40,7 @@ class AiAgentsController < ApplicationController
     Rails.logger.error "[AiAgentsController#analyze] #{e.class}: #{e.message}\n#{backtrace}"
     render json: {
       error: e.message,
-      hint: "Check log for backtrace. Common: context was nil (pass context: {}).",
+      hint: 'Check log for backtrace. Common: context was nil (pass context: {}).',
       backtrace: e.backtrace.first(8)
     }, status: :internal_server_error
   end
@@ -55,11 +55,11 @@ class AiAgentsController < ApplicationController
     data      = ::AI::TradeBrain.propose(symbol: symbol, direction: direction)
 
     render json: {
-      output:         data[:output],
-      proposal:       data[:proposal],
-      validation:     data[:validation],
+      output: data[:output],
+      proposal: data[:proposal],
+      validation: data[:validation],
       ready_to_trade: data[:proposal].present? && data.dig(:validation, :valid) == true,
-      context:        data[:context]
+      context: data[:context]
     }
   end
 

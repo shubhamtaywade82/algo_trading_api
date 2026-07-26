@@ -8,7 +8,7 @@ require 'agents'
 # - OpenAI (cloud): set OPENAI_API_KEY; leave OPENAI_URI_BASE unset or set to https://api.openai.com/v1
 # - Ollama (local):  set OPENAI_URI_BASE=http://localhost:11434/v1 and optionally OPENAI_OLLAMA_MODEL=qwen3:latest
 Agents.configure do |config|
-  config.openai_api_key  = ENV['OPENAI_API_KEY']
+  config.openai_api_key = ENV.fetch('OPENAI_API_KEY', nil)
   config.anthropic_api_key = ENV['ANTHROPIC_API_KEY'] if ENV['ANTHROPIC_API_KEY'].present?
 
   use_ollama = ENV['OPENAI_URI_BASE'].to_s.include?('11434')

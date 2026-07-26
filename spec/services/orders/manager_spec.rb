@@ -5,6 +5,62 @@ require 'rails_helper'
 RSpec.describe Orders::Manager, type: :service do
   include JsonFixtureHelper
 
+  subject(:service_call) { described_class.call(position.deep_dup, analysis.deep_dup) }
+
+  let(:analysis) do
+    {
+      entry_price: 100,
+      ltp: 110,
+      pnl: 750,
+      pnl_pct: 10.0,
+      quantity: 75,
+      instrument_type: :option,
+      order_type: 'MARKET'
+    }
+  end
+  let(:position) do
+    {
+      'tradingSymbol' => 'NIFTY24JUL17500CE',
+      'securityId' => 'OPT123',
+      'exchangeSegment' => 'NSE_FNO',
+      'buyAvg' => 100,
+      'netQty' => 75,
+      'ltp' => 110,
+      'productType' => 'INTRADAY'
+    }
+  end
+
+  before do
+    stub_request(:get, 'https://api.dhan.co/orders').to_return(
+      status: 200,
+      body: [
+        {
+          'securityId' => 'OPT123',
+          'orderId' => 'ORDER123',
+          'orderStatus' => 'PENDING',
+          'dhanClientId' => 'test-client',
+          'orderType' => 'LIMIT',
+          'legName' => nil,
+          'quantity' => 75,
+          'price' => 100,
+          'disclosedQuantity' => 0,
+          'triggerPrice' => 100,
+          'validity' => 'DAY'
+        }
+      ].to_json,
+      headers: { 'Content-Type' => 'application/json' }
+    )
+
+    stub_request(:put, 'https://api.dhan.co/orders/ORDER123')
+      .to_return(
+        status: 200,
+        body: { 'status' => 'success', 'orderId' => 'ORDER123', 'orderStatus' => 'PENDING' }.to_json,
+        headers: { 'Content-Type' => 'application/json' }
+      )
+
+    stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
+  end
+
   describe '.place_order' do
     let(:payload) do
       {
@@ -16,7 +72,10 @@ RSpec.describe Orders::Manager, type: :service do
       }
     end
 
-    let(:derivative) { instance_double(Derivative, security_id: 'OPT123', exchange_segment: 'NSE_FNO', strike_price: 22500, option_type: 'CE', expiry_date: Date.current, instrument: double) }
+    let(:derivative) do
+      instance_double(Derivative, security_id: 'OPT123', exchange_segment: 'NSE_FNO', strike_price: 22_500, option_type: 'CE',
+                                  expiry_date: Date.current, instrument: double)
+    end
     let(:option_chain) do
       {
         oc: {
@@ -58,63 +117,6 @@ RSpec.describe Orders::Manager, type: :service do
       expect_any_instance_of(described_class).to receive(:manage)
       described_class.manage(position, analysis)
     end
-  end
-
-  subject(:service_call) { described_class.call(position.deep_dup, analysis.deep_dup) }
-
-  let(:position) do
-    {
-      'tradingSymbol' => 'NIFTY24JUL17500CE',
-      'securityId' => 'OPT123',
-      'exchangeSegment' => 'NSE_FNO',
-      'buyAvg' => 100,
-      'netQty' => 75,
-      'ltp' => 110,
-      'productType' => 'INTRADAY'
-    }
-  end
-
-  let(:analysis) do
-    {
-      entry_price: 100,
-      ltp: 110,
-      pnl: 750,
-      pnl_pct: 10.0,
-      quantity: 75,
-      instrument_type: :option,
-      order_type: 'MARKET'
-    }
-  end
-
-  before do
-    stub_request(:get, 'https://api.dhan.co/orders').to_return(
-      status: 200,
-      body: [
-        {
-          'securityId' => 'OPT123',
-          'orderId' => 'ORDER123',
-          'orderStatus' => 'PENDING',
-          'dhanClientId' => 'test-client',
-          'orderType' => 'LIMIT',
-          'legName' => nil,
-          'quantity' => 75,
-          'price' => 100,
-          'disclosedQuantity' => 0,
-          'triggerPrice' => 100,
-          'validity' => 'DAY'
-        }
-      ].to_json,
-      headers: { 'Content-Type' => 'application/json' }
-    )
-
-    stub_request(:put, 'https://api.dhan.co/orders/ORDER123')
-      .to_return(
-        status: 200,
-        body: { 'status' => 'success', 'orderId' => 'ORDER123', 'orderStatus' => 'PENDING' }.to_json,
-        headers: { 'Content-Type' => 'application/json' }
-      )
-
-    stub_request(:post, %r{https://api\.telegram\.org/bot[^/]+/sendMessage}).to_return(status: 200, body: '{}')
   end
 
   # ───────────────────────── decision table ──────────────────────── #

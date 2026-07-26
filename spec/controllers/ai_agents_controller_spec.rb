@@ -4,15 +4,16 @@ require 'rails_helper'
 
 RSpec.describe AiAgentsController, type: :controller do
   # Disable token auth unless specifically testing it
-  before { allow(ENV).to receive(:[]).and_call_original }
-  before { allow(ENV).to receive(:[]).with('AI_AGENTS_ACCESS_TOKEN').and_return(nil) }
+  before do
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with('AI_AGENTS_ACCESS_TOKEN').and_return(nil)
+  end
 
   # Minimal Agents::RunResult mock
   def run_result(output)
     instance_double('Agents::RunResult',
-      output:  output,
-      context: { current_agent: 'Test', conversation_history: [] }
-    )
+                    output: output,
+                    context: { current_agent: 'Test', conversation_history: [] })
   end
 
   describe 'POST #analyze' do
@@ -45,7 +46,7 @@ RSpec.describe AiAgentsController, type: :controller do
   describe 'POST #propose' do
     let(:valid_proposal) do
       {
-        'symbol' => 'NIFTY', 'direction' => 'CE', 'strike' => 24300,
+        'symbol' => 'NIFTY', 'direction' => 'CE', 'strike' => 24_300,
         'entry_price' => 62.5, 'stop_loss' => 42.0, 'target' => 110.0,
         'quantity' => 75, 'confidence' => 0.75, 'risk_reward' => 2.3,
         'product' => 'INTRADAY', 'expiry' => (Date.today + 7).to_s,
@@ -55,12 +56,12 @@ RSpec.describe AiAgentsController, type: :controller do
 
     before do
       allow(AI::TradeBrain).to receive(:propose).and_return({
-        result:     run_result('Trade setup generated.'),
-        output:     'Trade setup generated.',
-        context:    {},
-        proposal:   valid_proposal,
-        validation: Strategy::Validator.validate(valid_proposal)
-      })
+                                                              result: run_result('Trade setup generated.'),
+                                                              output: 'Trade setup generated.',
+                                                              context: {},
+                                                              proposal: valid_proposal,
+                                                              validation: Strategy::Validator.validate(valid_proposal)
+                                                            })
     end
 
     it 'returns 200 with proposal, validation and ready_to_trade flag' do

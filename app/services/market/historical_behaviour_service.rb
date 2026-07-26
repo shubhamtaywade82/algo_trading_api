@@ -7,9 +7,9 @@ module Market
     include MarketCalendar
 
     SESSIONS = {
-      'Morning'   => (9 * 60 + 15)..(11 * 60),
-      'Midday'    => (11 * 60 + 1)..(13 * 60),
-      'Afternoon' => (13 * 60 + 1)..(15 * 60 + 30)
+      'Morning' => ((9 * 60) + 15)..(11 * 60),
+      'Midday' => ((11 * 60) + 1)..(13 * 60),
+      'Afternoon' => ((13 * 60) + 1)..((15 * 60) + 30)
     }.freeze
 
     def initialize(weeks: 12, symbol: 'NIFTY', interval: '5')
@@ -92,7 +92,7 @@ module Market
       from_str = window[:from].to_s
       to_str   = window[:to].to_s
 
-      # Note: We need a way to fetch ATM strikes for these dates.
+      # NOTE: We need a way to fetch ATM strikes for these dates.
       spot_bars = instrument.historical_ohlc(from_date: from_str, to_date: to_str)
       return nil if spot_bars.blank? || spot_bars['close'].blank?
 
@@ -166,13 +166,14 @@ module Market
 
     def pct(v, b)
       return 0.0 if b.to_f.zero?
+
       ((v - b) / b.to_f * 100).round(2)
     end
 
     def aggregate_summary(results)
       valid_ce = results.map { |r| r[:ce] }.compact
       valid_pe = results.map { |r| r[:pe] }.compact
-      
+
       {
         ce: compute_metrics(valid_ce),
         pe: compute_metrics(valid_pe)
@@ -183,7 +184,7 @@ module Market
       return {} if stats_array.empty?
 
       keys = %i[max_gain_pct max_loss_pct open_to_close_pct post_peak_retrace]
-      
+
       summary = { count: stats_array.size }
 
       keys.each do |key|
@@ -194,9 +195,9 @@ module Market
       # Add Absolute P&L per lot based on Open-to-Close
       avg_oc_pct = summary[:open_to_close_pct] || 0.0
       avg_entry = stats_array.map { |s| s[:entry] }.compact.then { |v| v.sum / v.size }
-      
+
       summary[:avg_pnl_per_lot] = (avg_entry * (avg_oc_pct / 100.0) * @lot_size).round(2)
-      
+
       summary
     end
   end

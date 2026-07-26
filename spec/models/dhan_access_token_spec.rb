@@ -12,8 +12,8 @@ RSpec.describe DhanAccessToken do
     end
 
     it 'returns the most recently created when multiple are non-expired (Dhan invalidates older)' do
-      older = described_class.create!(access_token: 'older_token', expires_at: 2.hours.from_now)
-      newer = described_class.create!(access_token: 'newer_token', expires_at: 1.hour.from_now)
+      described_class.create!(access_token: 'older_token', expires_at: 2.hours.from_now)
+      described_class.create!(access_token: 'newer_token', expires_at: 1.hour.from_now)
 
       expect(described_class.active.access_token).to eq('newer_token')
       expect(described_class.current_record.access_token).to eq('newer_token')

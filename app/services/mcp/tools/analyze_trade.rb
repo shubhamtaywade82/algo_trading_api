@@ -50,8 +50,8 @@ module Mcp
         return result_hash if strike.blank? || entry.blank?
 
         iv_rank_pct = result_hash[:iv_rank].to_f
-        sl_pct = (0.18 + (iv_rank_pct / 100.0) * 0.03).clamp(0.15, 0.23)
-        tp_pct = (0.30 + (iv_rank_pct / 100.0) * 0.05).clamp(0.25, 0.40)
+        sl_pct = (0.18 + ((iv_rank_pct / 100.0) * 0.03)).clamp(0.15, 0.23)
+        tp_pct = (0.30 + ((iv_rank_pct / 100.0) * 0.05)).clamp(0.25, 0.40)
 
         entry_price = entry.to_f
         result_hash[:strike] = strike.to_i

@@ -4,7 +4,7 @@ module AI
   module Agents
     # Analyzes options market flow: IV, PCR, OI buildup, and smart-money signals.
     module OptionsFlowAgent
-      INSTRUCTIONS = <<~PROMPT.freeze
+      INSTRUCTIONS = <<~PROMPT
         You are an expert NSE options flow analyst. You specialize in reading institutional
         activity through open interest (OI), PCR, and IV patterns.
 
@@ -36,10 +36,10 @@ module AI
 
       def self.build
         ::Agents::Agent.new(
-          name:         'Options Flow Analyst',
+          name: 'Options Flow Analyst',
           instructions: INSTRUCTIONS,
-          model:        ::Agents.configuration.default_model,
-          tools:        [
+          model: ::Agents.configuration.default_model,
+          tools: [
             AI::Tools::OptionChainTool.new,
             AI::Tools::MarketSentimentTool.new
           ]

@@ -1,9 +1,9 @@
 module AlertProcessors
   class McxCommodity < Index
     MONTH_MAP = Date::ABBR_MONTHNAMES
-                .each_with_index
-                .filter_map { |m, i| m && [m.upcase, i] } #  "JAN" => 1
-                .to_h.freeze
+      .each_with_index
+      .filter_map { |m, i| m && [m.upcase, i] } #  "JAN" => 1
+      .to_h.freeze
     DISPLAY_RE = /
       \A
       (?<symbol>[A-Z]+) \s+
@@ -18,10 +18,10 @@ module AlertProcessors
     # ------------------------------------------------------------------
     def db_expiry_list
       Instrument.mcx.instrument_code_options_commodity
-                .where(underlying_symbol: instrument.underlying_symbol)
-                .pluck(:display_name)
-                .filter_map { |n| parse_expiry(n) }
-                .uniq.sort
+        .where(underlying_symbol: instrument.underlying_symbol)
+        .pluck(:display_name)
+        .filter_map { |n| parse_expiry(n) }
+        .uniq.sort
     end
 
     def parse_expiry(name)

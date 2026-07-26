@@ -60,8 +60,6 @@ module Watchlists
                    swing_candidate(snap)
                  when 'long_term'
                    long_term_candidate(snap)
-                 else
-                   nil
                  end
 
           next unless cand

@@ -86,7 +86,8 @@ module Dhan
       nil
     end
 
-    def intraday_ohlc(interval: Instrument::DEFAULT_INTRADAY_INTERVAL, oi: false, from_date: nil, to_date: nil, days: 2, expiry_date: nil, strike_price: nil, option_type: nil)
+    def intraday_ohlc(interval: Instrument::DEFAULT_INTRADAY_INTERVAL, oi: false, from_date: nil, to_date: nil, days: 2, expiry_date: nil,
+                      strike_price: nil, option_type: nil)
       today = Time.zone.today
       to_date_final = to_date.presence&.to_s&.strip.presence || today.to_s
 
@@ -143,29 +144,27 @@ module Dhan
         interval: interval.to_s,
         from_date: from_date.to_s,
         to_date: to_date.to_s,
-        required_data: ['open', 'high', 'low', 'close', 'volume', 'oi']
+        required_data: %w[open high low close volume oi]
       }
 
       log_debug("Fetching Rolling Option OHLC for #{@instrument.underlying_symbol} with params: #{params.inspect}")
-      
+
       # resource.post calls /v2/charts + endpoint
       response = resource.post('/rollingoption', params: params)
-      
+
       # Debug log the full response
       log_debug("Raw Rolling Option OHLC response: #{response.inspect}")
-      
+
       # Ensure it's a Hash with indifferent access
       full_data = response.is_a?(Hash) ? response.with_indifferent_access : {}
-      
+
       # The API returns {"data" => {"ce" => {...}, "pe" => {...}}}
       # We extract the specific type requested (ce or pe)
       type_key = option_type.to_s.upcase == 'CALL' ? 'ce' : 'pe'
       data = full_data.dig(:data, type_key) || {}
-      
-      if data[:open].blank?
-        log_warn("Rolling Option OHLC returned empty data for #{@instrument.underlying_symbol} #{option_type}")
-      end
-      
+
+      log_warn("Rolling Option OHLC returned empty data for #{@instrument.underlying_symbol} #{option_type}") if data[:open].blank?
+
       data
     rescue StandardError => e
       log_error("Failed to fetch Rolling Option OHLC: #{e.message}")

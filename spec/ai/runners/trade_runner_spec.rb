@@ -6,9 +6,8 @@ RSpec.describe AI::Runners::TradeRunner do
   # Build a minimal mock for Agents::RunResult
   let(:run_result) do
     instance_double('Agents::RunResult',
-      output:  output_text,
-      context: { current_agent: 'Trade Planner', conversation_history: [] }
-    )
+                    output: output_text,
+                    context: { current_agent: 'Trade Planner', conversation_history: [] })
   end
 
   describe '.run' do
@@ -60,7 +59,7 @@ RSpec.describe AI::Runners::TradeRunner do
         expect(proposal).to be_a(Hash)
         expect(proposal['symbol']).to eq('NIFTY')
         expect(proposal['direction']).to eq('CE')
-        expect(proposal['strike']).to eq(24300)
+        expect(proposal['strike']).to eq(24_300)
       end
     end
 

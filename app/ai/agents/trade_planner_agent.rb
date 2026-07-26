@@ -20,7 +20,7 @@ module AI
     #   "risk_reward": 2.3
     # }
     module TradePlannerAgent
-      INSTRUCTIONS = <<~PROMPT.freeze
+      INSTRUCTIONS = <<~PROMPT
         You are a professional options trade planner for NSE indices (NIFTY, BANKNIFTY).
 
         You receive market structure analysis and options flow data as context, and your
@@ -56,10 +56,10 @@ module AI
 
       def self.build
         ::Agents::Agent.new(
-          name:         'Trade Planner',
+          name: 'Trade Planner',
           instructions: INSTRUCTIONS,
-          model:        ::Agents.configuration.default_model,
-          tools:        [
+          model: ::Agents.configuration.default_model,
+          tools: [
             AI::Tools::OptionChainTool.new,
             AI::Tools::FundsTool.new,
             AI::Tools::DhanCandleTool.new

@@ -23,8 +23,8 @@ RSpec.describe 'MCP Schema Consistency', type: :integration do
 
       # 3. Property Descriptions (GPTs fail without these)
       schema[:properties].each do |prop_name, prop_meta|
-        expect(prop_meta).to have_key(:description), 
-          "Tool #{tool_class.name}, parameter '#{prop_name}' is missing a description. GPT will not know how to use it!"
+        expect(prop_meta).to have_key(:description),
+                             "Tool #{tool_class.name}, parameter '#{prop_name}' is missing a description. GPT will not know how to use it!"
       end
     end
   end

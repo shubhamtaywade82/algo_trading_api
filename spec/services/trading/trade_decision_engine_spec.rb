@@ -5,13 +5,13 @@ require 'rails_helper'
 RSpec.describe Trading::TradeDecisionEngine, type: :service do
   let(:symbol) { 'NIFTY' }
   let(:expiry) { '2026-03-27' }
-  let(:spot) { 22000.0 }
+  let(:spot) { 22_000.0 }
 
   let(:instrument) { instance_double(Instrument) }
 
   let(:candles) do
     Array.new(15).each_with_index.map do |_, i|
-      c = 22000.0 + (i * 20.0)
+      c = 22_000.0 + (i * 20.0)
       { open: c - 5, high: c + 100, low: c - 100, close: c, volume: 1000 }
     end
   end
@@ -36,7 +36,7 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
     Trading::DirectionResolver::Result.new(
       direction: 'CE',
       reason: 'bullish price + bullish OI',
-      vwap: 21900.0,
+      vwap: 21_900.0,
       oi_bias: :bullish,
       price_bias: :bullish
     )
@@ -53,8 +53,8 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
       trend: :bullish,
       momentum: :strong,
       adx: 25.0,
-      selected: { strike: 22000, option_type: 'CE', score: 0.85 },
-      ranked: [{ strike: 22000, option_type: 'CE', score: 0.85 }]
+      selected: { strike: 22_000, option_type: 'CE', score: 0.85 },
+      ranked: [{ strike: 22_000, option_type: 'CE', score: 0.85 }]
     }
   end
 
@@ -103,7 +103,9 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
 
     context 'when insufficient candle data (< 10 candles)' do
       before do
-        allow(instrument).to receive(:intraday_ohlc).and_return(Array.new(5) { { open: 22000.0, high: 22100.0, low: 21900.0, close: 22000.0, volume: 100 } })
+        allow(instrument).to receive(:intraday_ohlc).and_return(Array.new(5) {
+          { open: 22_000.0, high: 22_100.0, low: 21_900.0, close: 22_000.0, volume: 100 }
+        })
       end
 
       it 'returns no_trade with insufficient candle reason' do
@@ -178,7 +180,7 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
         Trading::DirectionResolver::Result.new(
           direction: nil,
           reason: 'No confirmation: price=bullish oi=bearish',
-          vwap: 21900.0,
+          vwap: 21_900.0,
           oi_bias: :bearish,
           price_bias: :bullish
         )
@@ -248,14 +250,14 @@ require 'rails_helper'
 RSpec.describe Trading::TradeDecisionEngine, type: :service do
   let(:symbol) { 'NIFTY' }
   let(:expiry) { '2026-03-27' }
-  let(:spot) { 22000.0 }
+  let(:spot) { 22_000.0 }
 
   let(:instrument) { instance_double(Instrument) }
 
   # 15 candles with enough range to pass regime check
   let(:candles) do
     Array.new(15) do |i|
-      c = 22000.0 + (i * 20.0)
+      c = 22_000.0 + (i * 20.0)
       { open: c - 5, high: c + 100, low: c - 100, close: c, volume: 1000 }
     end
   end
@@ -280,7 +282,7 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
   let(:direction_result) do
     Trading::DirectionResolver::Result.new(
       direction: 'CE', reason: 'bullish price + bullish OI',
-      vwap: 21900.0, oi_bias: :bullish, price_bias: :bullish
+      vwap: 21_900.0, oi_bias: :bullish, price_bias: :bullish
     )
   end
 
@@ -295,8 +297,8 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
       trend: :bullish,
       momentum: :strong,
       adx: 25.0,
-      selected: { strike: 22000, option_type: 'CE', score: 0.85 },
-      ranked: [{ strike: 22000, option_type: 'CE', score: 0.85 }]
+      selected: { strike: 22_000, option_type: 'CE', score: 0.85 },
+      ranked: [{ strike: 22_000, option_type: 'CE', score: 0.85 }]
     }
   end
 
@@ -342,7 +344,7 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
     context 'when insufficient candle data (< 10 candles)' do
       before do
         allow(instrument).to receive(:intraday_ohlc).and_return(
-          Array.new(5) { { open: 22000.0, high: 22100.0, low: 21900.0, close: 22000.0, volume: 100 } }
+          Array.new(5) { { open: 22_000.0, high: 22_100.0, low: 21_900.0, close: 22_000.0, volume: 100 } }
         )
       end
 
@@ -411,7 +413,7 @@ RSpec.describe Trading::TradeDecisionEngine, type: :service do
       let(:direction_result) do
         Trading::DirectionResolver::Result.new(
           direction: nil, reason: 'No confirmation: price=bullish oi=bearish',
-          vwap: 21900.0, oi_bias: :bearish, price_bias: :bullish
+          vwap: 21_900.0, oi_bias: :bearish, price_bias: :bullish
         )
       end
 

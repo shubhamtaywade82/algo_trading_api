@@ -63,7 +63,7 @@ RSpec.describe Orders::PlaceOrderGuard do
           .with(security_id: '1333')
           .and_return(derivative)
 
-        prev_value = ENV['EXECUTION_MAX_SPREAD_PCT']
+        prev_value = ENV.fetch('EXECUTION_MAX_SPREAD_PCT', nil)
         ENV['EXECUTION_MAX_SPREAD_PCT'] = '0.05'
 
         begin
