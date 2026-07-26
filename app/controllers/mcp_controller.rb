@@ -8,7 +8,7 @@ class McpController < ApplicationController
   before_action :reject_oversized_body
 
   def handle
-    return head :method_not_allowed if request.get?
+    return head :method_not_allowed unless request.post?
 
     raw = request.body.read
     return render json: mcp_error(-32_700, 'Parse error', 'Request body is required'), status: :bad_request if raw.blank?
@@ -24,7 +24,7 @@ class McpController < ApplicationController
   end
 
   def debug_handle
-    return head :method_not_allowed if request.get?
+    return head :method_not_allowed unless request.post?
 
     raw = request.body.read
     return render json: mcp_error(-32_700, 'Parse error', 'Request body is required'), status: :bad_request if raw.blank?
@@ -76,7 +76,8 @@ class McpController < ApplicationController
   def authenticate_debug_request
     expected = ENV.fetch('MCP_DEBUG_TOKEN', ENV.fetch('MCP_ACCESS_TOKEN', nil))
     if expected.blank?
-      render json: mcp_error(-32_503, 'Service Unavailable', 'MCP_DEBUG_TOKEN or MCP_ACCESS_TOKEN must be set'), status: :service_unavailable
+      render json: mcp_error(-32_503, 'Service Unavailable', 'MCP_DEBUG_TOKEN or MCP_ACCESS_TOKEN must be set'),
+             status: :service_unavailable
       return
     end
 
