@@ -285,15 +285,18 @@ module InstrumentHelpers
   end
 
   def historical_ohlc(from_date: nil, to_date: nil, oi: false)
-    DhanHQ::Models::HistoricalData.daily(
-      securityId: security_id,
-      exchangeSegment: exchange_segment,
+    # HistoricalDataContract validates snake_case keys; camelCase ones read as
+    # missing and the whole call raises ValidationError.
+    response = DhanHQ::Models::HistoricalData.daily(
+      security_id: security_id,
+      exchange_segment: exchange_segment,
       instrument: instrument_type || resolve_instrument_code,
       oi: oi,
-      fromDate: from_date || (Time.zone.today - 365).to_s,
-      toDate: to_date || (Time.zone.today - 1).to_s,
-      expiryCode: 0
+      from_date: from_date || (Time.zone.today - 365).to_s,
+      to_date: to_date || (Time.zone.today - 1).to_s,
+      expiry_code: 0
     )
+    Dhan::CandleNormalizer.columnar(response)
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Historical OHLC for #{self.class.name} #{security_id}: #{e.message}")
     nil
@@ -308,7 +311,7 @@ module InstrumentHelpers
     from_date ||= (Date.parse(to_date) - days).to_s
 
     instrument_code = resolve_instrument_code
-    DhanHQ::Models::HistoricalData.intraday(
+    response = DhanHQ::Models::HistoricalData.intraday(
       security_id: security_id,
       exchange_segment: exchange_segment,
       instrument: instrument_code,
@@ -317,6 +320,7 @@ module InstrumentHelpers
       from_date: from_date || (Time.zone.today - days).to_s,
       to_date: to_date || (Time.zone.today - 1).to_s
     )
+    Dhan::CandleNormalizer.columnar(response)
   rescue StandardError => e
     Rails.logger.error("Failed to fetch Intraday OHLC for #{self.class.name} #{security_id}: #{e.message}")
     nil

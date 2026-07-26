@@ -36,4 +36,5 @@ This is a **Rails 8 API-only** app (Ruby 3.3.4, PostgreSQL 16). No Redis or Side
 
 - Route **all** live order placement through `Orders::Gateway`.
 - `PLACE_ORDER` enforcement must live in the gateway; do not add new direct broker placement calls in other services.
-- Any new order placement flow must return a dry-run/blocked response when `PLACE_ORDER != "true"`, with logging.
+- The gateway also gates on `LIVE_TRADING`, which the DhanHQ SDK (>= 2.7) requires for every order mutation.
+- Any new order placement flow must return a dry-run/blocked response when either `PLACE_ORDER != "true"` or `LIVE_TRADING != "true"`, with logging.

@@ -155,9 +155,14 @@ The system includes comprehensive webhook testing tools:
 
 All broker order placement is centralized in `Orders::Gateway`.
 
-- Live order execution is allowed only when `PLACE_ORDER=true`.
-- When disabled, the gateway blocks placement, logs the attempt, and returns a deterministic dry-run style response.
+- Live order execution requires **both** `PLACE_ORDER=true` (this app's gate) and
+  `LIVE_TRADING=true` (the DhanHQ SDK's own gate, added in gem 2.7).
+- When either is disabled, the gateway blocks placement, logs the attempt, and returns a deterministic dry-run style response naming the switch that blocked it.
 - New order flows must call the gateway instead of invoking `DhanHQ::Models::Order` / `SuperOrder` directly.
+
+> Setting only `PLACE_ORDER=true` will not place orders — the SDK raises
+> `DhanHQ::LiveTradingDisabledError` on every mutation until `LIVE_TRADING=true`
+> is also set.
 
 ## 🤖 MCP (Model Context Protocol)
 

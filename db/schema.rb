@@ -105,8 +105,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_01_31_100000) do
     t.decimal "mtf_leverage", precision: 8, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "isin"
-    t.string "series"
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_derivatives_unique", unique: true
     t.index ["symbol_name"], name: "index_derivatives_on_symbol_name"

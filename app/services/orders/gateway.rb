@@ -6,6 +6,17 @@ module Orders
   # Responsibility:
   # - enforce PLACE_ORDER feature toggle for all order placement paths
   # - provide a single integration point to DhanHQ order APIs
+  #
+  # Two independent switches must both be on for an order to reach the broker:
+  #
+  # - `PLACE_ORDER` — this application's gate, checked here.
+  # - `LIVE_TRADING` — DhanHQ >= 2.7's own gate. The SDK raises
+  #   `DhanHQ::LiveTradingDisabledError` from inside `Order#save` /
+  #   `SuperOrder.create` when it is not exactly "true".
+  #
+  # We check the SDK's switch here as well so a misconfigured deployment gets
+  # the same structured dry-run result as `PLACE_ORDER=false`, instead of an
+  # exception raised from deep in the gem on the first live signal.
   class Gateway
     class << self
       # Places a regular order through the broker.
@@ -49,21 +60,38 @@ module Orders
 
       # Checks whether live order placement is enabled.
       #
+      # Requires both this app's `PLACE_ORDER` toggle and the SDK's own
+      # `LIVE_TRADING` toggle.
+      #
       # @param logger [#warn,nil] logger-like object
       # @param source [String,nil] caller identifier for logs
       # @return [Boolean]
       def place_order_enabled?(logger: Rails.logger, source: nil)
-        return true if ENV['PLACE_ORDER'] == 'true'
-
-        logger&.warn("[Orders::Gateway] PLACE_ORDER disabled; order blocked#{source_suffix(source)}")
-        false
+        blocked_reason(logger: logger, source: source).nil?
       end
 
       private
 
+      # @return [String, nil] why placement is blocked, or nil when allowed
+      def blocked_reason(logger: Rails.logger, source: nil)
+        if ENV['PLACE_ORDER'] != 'true'
+          logger&.warn("[Orders::Gateway] PLACE_ORDER disabled; order blocked#{source_suffix(source)}")
+          return 'PLACE_ORDER is not true; order not sent.'
+        end
+
+        # DhanHQ >= 2.7 refuses every order mutation without this.
+        if ENV['LIVE_TRADING'] != 'true'
+          logger&.warn("[Orders::Gateway] LIVE_TRADING disabled; order blocked#{source_suffix(source)}")
+          return 'LIVE_TRADING is not true; DhanHQ SDK would reject this order.'
+        end
+
+        nil
+      end
+
       def blocked_result(payload, logger:, source: nil)
+        reason = blocked_reason(logger: nil, source: source) || 'order not sent.'
         logger&.info("[Orders::Gateway] blocked payload=#{payload.inspect}#{source_suffix(source)}")
-        { dry_run: true, blocked: true, message: 'PLACE_ORDER is not true; order not sent.', payload: payload }
+        { dry_run: true, blocked: true, message: reason, payload: payload }
       end
 
       def source_suffix(source)
