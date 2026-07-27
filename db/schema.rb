@@ -97,7 +97,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_140000) do
   end
 
   add_check_constraint "derivatives", "lot_size IS NULL OR lot_size > 0", name: "chk_derivatives_lot_size_positive", validate: false
-  add_check_constraint "derivatives", "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying, 'PE'::character varying]::text[]))", name: "chk_derivatives_option_type_valid", validate: false
+  add_check_constraint "derivatives", "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying::text, 'PE'::character varying::text]))", name: "chk_derivatives_option_type_valid", validate: false
   add_check_constraint "derivatives", "strike_price IS NULL OR strike_price >= 0::numeric", name: "chk_derivatives_strike_price_non_negative", validate: false
   add_check_constraint "derivatives", "tick_size IS NULL OR tick_size >= 0::numeric", name: "chk_derivatives_tick_size_non_negative", validate: false
 
@@ -187,7 +187,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_140000) do
   end
 
   add_check_constraint "instruments", "lot_size IS NULL OR lot_size > 0", name: "chk_instruments_lot_size_positive", validate: false
-  add_check_constraint "instruments", "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying, 'PE'::character varying]::text[]))", name: "chk_instruments_option_type_valid", validate: false
+  add_check_constraint "instruments", "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying::text, 'PE'::character varying::text]))", name: "chk_instruments_option_type_valid", validate: false
   add_check_constraint "instruments", "strike_price IS NULL OR strike_price >= 0::numeric", name: "chk_instruments_strike_price_non_negative", validate: false
   add_check_constraint "instruments", "tick_size IS NULL OR tick_size >= 0::numeric", name: "chk_instruments_tick_size_non_negative", validate: false
 
