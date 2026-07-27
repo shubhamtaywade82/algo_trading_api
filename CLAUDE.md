@@ -121,6 +121,27 @@ of what this repo already does. Don't re-open them without a concrete reason.
 - Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
   mode simulates fills, margin, positions and P&L with real charges.
 
+## LLM layer
+
+- **`Openai::ChatRouter` is the switch.** Every chat caller goes through it, so
+  the backend is env-selected (`LLM_BACKEND=ollama_cloud`), never per-caller.
+- **`Llm::KeyRotator` owns Ollama Cloud auth.** Up to five keys from
+  `OLLAMA_API_KEY_1..5`, quarantined 5 minutes on 401/403/402/429/5xx. Never
+  rotate on `BadRequestError`/`ModelNotFoundError` — those fail identically on
+  every key and would burn the pool over a caller-side bug.
+- **Never set `ollama_api_key` globally.** Keys are bound per request via
+  `RubyLLM.context`; the feed thread and web requests share this process, so a
+  global `RubyLLM.configure` swaps the key underneath a concurrent caller.
+- `OLLAMA_API_BASE` must end in `/v1` — RubyLLM posts to
+  `{base}/chat/completions`.
+- Cloud model ids are absent from RubyLLM's registry, so chats need
+  `provider: :ollama, assume_model_exists: true`.
+- **`Llm::Tools::*` wrap `AI::Tools::*`**, never reimplement them — one copy of
+  the DhanHQ plumbing. `use_new_acts_as` is set in `config/application.rb`
+  because the railtie reads it before app initializers run.
+- `ai-agents` must stay on a line allowing `ruby_llm >= 1.16`; earlier ruby_llm
+  sent no `Authorization` header at all and could not reach Ollama Cloud.
+
 ## Critical rules
 
 - **DhanHQ only** — no Delta Exchange references anywhere in this repo

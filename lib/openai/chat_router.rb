@@ -13,8 +13,16 @@ module Openai
                   model:  nil,
                   max_tokens: nil,
                   force: false)
+      return ask_ollama_cloud!(user_prompt, system: system, model: model) if ollama_cloud?
+
+      ask_openai!(user_prompt, system: system, model: model, max_tokens: max_tokens, force: force)
+    end
+
+    def self.ask_openai!(user_prompt, system:, model: nil, max_tokens: nil, force: false)
       mdl = resolve_model(model, force, "#{system} #{user_prompt}")
-      Rails.logger.info "[Openai] #{backend_label(mdl)}"
+      # Not `backend_label`: on the fallback path that would claim Ollama Cloud
+      # while OpenAI is actually serving the request.
+      Rails.logger.info "[Openai] #{openai_backend_label(mdl)}"
       params = {
         model: mdl,
         messages: [
@@ -29,8 +37,35 @@ module Openai
       resp.dig('choices', 0, 'message', 'content').to_s.strip
     end
 
+    # Ollama Cloud, through the rotating key pool.
+    #
+    # Every existing caller — the screener, the portfolio and position
+    # analysers, the market commentary — reaches this class rather than a
+    # client, so switching backend is an env change rather than a code change.
+    # If the keys are missing the flag is ignored and OpenAI still serves the
+    # request, so a half-finished rollout cannot take the AI layer down.
+    def self.ask_ollama_cloud!(user_prompt, system:, model: nil)
+      Rails.logger.info "[Openai] #{backend_label(model)}"
+      TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
+      Llm::KeyRotator.ask(user_prompt, system: system, model: model).strip
+    rescue Llm::KeyRotator::Error => e
+      Rails.logger.error("[Openai] Ollama Cloud unavailable, falling back to OpenAI: #{e.message}")
+      ask_openai!(user_prompt, system: system, model: model)
+    end
+
+    # @return [Boolean] whether Ollama Cloud should serve chat requests
+    def self.ollama_cloud?
+      ENV['LLM_BACKEND'].to_s.casecmp('ollama_cloud').zero? && Llm::KeyRotator.configured?
+    end
+
     # Public: so callers can show which backend will be used (e.g. in Telegram).
     def self.backend_label(resolved_model = nil)
+      return "Ollama Cloud (#{resolved_model || Llm::KeyRotator.default_model})" if ollama_cloud?
+
+      openai_backend_label(resolved_model)
+    end
+
+    def self.openai_backend_label(resolved_model = nil)
       if using_ollama?
         "Ollama (#{resolved_model || ollama_model_from_env})"
       else

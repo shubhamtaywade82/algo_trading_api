@@ -330,6 +330,48 @@ The app exposes an **AI agents orchestration layer** for trading intelligence: m
 
 Full docs, configuration, request/response shapes, and Ruby usage: **[docs/AI_AGENTS.md](docs/AI_AGENTS.md)**.
 
+## 🧠 LLM backend (OpenAI or Ollama Cloud)
+
+Chat requests go through `Openai::ChatRouter`, so the backend is an env change
+rather than a code change in each of its callers (the screener, the portfolio
+and position analysers, the market commentary).
+
+```bash
+LLM_BACKEND=ollama_cloud     # blank = OpenAI
+OLLAMA_API_KEY_1=...         # up to OLLAMA_API_KEY_5
+OLLAMA_API_BASE=https://ollama.com/v1
+OLLAMA_DEFAULT_MODEL=qwen3-coder:480b-cloud
+
+bin/rails llm:keys           # which keys are configured / quarantined
+bin/rails llm:check_keys     # probe each key against the API
+bin/rails llm:ask PROMPT="what is NIFTY's PCR right now?"
+bin/rails llm:propose SYMBOL=NIFTY
+```
+
+**Key rotation.** One key is a single point of failure — rate limits are per
+key, and a revoked one takes the AI layer down. `Llm::KeyRotator` tries up to
+five in order; a key answering 401/403/402/429/5xx is quarantined for five
+minutes and the next is used. A bad request or an unknown model is *not*
+rotated on: it would fail identically on every key, so it raises rather than
+burning the pool. Each attempt runs in its own `RubyLLM.context`, an isolated
+copy of the config, because the market-feed thread and web requests share this
+process and a global `RubyLLM.configure` would swap the key underneath a
+concurrent caller.
+
+Two safety properties are deliberate: the `LLM_BACKEND` flag is ignored unless
+at least one key is present, and exhausting the pool falls back to OpenAI — so
+neither a half-finished rollout nor an Ollama outage stops a screener run.
+
+**Base URL.** Ollama Cloud speaks the OpenAI-compatible API and RubyLLM posts
+to `{base}/chat/completions`, so `OLLAMA_API_BASE` must carry the `/v1` or
+every call 404s. Local Ollama is `http://localhost:11434/v1`.
+
+`Llm::TradingAgent` is the single-model counterpart to `AI::TradeBrain`, with
+tool access to live option chains, candles, funds, positions and sentiment —
+thin wrappers over the existing `AI::Tools::*`, not a second copy of them. Like
+every other path here it stops at a proposal: `Strategy::Validator` and
+`Orders::Gateway` decide what executes.
+
 ## 🏗️ Architecture
 
 ### Core Components

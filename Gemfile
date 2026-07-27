@@ -105,7 +105,15 @@ gem 'openai', require: false
 gem 'ruby-openai', require: false
 
 # Multi-agent AI orchestration (https://github.com/chatwoot/ai-agents)
-gem 'ai-agents'
+# Pinned to a line that allows ruby_llm >= 1.14: 0.9.x pinned ruby_llm ~> 1.9.1,
+# which predates the Ollama provider sending an Authorization header and so
+# could not reach Ollama Cloud at all.
+gem 'ai-agents', '~> 0.12'
+
+# Unified LLM client (https://rubyllm.com). Used directly for the Ollama Cloud
+# path; `ai-agents` also builds on it. >= 1.16 for the authenticated Ollama
+# provider.
+gem 'ruby_llm', '~> 1.16'
 
 gem 'technical-analysis'
 
