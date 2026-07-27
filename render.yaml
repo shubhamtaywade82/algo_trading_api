@@ -8,7 +8,10 @@ services:
   - type: web
     name: algo_trading_api
     runtime: ruby
-    plan: free
+    # Matches the plan the service actually runs on. Left at `free`, a blueprint
+    # sync tries to downgrade it, and a free service also sleeps when idle —
+    # which stops the in-process token refresh thread along with everything else.
+    plan: starter
     buildCommand: "./bin/render-build.sh"
     # Bind explicitly: Render routes to $PORT, and a server left on the default
     # port or on localhost fails the health check even though the app booted.
@@ -50,7 +53,9 @@ services:
         value: "true"
       - key: RAILS_MAX_THREADS
         value: "3"
-      # Helps avoid memory issues on free tier
+      # Starter is a 512 MB container, so two workers is the ceiling — Puma
+      # preloads the app, and each fork adds its own copy-on-write drift on top
+      # of the ~200 MB the scrip-master index takes once it is imported.
       - key: WEB_CONCURRENCY
         value: "2"
 
@@ -60,6 +65,16 @@ services:
       - key: DHAN_API_KEY
         sync: false
       - key: DHAN_API_SECRET
+        sync: false
+
+      # TOTP handshake credentials. Dhan::TokenManager mints and refreshes the
+      # access token itself, and reads both with a strict ENV.fetch — without
+      # them the boot-time refresh dies with a bare KeyError before it ever
+      # reaches auth.dhan.co. DHAN_TOTP_SECRET is the base32 secret from the
+      # authenticator-app setup, not a 6-digit code.
+      - key: DHAN_PIN
+        sync: false
+      - key: DHAN_TOTP_SECRET
         sync: false
 
       # Order placement stays off unless deliberately enabled: both must be
