@@ -99,8 +99,11 @@ module Screeners
     end
 
     def optionable?(inst)
-      # Cheap check: any option contract for same underlying
-      Derivative.exists?(underlying_symbol: inst.underlying_symbol, instrument: 'OPTSTK')
+      # Cheap check: any option contract for same underlying.
+      # There is no `instrument` column — the scrip master's INSTRUMENT field
+      # is stored in `instrument_code` — so this raised StatementInvalid and
+      # the rescue below turned every stock into "not optionable".
+      Derivative.active.exists?(underlying_symbol: inst.underlying_symbol, instrument_code: 'OPTSTK')
     rescue StandardError
       false
     end

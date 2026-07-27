@@ -8,8 +8,12 @@ class Instrument < ApplicationRecord
   # Associations
   has_one :mis_detail, dependent: :destroy
   has_many :derivatives, dependent: :destroy
-  has_many :margin_requirements, as: :requirementable, dependent: :destroy
-  has_many :order_features, as: :featureable, dependent: :destroy
+  # Both satellites are 1:1 — the DB enforces it with a unique index on the
+  # polymorphic pair — so they are has_one, not has_many. They were declared
+  # has_many while `ransackable_associations` already named them in the
+  # singular, so association search never resolved.
+  has_one :margin_requirement, as: :requirementable, dependent: :destroy, inverse_of: :requirementable
+  has_one :order_feature, as: :featureable, dependent: :destroy, inverse_of: :featureable
   has_many :alerts, dependent: :destroy
   has_many :levels, dependent: :destroy
   has_many :quotes, dependent: :destroy
@@ -22,8 +26,8 @@ class Instrument < ApplicationRecord
 
   # Enable nested attributes for associated models
   accepts_nested_attributes_for :derivatives, allow_destroy: true
-  accepts_nested_attributes_for :margin_requirements, allow_destroy: true
-  accepts_nested_attributes_for :order_features, allow_destroy: true
+  accepts_nested_attributes_for :margin_requirement, allow_destroy: true
+  accepts_nested_attributes_for :order_feature, allow_destroy: true
 
   # Enums (explicit attribute types for Rails 8)
   #
@@ -41,8 +45,32 @@ class Instrument < ApplicationRecord
   # and silently discards the enum's value mapping.
 
   # Validations
-  validates :security_id, presence: true, uniqueness: true
+  #
+  # A DhanHQ security_id is unique *within* an exchange segment, not globally —
+  # NSE_EQ 2885 and IDX_I 2885 are different instruments. The previous global
+  # uniqueness rejected legitimate rows on any manual create and scanned the
+  # whole table to do it.
+  validates :security_id, presence: true, uniqueness: { scope: %i[exchange segment] }
   validates :symbol_name, presence: true
+
+  # Scopes
+  scope :active, -> { where(active: true) }
+  scope :inactive, -> { where(active: false) }
+  # Not seen in the most recent scrip master, so the exchange has stopped
+  # listing it. Kept rather than deleted because orders and positions still
+  # reference these rows by security_id.
+  scope :not_seen_since, ->(time) { where(last_seen_at: ...time) }
+  scope :for_segment, ->(segment) { where(exchange_segment: segment.to_s) }
+  scope :tradable, lambda {
+    active.left_joins(:order_feature)
+      .where(order_features: { asm_gsm_flag: [nil, 'N', 'R'] })
+  }
+
+  # The pair every DhanHQ payload and every WebSocket tick is addressed by.
+  # Backed by index_instruments_on_segment_and_security_id.
+  def self.for_tick(exchange_segment:, security_id:)
+    find_by(exchange_segment: exchange_segment.to_s, security_id: security_id.to_s)
+  end
 
   # Class Methods
   SEGMENT_FROM_EXCHANGE = {
@@ -91,6 +119,8 @@ class Instrument < ApplicationRecord
       display_name
       exchange
       segment
+      exchange_segment
+      active
       created_at
       updated_at
     ]

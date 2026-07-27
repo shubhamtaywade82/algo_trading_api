@@ -35,7 +35,9 @@ module Catalog
 
     def load_instruments
       Rails.logger.debug '[INFO] Loading instruments from database'
-      @symbols = Instrument.where(exchange: 'NSE', segment: 'E', instrument: 'EQUITY')
+      # `instrument:` is not a column (the scrip master's INSTRUMENT lands in
+      # `instrument_code`), so this raised StatementInvalid on every run.
+      @symbols = Instrument.active.nse.segment_equity.instrument_code_equity
         .select(:security_id, :symbol_name)
         .distinct
         .limit(500)

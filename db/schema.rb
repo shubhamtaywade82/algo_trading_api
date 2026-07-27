@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_27_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_27_130400) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -63,7 +63,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_120000) do
   end
 
   create_table "derivatives", force: :cascade do |t|
-    t.bigint "instrument_id", null: false
+    t.bigint "instrument_id"
     t.string "exchange"
     t.string "segment"
     t.string "security_id"
@@ -81,33 +81,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_120000) do
     t.string "option_type"
     t.decimal "tick_size", precision: 10, scale: 4
     t.string "expiry_flag"
-    t.string "bracket_flag"
-    t.string "cover_flag"
-    t.string "asm_gsm_flag"
-    t.string "asm_gsm_category"
-    t.string "buy_sell_indicator"
-    t.decimal "buy_co_min_margin_per", precision: 8, scale: 2
-    t.decimal "sell_co_min_margin_per", precision: 8, scale: 2
-    t.decimal "buy_co_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "sell_co_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "buy_co_sl_range_min_perc", precision: 8, scale: 2
-    t.decimal "sell_co_sl_range_min_perc", precision: 8, scale: 2
-    t.decimal "buy_bo_min_margin_per", precision: 8, scale: 2
-    t.decimal "sell_bo_min_margin_per", precision: 8, scale: 2
-    t.decimal "buy_bo_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "buy_bo_sl_range_min_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_sl_min_range", precision: 8, scale: 2
-    t.decimal "buy_bo_profit_range_max_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_profit_range_max_perc", precision: 8, scale: 2
-    t.decimal "buy_bo_profit_range_min_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_profit_range_min_perc", precision: 8, scale: 2
-    t.decimal "mtf_leverage", precision: 8, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "last_seen_at"
+    t.virtual "exchange_segment", type: :string, as: "\nCASE\n    WHEN (((segment)::text = 'I'::text) AND ((exchange)::text = ANY (ARRAY[('NSE'::character varying)::text, ('BSE'::character varying)::text]))) THEN 'IDX_I'::text\n    WHEN (((segment)::text = 'E'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_EQ'::text\n    WHEN (((segment)::text = 'E'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_EQ'::text\n    WHEN (((segment)::text = 'D'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_FNO'::text\n    WHEN (((segment)::text = 'D'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_FNO'::text\n    WHEN (((segment)::text = 'C'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_CURRENCY'::text\n    WHEN (((segment)::text = 'C'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_CURRENCY'::text\n    WHEN (((segment)::text = 'M'::text) AND ((exchange)::text = 'MCX'::text)) THEN 'MCX_COMM'::text\n    ELSE NULL::text\nEND", stored: true
+    t.index ["exchange_segment", "security_id"], name: "index_derivatives_on_segment_and_security_id"
+    t.index ["instrument_id", "expiry_date"], name: "index_derivatives_on_instrument_and_expiry", where: "(instrument_id IS NOT NULL)"
     t.index ["instrument_id"], name: "index_derivatives_on_instrument_id"
+    t.index ["last_seen_at"], name: "index_derivatives_on_last_seen_at"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_derivatives_unique", unique: true
     t.index ["symbol_name"], name: "index_derivatives_on_symbol_name"
+    t.index ["underlying_symbol", "expiry_date", "strike_price", "option_type"], name: "index_derivatives_on_options_chain", where: "(active AND (underlying_symbol IS NOT NULL))"
     t.index ["underlying_symbol", "expiry_date"], name: "index_derivatives_on_underlying_symbol_and_expiry_date", where: "(underlying_symbol IS NOT NULL)"
   end
 
@@ -145,6 +130,24 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_120000) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "instrument_sync_runs", force: :cascade do |t|
+    t.string "source", default: "url", null: false
+    t.string "status", default: "running", null: false
+    t.datetime "started_at", null: false
+    t.datetime "finished_at"
+    t.integer "instrument_rows", default: 0, null: false
+    t.integer "derivative_rows", default: 0, null: false
+    t.integer "instrument_upserts", default: 0, null: false
+    t.integer "derivative_upserts", default: 0, null: false
+    t.integer "unparented_derivatives", default: 0, null: false
+    t.integer "deactivated_rows", default: 0, null: false
+    t.text "error_message"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["started_at"], name: "index_instrument_sync_runs_on_started_at"
+    t.index ["status", "started_at"], name: "index_instrument_sync_runs_on_status_and_started_at"
+  end
+
   create_table "instruments", force: :cascade do |t|
     t.string "exchange", null: false
     t.string "segment", null: false
@@ -163,32 +166,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_120000) do
     t.string "option_type"
     t.decimal "tick_size"
     t.string "expiry_flag"
-    t.string "bracket_flag"
-    t.string "cover_flag"
-    t.string "asm_gsm_flag"
-    t.string "asm_gsm_category"
-    t.string "buy_sell_indicator"
-    t.decimal "buy_co_min_margin_per", precision: 8, scale: 2
-    t.decimal "sell_co_min_margin_per", precision: 8, scale: 2
-    t.decimal "buy_co_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "sell_co_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "buy_co_sl_range_min_perc", precision: 8, scale: 2
-    t.decimal "sell_co_sl_range_min_perc", precision: 8, scale: 2
-    t.decimal "buy_bo_min_margin_per", precision: 8, scale: 2
-    t.decimal "sell_bo_min_margin_per", precision: 8, scale: 2
-    t.decimal "buy_bo_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_sl_range_max_perc", precision: 8, scale: 2
-    t.decimal "buy_bo_sl_range_min_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_sl_min_range", precision: 8, scale: 2
-    t.decimal "buy_bo_profit_range_max_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_profit_range_max_perc", precision: 8, scale: 2
-    t.decimal "buy_bo_profit_range_min_perc", precision: 8, scale: 2
-    t.decimal "sell_bo_profit_range_min_perc", precision: 8, scale: 2
-    t.decimal "mtf_leverage", precision: 8, scale: 2
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "last_seen_at"
+    t.virtual "exchange_segment", type: :string, as: "\nCASE\n    WHEN (((segment)::text = 'I'::text) AND ((exchange)::text = ANY (ARRAY[('NSE'::character varying)::text, ('BSE'::character varying)::text]))) THEN 'IDX_I'::text\n    WHEN (((segment)::text = 'E'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_EQ'::text\n    WHEN (((segment)::text = 'E'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_EQ'::text\n    WHEN (((segment)::text = 'D'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_FNO'::text\n    WHEN (((segment)::text = 'D'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_FNO'::text\n    WHEN (((segment)::text = 'C'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_CURRENCY'::text\n    WHEN (((segment)::text = 'C'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_CURRENCY'::text\n    WHEN (((segment)::text = 'M'::text) AND ((exchange)::text = 'MCX'::text)) THEN 'MCX_COMM'::text\n    ELSE NULL::text\nEND", stored: true
+    t.index ["exchange_segment", "security_id"], name: "index_instruments_on_segment_and_security_id"
     t.index ["instrument_code"], name: "index_instruments_on_instrument_code"
+    t.index ["last_seen_at"], name: "index_instruments_on_last_seen_at"
     t.index ["security_id", "symbol_name", "exchange", "segment"], name: "index_instruments_unique", unique: true
+    t.index ["segment", "instrument_code", "active"], name: "index_instruments_on_segment_and_code"
     t.index ["symbol_name"], name: "index_instruments_on_symbol_name"
     t.index ["underlying_symbol", "expiry_date"], name: "index_instruments_on_underlying_symbol_and_expiry_date", where: "(underlying_symbol IS NOT NULL)"
   end
@@ -276,7 +263,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_120000) do
     t.string "buy_sell_indicator"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["featureable_type", "featureable_id"], name: "index_order_features_on_featureable"
+    t.string "asm_gsm_flag"
+    t.string "asm_gsm_category"
+    t.decimal "mtf_leverage", precision: 8, scale: 2
+    t.index ["featureable_type", "featureable_id"], name: "index_order_features_on_featureable", unique: true
   end
 
   create_table "orders", force: :cascade do |t|

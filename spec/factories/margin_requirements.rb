@@ -2,7 +2,8 @@
 
 FactoryBot.define do
   factory :margin_requirement do
-    instrument
+    # Polymorphic owner (`requirementable`) — `instrument` is not an attribute.
+    requirementable factory: :instrument
     buy_co_min_margin_per { 20.0 }
     sell_co_min_margin_per { 20.0 }
     buy_bo_min_margin_per { 10.0 }

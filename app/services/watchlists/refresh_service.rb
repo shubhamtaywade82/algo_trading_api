@@ -223,10 +223,13 @@ module Watchlists
     end
 
     def derivative_flags(inst)
-      # Cheap DB checks; index derivatives.instrument, derivatives.underlying_symbol for speed
+      # Cheap DB checks against index_derivatives_on_options_chain.
+      # The column is `instrument_code`, not `instrument`; querying the latter
+      # raised StatementInvalid and the rescue below reported no derivatives
+      # for every symbol.
       under = inst.underlying_symbol
-      has_opt = Derivative.exists?(underlying_symbol: under, instrument: 'OPTSTK')
-      has_fut = Derivative.exists?(underlying_symbol: under, instrument: 'FUTSTK')
+      has_opt = Derivative.active.exists?(underlying_symbol: under, instrument_code: 'OPTSTK')
+      has_fut = Derivative.active.exists?(underlying_symbol: under, instrument_code: 'FUTSTK')
 
       { has_derivatives: has_opt || has_fut, has_options: has_opt, has_futures: has_fut }
     rescue StandardError

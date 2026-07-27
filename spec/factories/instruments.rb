@@ -13,9 +13,6 @@ FactoryBot.define do
     series { 'EQ' }
     lot_size { 1 }
     tick_size { 0.5 }
-    asm_gsm_flag { 'N' }
-    asm_gsm_category { 'NA' }
-    mtf_leverage { 3.77 }
     exchange { 'nse' }
     segment { 'equity' }
 
@@ -36,9 +33,6 @@ FactoryBot.define do
       series { 'X' }
       lot_size { 1 }
       tick_size { 0.1 }
-      asm_gsm_flag { 'N' }
-      asm_gsm_category { 'NA' }
-      mtf_leverage { 0.0 }
       exchange { 'nse' }
       segment { 'index' }
     end
@@ -54,9 +48,6 @@ FactoryBot.define do
       series { 'X' }
       lot_size { 1 }
       tick_size { 0.1 }
-      asm_gsm_flag { 'N' }
-      asm_gsm_category { 'NA' }
-      mtf_leverage { 0.0 }
       exchange { 'nse' }
       segment { 'index' }
     end
@@ -72,9 +63,6 @@ FactoryBot.define do
       series { 'NA' }
       lot_size { 75 }
       tick_size { 0.5 }
-      asm_gsm_flag { 'N' }
-      asm_gsm_category { 'NA' }
-      mtf_leverage { 0.0 }
       exchange { 'nse' }
       segment { 'derivatives' }
     end
@@ -90,9 +78,6 @@ FactoryBot.define do
       series { 'NA' }
       lot_size { 75 }
       tick_size { 0.5 }
-      asm_gsm_flag { 'N' }
-      asm_gsm_category { 'NA' }
-      mtf_leverage { 0.0 }
       exchange { 'nse' }
       segment { 'derivatives' }
     end
