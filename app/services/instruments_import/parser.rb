@@ -123,7 +123,7 @@ module InstrumentsImport
         tick_size: safe_float(row['TICK_SIZE']),
         expiry_date: safe_date(row['SM_EXPIRY_DATE']),
         strike_price: safe_float(row['STRIKE_PRICE']),
-        option_type: row['OPTION_TYPE'].presence,
+        option_type: option_type_for(row),
         expiry_flag: row['EXPIRY_FLAG'],
         # Present in this feed, so tradable and seen now. The staleness sweep
         # flips `active` on whatever the feed stopped listing.
@@ -132,6 +132,16 @@ module InstrumentsImport
         created_at: now,
         updated_at: now
       }
+    end
+
+    # MCX ships OPTION_TYPE = "XX" on futures rows (GOLD FEB FUT and friends),
+    # which is the exchange's way of saying "not an option". Stored verbatim it
+    # satisfies neither `Derivative#option?` nor the `futures` scope, so those
+    # contracts fell through both — and it is the one value that breaks the
+    # CE/PE CHECK constraint. Only a real option type survives.
+    def option_type_for(row)
+      value = row['OPTION_TYPE'].to_s.strip.upcase
+      Derivative::OPTION_TYPES.include?(value) ? value : nil
     end
 
     def build_feature(row)

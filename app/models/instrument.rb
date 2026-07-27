@@ -53,6 +53,14 @@ class Instrument < ApplicationRecord
   validates :security_id, presence: true, uniqueness: { scope: %i[exchange segment] }
   validates :symbol_name, presence: true
 
+  # Mirrors the CHECK constraints added in 20260727140000 so a record built by
+  # hand fails with an ActiveRecord error instead of a PG::CheckViolation. The
+  # database keeps the real guarantee: the importer writes through
+  # activerecord-import, which skips validations entirely.
+  validates :lot_size, numericality: { greater_than: 0 }, allow_nil: true
+  validates :tick_size, :strike_price,
+            numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+
   # Scopes
   scope :active, -> { where(active: true) }
   scope :inactive, -> { where(active: false) }
@@ -96,6 +104,29 @@ class Instrument < ApplicationRecord
 
     code = segment_code.to_s.upcase.strip
     SEGMENT_FROM_EXCHANGE[code] || code.downcase
+  end
+
+  # Resolves a human-supplied symbol ("SENSEX", "NIFTY", "INFY") against the
+  # three columns the scrip master actually fills — UNDERLYING_SYMBOL,
+  # SYMBOL_NAME and DISPLAY_NAME. There is no `trading_symbol` column on
+  # instruments (it lives on positions/orders, which are broker payloads), so
+  # querying one raised PG::UndefinedColumn instead of returning nil for a
+  # symbol that simply is not in the table.
+  #
+  # `exchange` and `segment` take enum keys (:bse, :index) or DB values.
+  def self.lookup_by_symbol(symbol, exchange: nil, segment: nil)
+    sym = symbol.to_s.upcase.strip
+    return nil if sym.blank?
+
+    scope = all
+    scope = scope.where(exchange: exchange) if exchange.present?
+    scope = scope.where(segment: segment) if segment.present?
+
+    scope.find_by(underlying_symbol: sym) ||
+      scope.find_by(symbol_name: sym) ||
+      # DISPLAY_NAME is title-cased in the feed ("Sensex", "Nifty 50"), so this
+      # last resort compares case-insensitively.
+      scope.where('UPPER(display_name) = ?', sym).first
   end
 
   def self.find_by_sid_and_segment(security_id:, segment_code:, symbol_name: nil)

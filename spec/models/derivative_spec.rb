@@ -22,7 +22,50 @@ RSpec.describe Derivative do
     it 'rejects an option type the exchange does not issue' do
       expect(build(:derivative, option_type: 'XX')).not_to be_valid
     end
+
+    it 'rejects a non-positive lot size' do
+      derivative = build(:derivative, lot_size: 0)
+
+      expect(derivative).not_to be_valid
+      expect(derivative.errors[:lot_size]).to be_present
+    end
+
+    it 'rejects a negative strike' do
+      derivative = build(:derivative, strike_price: -50)
+
+      expect(derivative).not_to be_valid
+      expect(derivative.errors[:strike_price]).to be_present
+    end
   end
+
+  # activerecord-import skips validations, so the import path is guarded by the
+  # database alone. update_column throughout: bypassing the model is the point.
+  # rubocop:disable Rails/SkipsModelValidations
+  describe 'CHECK constraints' do
+    let(:derivative) { create(:derivative) }
+
+    it 'rejects a non-positive lot_size' do
+      expect { derivative.update_column(:lot_size, 0) }
+        .to raise_error(ActiveRecord::StatementInvalid, /chk_derivatives_lot_size_positive/)
+    end
+
+    it 'rejects a negative strike_price' do
+      expect { derivative.update_column(:strike_price, -100) }
+        .to raise_error(ActiveRecord::StatementInvalid, /chk_derivatives_strike_price_non_negative/)
+    end
+
+    it 'rejects an option_type outside CE/PE' do
+      expect { derivative.update_column(:option_type, 'XX') }
+        .to raise_error(ActiveRecord::StatementInvalid, /chk_derivatives_option_type_valid/)
+    end
+
+    it 'survives a bulk import of well-formed rows' do
+      rows = [attributes_for(:derivative, security_id: '99001', symbol_name: 'NIFTY-BULK-CE').except(:instrument)]
+
+      expect { described_class.import(rows, validate: false) }.to change(described_class, :count).by(1)
+    end
+  end
+  # rubocop:enable Rails/SkipsModelValidations
 
   describe 'underlying link' do
     it 'stores a contract whose underlying is not in the instrument master' do

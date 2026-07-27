@@ -19,7 +19,18 @@ RSpec.describe Paper::Exchange do
       quantity: 10, order_type: 'MARKET', product_type: 'INTRADAY' }
   end
 
+  # The book's only clock is the tick stream, so `process_tick` also drives the
+  # session boundaries. Run for real after 15:15 IST and
+  # `EodSquareOff.run_if_due` fires inside these examples: it cancels the
+  # resting order one of them is asserting stays pending, and closes the
+  # position another expects the trailed stop to close — which then reopens
+  # short when the stop fires. That made this file pass or fail on the time of
+  # day it was run. Pin the clock to mid-session on a weekday; the boundary
+  # behaviour itself belongs to (and is covered by) day_session_spec.
+  # Travelled without a block so the one example that needs its own clock can
+  # still use the block form; nesting the two raises.
   before do
+    travel_to(Time.zone.parse('2026-07-27 11:00:00'))
     Live::TickCache.clear!
     Live::TickCache.put('NSE_EQ', '1333', ltp: 1_500.0)
   end

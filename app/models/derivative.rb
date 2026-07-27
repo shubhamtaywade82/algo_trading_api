@@ -34,6 +34,12 @@ class Derivative < ApplicationRecord
   validates :option_type, inclusion: { in: OPTION_TYPES }, allow_nil: true
   validates :strike_price, :option_type, presence: true, if: :option?
 
+  # Mirrors the CHECK constraints added in 20260727140000. See Instrument for
+  # why the database, not this, is the real guarantee.
+  validates :lot_size, numericality: { greater_than: 0 }, allow_nil: true
+  validates :tick_size, :strike_price,
+            numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+
   # Scopes
   scope :active, -> { where(active: true) }
   scope :options, -> { where(option_type: OPTION_TYPES) }

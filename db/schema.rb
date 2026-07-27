@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_07_27_130400) do
+ActiveRecord::Schema[8.0].define(version: 2026_07_27_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -96,6 +96,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_130400) do
     t.index ["underlying_symbol", "expiry_date"], name: "index_derivatives_on_underlying_symbol_and_expiry_date", where: "(underlying_symbol IS NOT NULL)"
   end
 
+  add_check_constraint "derivatives", "lot_size IS NULL OR lot_size > 0", name: "chk_derivatives_lot_size_positive", validate: false
+  add_check_constraint "derivatives", "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying, 'PE'::character varying]::text[]))", name: "chk_derivatives_option_type_valid", validate: false
+  add_check_constraint "derivatives", "strike_price IS NULL OR strike_price >= 0::numeric", name: "chk_derivatives_strike_price_non_negative", validate: false
+  add_check_constraint "derivatives", "tick_size IS NULL OR tick_size >= 0::numeric", name: "chk_derivatives_tick_size_non_negative", validate: false
+
   create_table "dhan_access_tokens", force: :cascade do |t|
     t.string "access_token", null: false
     t.datetime "expires_at", null: false
@@ -171,6 +176,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_130400) do
     t.boolean "active", default: true, null: false
     t.datetime "last_seen_at"
     t.virtual "exchange_segment", type: :string, as: "\nCASE\n    WHEN (((segment)::text = 'I'::text) AND ((exchange)::text = ANY (ARRAY[('NSE'::character varying)::text, ('BSE'::character varying)::text]))) THEN 'IDX_I'::text\n    WHEN (((segment)::text = 'E'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_EQ'::text\n    WHEN (((segment)::text = 'E'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_EQ'::text\n    WHEN (((segment)::text = 'D'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_FNO'::text\n    WHEN (((segment)::text = 'D'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_FNO'::text\n    WHEN (((segment)::text = 'C'::text) AND ((exchange)::text = 'NSE'::text)) THEN 'NSE_CURRENCY'::text\n    WHEN (((segment)::text = 'C'::text) AND ((exchange)::text = 'BSE'::text)) THEN 'BSE_CURRENCY'::text\n    WHEN (((segment)::text = 'M'::text) AND ((exchange)::text = 'MCX'::text)) THEN 'MCX_COMM'::text\n    ELSE NULL::text\nEND", stored: true
+    t.index "upper((display_name)::text)", name: "index_instruments_on_upper_display_name", where: "(display_name IS NOT NULL)"
     t.index ["exchange_segment", "security_id"], name: "index_instruments_on_segment_and_security_id"
     t.index ["instrument_code"], name: "index_instruments_on_instrument_code"
     t.index ["last_seen_at"], name: "index_instruments_on_last_seen_at"
@@ -179,6 +185,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_07_27_130400) do
     t.index ["symbol_name"], name: "index_instruments_on_symbol_name"
     t.index ["underlying_symbol", "expiry_date"], name: "index_instruments_on_underlying_symbol_and_expiry_date", where: "(underlying_symbol IS NOT NULL)"
   end
+
+  add_check_constraint "instruments", "lot_size IS NULL OR lot_size > 0", name: "chk_instruments_lot_size_positive", validate: false
+  add_check_constraint "instruments", "option_type IS NULL OR (option_type::text = ANY (ARRAY['CE'::character varying, 'PE'::character varying]::text[]))", name: "chk_instruments_option_type_valid", validate: false
+  add_check_constraint "instruments", "strike_price IS NULL OR strike_price >= 0::numeric", name: "chk_instruments_strike_price_non_negative", validate: false
+  add_check_constraint "instruments", "tick_size IS NULL OR tick_size >= 0::numeric", name: "chk_instruments_tick_size_non_negative", validate: false
 
   create_table "intraday_analyses", force: :cascade do |t|
     t.string "symbol"

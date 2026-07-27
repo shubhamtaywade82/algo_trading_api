@@ -75,6 +75,52 @@ of what this repo already does. Don't re-open them without a concrete reason.
   webhook → `Alert` → `AlertProcessorFactory` → `AlertProcessors::*` → `Orders::Gateway`.
   New asset classes are added as processors, not as a parallel strategy loop.
 
+## Instrument master
+
+The scrip-master schema and import pipeline have been through one round of
+consolidation already (migrations `20260727130100`–`20260727140000`). The
+decisions below are settled; each has a failure mode behind it.
+
+- **`security_id` is unique per exchange segment, never globally.** NSE_EQ 2885
+  and IDX_I 2885 are different instruments. The key is
+  `(security_id, symbol_name, exchange, segment)` — `index_instruments_unique`,
+  and the conflict target every upsert uses. A unique index on `security_id`
+  alone would reject legitimate rows.
+- **`isin` is not unique either.** One ISIN spans a company's NSE and BSE
+  listings plus every derivative written against it.
+- **There is no `trading_symbol` column.** The feed's symbol lands in
+  `symbol_name`, with `display_name` (title-cased) and `underlying_symbol`
+  alongside. `trading_symbol` exists only on the broker-payload tables
+  (`positions`, `holdings`, `exit_logs`, `paper_*`). Resolve symbols through
+  `Instrument.lookup_by_symbol`.
+- **Trading rules live in satellite tables, not JSONB.** `order_features` and
+  `margin_requirements` are polymorphic 1:1 satellites of Instrument/Derivative.
+  The 22 rule columns were moved off the two hottest tables deliberately; a
+  `jsonb` column would put them back, untyped, and needs a GIN index to answer
+  what `tradable`'s join already answers.
+- **`active` + `last_seen_at`, not `is_active`.** The importer stamps
+  `last_seen_at` on every row the feed still lists and
+  `InstrumentsImport::Deactivator` retires the rest. Renaming the column breaks
+  the sweep.
+- **CHECK constraints are the real guard, and they are added NOT VALID.**
+  The importer writes through activerecord-import, which skips validations, so
+  the model validations are for hand-built records only. New constraints go in
+  `validate: false` so a legacy row cannot fail a deploy, then
+  `bin/rails instruments:validate_constraints` promotes them.
+- **Constrain the domain the exchange actually ships.** MCX sends
+  `OPTION_TYPE = "XX"` on futures; `InstrumentsImport::Parser` normalises it to
+  NULL, because a CE/PE check that meets it aborts the entire nightly import.
+  An import that dies on one odd row is worse than the row.
+- **Caching contract lookups is an in-process decision.** Measured on 62k
+  contracts, the options-chain index executes in 0.05ms but a full
+  `Derivative.find_by` round trip is p50 1.3ms / p95 2.8ms — the cost is the
+  round trip, not the index. `Rails.cache` here is solid_cache (Postgres), so a
+  cache layer on top of it buys nothing; only an in-process Hash (0.002ms) is
+  faster. That is why `Dhan::WS::FeedListener.find_instrument_cached` and
+  `Live::TickCache` are plain Ruby hashes. Contract resolution in the order path
+  runs once per order against a ~100ms broker call and is deliberately *not*
+  cached: a stale security_id trades the wrong contract.
+
 ## Live feed and paper trading
 
 - **`Live::MarketFeedHub`** owns one WebSocket per process (wraps
