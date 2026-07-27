@@ -135,6 +135,45 @@ RSpec.describe Dhan::TokenManager do
     end
   end
 
+  describe 'local dashboard token service' do
+    let(:dashboard_token) { 'MY_SECRET_DASHBOARD_BEARER' }
+    let(:local_url) { 'http://localhost:3011/api/dhan_access_token' }
+    let(:expiry) { 24.hours.from_now.change(usec: 0) }
+
+    before do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('DHAN_DASHBOARD_TOKEN').and_return(dashboard_token)
+      allow(ENV).to receive(:[]).with('DHAN_TOKEN_SERVICE_URL').and_return(local_url)
+    end
+
+    it 'fetches and persists token from local dashboard endpoint when available' do
+      stub_request(:get, local_url)
+        .with(headers: { 'Authorization' => "Bearer #{dashboard_token}" })
+        .to_return(
+          status: 200,
+          body: {
+            dhan_access_token: 'local_dash_jwt_token',
+            expiry_time: expiry.iso8601
+          }.to_json,
+          headers: { 'Content-Type' => 'application/json' }
+        )
+
+      expect(described_class.refresh!(reason: :missing)).to eq('local_dash_jwt_token')
+      expect(DhanAccessToken.first).to have_attributes(
+        access_token: 'local_dash_jwt_token',
+        expires_at: expiry
+      )
+    end
+
+    it 'falls back to TOTP when local dashboard request fails' do
+      stub_request(:get, local_url).to_return(status: 500)
+
+      expect(DhanHQ::Auth).to receive(:generate_access_token).once
+      expect(described_class.refresh!(reason: :missing)).to eq(new_token)
+    end
+  end
+
   describe 'diagnostics' do
     it 'names the empty response so an unparsed body is identifiable in the log' do
       allow(DhanHQ::Auth).to receive(:generate_access_token).and_return({})

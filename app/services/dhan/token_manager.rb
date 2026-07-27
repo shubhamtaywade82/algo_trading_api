@@ -35,16 +35,9 @@ module Dhan
 
           notify_refresh(reason)
 
-          Rails.logger.warn('[DHAN] Regenerating token via TOTP...')
-
-          response = DhanHQ::Auth.generate_access_token(
-            dhan_client_id: creds[:client_id],
-            pin: creds[:pin],
-            totp: generate_totp
-          )
-
-          access_token = extract_access_token(response)
-          expires_at = extract_expiry_time(response)
+          token_info = fetch_from_local_dashboard || fetch_via_totp
+          access_token = token_info[:access_token]
+          expires_at = token_info[:expires_at]
 
           persist_token(access_token, expires_at)
 
@@ -52,6 +45,73 @@ module Dhan
 
           access_token
         end
+      end
+
+      def fetch_from_local_dashboard
+        return nil unless should_try_local_dashboard?
+
+        response = request_local_dashboard_token
+        return nil unless response&.success?
+
+        parse_local_dashboard_response(response.body)
+      rescue StandardError => e
+        Rails.logger.warn("[DHAN] Local dashboard token service call failed (#{e.class}: #{e.message}).")
+        nil
+      end
+
+      def request_local_dashboard_token
+        url = ENV['DHAN_TOKEN_SERVICE_URL'].presence || 'http://localhost:3011/api/dhan_access_token'
+        bearer = ENV['DHAN_DASHBOARD_TOKEN'].presence || ENV['DASHBOARD_TOKEN'].presence || 'YOUR_DASHBOARD_TOKEN'
+
+        Rails.logger.info("[DHAN] Attempting to fetch access token from local dashboard (#{url})...")
+
+        Faraday.get(url) do |req|
+          req.headers['Authorization'] = "Bearer #{bearer}"
+          req.headers['Accept'] = 'application/json'
+          req.options.timeout = 3
+          req.options.open_timeout = 2
+        end
+      end
+
+      def parse_local_dashboard_response(body)
+        data = begin
+          JSON.parse(body.to_s)
+        rescue JSON::ParserError
+          {}
+        end
+
+        token = data['dhan_access_token'] || data['dhanaccesstoken'] || data['accessToken']
+        raw_expiry = data['expiry_time'] || data['expiryTime'] || data['expires_at']
+        return nil if token.blank? || raw_expiry.blank?
+
+        expires_at = Time.zone.parse(raw_expiry.to_s)
+        Rails.logger.info("[DHAN] Successfully retrieved access token from local dashboard service. Expires at #{expires_at}")
+        { access_token: token, expires_at: expires_at }
+      end
+
+      def fetch_via_totp
+        Rails.logger.warn('[DHAN] Regenerating token via TOTP...')
+
+        c = creds
+        response = DhanHQ::Auth.generate_access_token(
+          dhan_client_id: c[:client_id],
+          pin: c[:pin],
+          totp: generate_totp
+        )
+
+        {
+          access_token: extract_access_token(response),
+          expires_at: extract_expiry_time(response)
+        }
+      end
+
+      def should_try_local_dashboard?
+        return false if Rails.env.test? && ENV['DHAN_TOKEN_SERVICE_URL'].blank? && ENV['DHAN_DASHBOARD_TOKEN'].blank?
+
+        ENV['DHAN_TOKEN_SERVICE_URL'].present? ||
+          ENV['DHAN_DASHBOARD_TOKEN'].present? ||
+          ENV['DASHBOARD_TOKEN'].present? ||
+          Rails.env.development?
       end
 
       # Executes block under PostgreSQL advisory lock.

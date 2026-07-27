@@ -5,20 +5,23 @@ module Dhan
   class MarketDataService < ApplicationService
     def initialize(instrument)
       @instrument = instrument
+      @retried_auth = false
     end
 
     def fetch_option_chain(expiry = nil)
       expiry ||= expiry_list.first
-      response = DhanHQ::Models::OptionChain.fetch(
-        underlying_scrip: @instrument.security_id.to_i,
-        underlying_seg: @instrument.exchange_segment,
-        expiry: expiry
-      )
-      last_price, oc_data = option_chain_extract(response)
-      return nil unless oc_data
+      with_token_retry do
+        response = DhanHQ::Models::OptionChain.fetch(
+          underlying_scrip: @instrument.security_id.to_i,
+          underlying_seg: @instrument.exchange_segment,
+          expiry: expiry
+        )
+        last_price, oc_data = option_chain_extract(response)
+        return nil unless oc_data
 
-      filtered_data = filter_option_chain_data(oc_data)
-      { last_price: last_price, oc: filtered_data }
+        filtered_data = filter_option_chain_data(oc_data)
+        { last_price: last_price, oc: filtered_data }
+      end
     rescue StandardError => e
       log_error("Failed to fetch Option Chain for Instrument #{@instrument.security_id}: #{e.message}")
       nil
@@ -28,8 +31,10 @@ module Dhan
       payload = { @instrument.exchange_segment => [@instrument.security_id.to_i] }
       log_debug("Fetching LTP for Instrument #{@instrument.security_id} (#{@instrument.exchange_segment})")
 
-      response = DhanHQ::Models::MarketFeed.ltp(payload)
-      extract_field_from_feed(response, :last_price)
+      with_token_retry do
+        response = DhanHQ::Models::MarketFeed.ltp(payload)
+        extract_field_from_feed(response, :last_price)
+      end
     rescue StandardError => e
       log_error("Failed to fetch LTP for Instrument #{@instrument.security_id}: #{e.message}")
       nil
@@ -39,8 +44,10 @@ module Dhan
       payload = { @instrument.exchange_segment => [@instrument.security_id.to_i] }
       log_debug("Fetching OHLC for Instrument #{@instrument.security_id} (#{@instrument.exchange_segment})")
 
-      response = DhanHQ::Models::MarketFeed.ohlc(payload)
-      extract_security_data(response)
+      with_token_retry do
+        response = DhanHQ::Models::MarketFeed.ohlc(payload)
+        extract_security_data(response)
+      end
     rescue StandardError => e
       log_error("Failed to fetch OHLC for Instrument #{@instrument.security_id}: #{e.message}")
       nil
@@ -50,8 +57,10 @@ module Dhan
       payload = { @instrument.exchange_segment => [@instrument.security_id.to_i] }
       log_debug("Fetching Depth for Instrument #{@instrument.security_id} (#{@instrument.exchange_segment})")
 
-      response = DhanHQ::Models::MarketFeed.quote(payload)
-      extract_security_data(response)
+      with_token_retry do
+        response = DhanHQ::Models::MarketFeed.quote(payload)
+        extract_security_data(response)
+      end
     rescue StandardError => e
       log_error("Failed to fetch Depth for Instrument #{@instrument.security_id}: #{e.message}")
       nil
@@ -70,17 +79,15 @@ module Dhan
         to_date: to_date_final
       }
 
-      # Add expired option parameters if provided
       params[:expiry_date] = expiry_date if expiry_date
       params[:strike_price] = strike_price if strike_price
       params[:option_type] = option_type if option_type
-
-      # Only include expiry_code for derivative instruments (futures/options)
-      # Note: For expired options, expiry_date is usually provided instead.
       params[:expiry_code] = 0 if instrument_code.to_s.match?(/^(FUT|OPT)/) && expiry_date.nil?
 
       log_debug("Fetching Historical OHLC for Instrument #{@instrument.security_id} with params: #{params.inspect}")
-      CandleNormalizer.columnar(DhanHQ::Models::HistoricalData.daily(params))
+      with_token_retry do
+        CandleNormalizer.columnar(DhanHQ::Models::HistoricalData.daily(params))
+      end
     rescue StandardError => e
       log_error("Failed to fetch Historical OHLC for Instrument #{@instrument.security_id}: #{e.message}")
       nil
@@ -111,16 +118,15 @@ module Dhan
         to_date: to_date_final
       }
 
-      # Add expired option parameters if provided
       params[:expiry_date] = expiry_date if expiry_date
       params[:strike_price] = strike_price if strike_price
       params[:option_type] = option_type if option_type
 
       log_debug("Fetching Intraday OHLC for Instrument #{@instrument.security_id} with params: #{params.inspect}")
-      response = DhanHQ::Models::HistoricalData.intraday(params)
+      response = with_token_retry do
+        DhanHQ::Models::HistoricalData.intraday(params)
+      end
 
-      # DhanHQ >= 3.0 returns an Array of candle hashes here; fold it back into
-      # the columnar shape the rest of the app indexes into.
       data = CandleNormalizer.columnar(response) || {}
       log_debug("Raw Intraday OHLC response: #{data.keys.inspect}")
       data
@@ -130,12 +136,10 @@ module Dhan
     end
 
     def rolling_ohlc(from_date:, to_date:, interval: '5', strike: 'ATM', option_type: 'CALL', expiry_flag: 'WEEK', expiry_code: 1)
-      # The DhanHQ gem doesn't have a built-in method for /charts/rollingoption yet,
-      # so we use the underlying Resource client to make the POST request.
       resource = DhanHQ::Models::HistoricalData.resource
       params = {
         exchange_segment: 'NSE_FNO',
-        security_id: @instrument.security_id.to_s, # Underlying (e.g., 13 for NIFTY)
+        security_id: @instrument.security_id.to_s,
         instrument: 'OPTIDX',
         expiry_flag: expiry_flag,
         expiry_code: expiry_code,
@@ -149,17 +153,12 @@ module Dhan
 
       log_debug("Fetching Rolling Option OHLC for #{@instrument.underlying_symbol} with params: #{params.inspect}")
 
-      # resource.post calls /v2/charts + endpoint
-      response = resource.post('/rollingoption', params: params)
+      response = with_token_retry do
+        resource.post('/rollingoption', params: params)
+      end
 
-      # Debug log the full response
       log_debug("Raw Rolling Option OHLC response: #{response.inspect}")
-
-      # Ensure it's a Hash with indifferent access
       full_data = response.is_a?(Hash) ? response.with_indifferent_access : {}
-
-      # The API returns {"data" => {"ce" => {...}, "pe" => {...}}}
-      # We extract the specific type requested (ce or pe)
       type_key = option_type.to_s.upcase == 'CALL' ? 'ce' : 'pe'
       data = full_data.dig(:data, type_key) || {}
 
@@ -172,19 +171,39 @@ module Dhan
     end
 
     def expiry_list
-      DhanHQ::Models::OptionChain.fetch_expiry_list(
-        underlying_scrip: @instrument.security_id.to_i,
-        underlying_seg: @instrument.exchange_segment
-      )
+      with_token_retry do
+        DhanHQ::Models::OptionChain.fetch_expiry_list(
+          underlying_scrip: @instrument.security_id.to_i,
+          underlying_seg: @instrument.exchange_segment
+        )
+      end
     end
 
     private
+
+    def with_token_retry
+      yield
+    rescue StandardError => e
+      if dhan_auth_error?(e) && !@retried_auth
+        @retried_auth = true
+        log_warn("Dhan auth error encountered (#{e.message}). Force refreshing token and retrying...")
+        Dhan::TokenManager.force_refresh!
+        retry
+      end
+      raise e
+    end
+
+    def dhan_auth_error?(e)
+      return true if e.is_a?(DhanHQ::InvalidTokenError) || e.is_a?(DhanHQ::TokenExpiredError) || e.is_a?(DhanHQ::InvalidAuthenticationError)
+
+      msg = e.message.to_s
+      msg.include?('DH-906') || msg.include?('Invalid Token') || msg.include?('401') || msg.include?('805')
+    end
 
     def extract_field_from_feed(response, field)
       security_data = extract_security_data(response)
       return nil unless security_data
 
-      # Common field names for LTP/Price across different API responses
       fields = [field, :ltp, 'last_price', 'ltp']
       value = nil
       fields.each do |f|
@@ -223,15 +242,10 @@ module Dhan
 
       last_price = data.is_a?(Hash) ? (data['last_price'] || data[:last_price]) : nil
       oc_data = data.is_a?(Hash) ? (data['oc'] || data[:oc]) : nil
-      # DhanHQ >= 3.0 replaced the `oc` strike-keyed hash with a sorted
-      # `strikes` array of { strike:, call:, put: }. Fold it back so the
-      # analyzers keep receiving the strike-keyed shape they index into.
       oc_data ||= strikes_to_oc(data['strikes'] || data[:strikes])
       [last_price, oc_data]
     end
 
-    # @param strikes [Array<Hash>, nil]
-    # @return [HashWithIndifferentAccess, nil] strike-keyed legs, or nil
     def strikes_to_oc(strikes)
       return nil unless strikes.is_a?(Array)
 
@@ -241,8 +255,6 @@ module Dhan
         strike = row['strike'] || row[:strike]
         next if strike.nil?
 
-        # Callers index strikes by their original API formatting, e.g.
-        # `oc[format('%.6f', 23_000.0)]` in Option::ChainAnalyzer scoring.
         out[format('%.6f', strike.to_f)] = {
           'ce' => row['call'] || row[:call],
           'pe' => row['put'] || row[:put]

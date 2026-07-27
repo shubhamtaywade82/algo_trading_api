@@ -17,6 +17,7 @@ RubyLLM.configure do |config|
   if use_ollama_dev
     config.openai_api_base = ENV['OPENAI_URI_BASE'].presence || 'http://localhost:11434/v1'
     config.openai_api_key  = ENV['OPENAI_API_KEY'].presence || 'ollama'
+    config.openai_use_system_role = true
   else
     config.openai_api_base = ENV['OPENAI_URI_BASE'].presence
     config.openai_api_key  = ENV.fetch('OPENAI_API_KEY', nil)
