@@ -24,8 +24,11 @@ RSpec.describe UpdateStrategyExamplesJob do
         allow(Option::StrategyExampleUpdater).to receive(:update_examples).and_raise(StandardError, 'Update failed')
       end
 
-      it 'raises the error' do
-        expect { described_class.perform_now(option_chain, params) }.to raise_error(StandardError, 'Update failed')
+      # ApplicationJob retries a transient failure instead of letting the first
+      # one escape; the policy itself is covered in spec/jobs/application_job_spec.rb.
+      it 'is retried rather than raising on the first failure' do
+        expect { described_class.perform_now(option_chain, params) }
+          .to change { ActiveJob::Base.queue_adapter.enqueued_jobs.size }.by(1)
       end
     end
   end

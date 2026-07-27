@@ -47,8 +47,11 @@ RSpec.describe PortfolioInsights::DailyReporterJob do
         allow(PortfolioInsights::Analyzer).to receive(:call)
       end
 
-      it 'raises the error' do
-        expect { described_class.perform_now }.to raise_error(StandardError, 'API failed')
+      # ApplicationJob retries a transient failure instead of letting the first
+      # one escape; the policy itself is covered in spec/jobs/application_job_spec.rb.
+      it 'is retried rather than raising on the first failure' do
+        expect { described_class.perform_now }
+          .to change { ActiveJob::Base.queue_adapter.enqueued_jobs.size }.by(1)
       end
     end
 
@@ -66,8 +69,9 @@ RSpec.describe PortfolioInsights::DailyReporterJob do
         allow(PortfolioInsights::Analyzer).to receive(:call).and_raise(StandardError, 'Analysis failed')
       end
 
-      it 'raises the error' do
-        expect { described_class.perform_now }.to raise_error(StandardError, 'Analysis failed')
+      it 'is retried rather than raising on the first failure' do
+        expect { described_class.perform_now }
+          .to change { ActiveJob::Base.queue_adapter.enqueued_jobs.size }.by(1)
       end
     end
 

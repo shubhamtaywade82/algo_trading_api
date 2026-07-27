@@ -409,6 +409,29 @@ Things that previously broke the deploy, and where they are fixed:
 | `KeyError: key not found: "OPENAI_API_KEY"` | Initializer used a bare `ENV.fetch` | Missing key now fails on the call that needs it, not at boot |
 | Deploy live but unhealthy | No `healthCheckPath`, server not bound to `$PORT` | `healthCheckPath: /up` and an explicit Puma bind |
 | `No database configuration found` for cache/queue/cable | `config/database.yml` had no `production:` section at all | Added, with the three companion databases |
+| `KeyError: key not found: "DHAN_PIN"` from a background job | `Dhan::TokenManager` regenerates a missing token over TOTP and read its credentials with a bare `ENV.fetch` | The refresh path now names every missing variable at once and points at `/auth/dhan/login`; `DHAN_PIN` and `DHAN_TOTP_SECRET` are declared in `render.yaml` |
+
+### Background jobs
+
+`config.active_job.queue_adapter = :async` in production, so jobs run in the
+web process — a job that fails prints its backtrace into the service log.
+
+- **Every job checks the Dhan token first.** `ApplicationJob` has a
+  `before_perform` that calls `Dhan::TokenManager.current_token!`, which
+  regenerates over TOTP when the database holds no token — a fresh deploy, or
+  the first run after a token expires. That needs `DHAN_CLIENT_ID`, `DHAN_PIN`
+  and `DHAN_TOTP_SECRET`; without them nothing in the background runs until
+  someone signs in at `/auth/dhan/login` by hand.
+- **Retries are ordered, not decorative.** ActiveJob matches rescue handlers
+  last-registered-first, so `retry_on StandardError` is declared first and the
+  deterministic failures (`KeyError`, `NameError`,
+  `ActiveRecord::RecordInvalid`) after it. A blanket `rescue_from` used to sit
+  in that second position and shadow `retry_on` entirely, so no job ever
+  retried. The wait is `:polynomially_longer` — Rails 8 removed
+  `:exponentially_longer`, which the old declaration still asked for.
+- **`ENABLE_TA_LOOP=true`** starts a thread at boot that enqueues
+  `UpdateTechnicalAnalysisJob` every three minutes between 09:10 and 15:30 IST.
+  Anything failing inside it repeats on that cadence.
 
 ## 🏗️ Architecture
 

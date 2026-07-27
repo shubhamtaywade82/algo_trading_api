@@ -40,8 +40,11 @@ RSpec.describe CsvImportJob do
         allow(URI).to receive(:open).and_raise(StandardError, 'Download failed')
       end
 
-      it 'raises the error' do
-        expect { described_class.perform_now }.to raise_error(StandardError, 'Download failed')
+      # ApplicationJob retries a transient failure instead of letting the first
+      # one escape; the policy itself is covered in spec/jobs/application_job_spec.rb.
+      it 'is retried rather than raising on the first failure' do
+        expect { described_class.perform_now }
+          .to change { ActiveJob::Base.queue_adapter.enqueued_jobs.size }.by(1)
       end
     end
 
@@ -50,8 +53,9 @@ RSpec.describe CsvImportJob do
         allow(InstrumentsImporter).to receive(:import).and_raise(StandardError, 'Import failed')
       end
 
-      it 'raises the error' do
-        expect { described_class.perform_now }.to raise_error(StandardError, 'Import failed')
+      it 'is retried rather than raising on the first failure' do
+        expect { described_class.perform_now }
+          .to change { ActiveJob::Base.queue_adapter.enqueued_jobs.size }.by(1)
       end
     end
   end

@@ -62,6 +62,15 @@ services:
       - key: DHAN_API_SECRET
         sync: false
 
+      # Unattended token refresh. Dhan::TokenManager regenerates an expired or
+      # missing token over TOTP, and needs both of these plus DHAN_CLIENT_ID to
+      # do it. Without them every background job fails on its token check until
+      # someone signs in at /auth/dhan/login by hand.
+      - key: DHAN_PIN
+        sync: false
+      - key: DHAN_TOTP_SECRET
+        sync: false
+
       # Order placement stays off unless deliberately enabled: both must be
       # "true" before anything reaches the broker (see Orders::Gateway).
       - key: PLACE_ORDER

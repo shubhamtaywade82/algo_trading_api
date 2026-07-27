@@ -7,6 +7,17 @@ module Dhan
     LOCK_KEY = 424_242
     NOTIFY_CACHE_KEY = 'dhan_token_refresh_notify_lock'.freeze
 
+    # Environment the TOTP refresh path needs. Only that path needs them: a
+    # token stored by the one-time login at /auth/dhan/login is served straight
+    # from the database.
+    REFRESH_ENV_KEYS = %w[DHAN_CLIENT_ID DHAN_PIN DHAN_TOTP_SECRET].freeze
+
+    # Raised when a refresh is asked for with credentials that were never
+    # configured. Subclasses KeyError because that is what it is — a missing
+    # environment key — which also keeps ApplicationJob's discard list matching
+    # it, so a job hitting this is logged once rather than retried five times.
+    class MissingCredentialsError < KeyError; end
+
     class << self
       # Returns a valid access token, refreshing if missing/expiring.
       def current_token!
@@ -159,7 +170,21 @@ module Dhan
       end
 
       # Required Dhan authentication credentials.
+      #
+      # These were three bare ENV.fetch calls, so a deployment without them
+      # raised `KeyError: key not found: "DHAN_PIN"` — the name of one variable
+      # and nothing else — from inside whatever job happened to ask for a
+      # token. Report the whole set and the alternative instead.
       def creds
+        missing = REFRESH_ENV_KEYS.reject { |key| ENV[key].present? }
+
+        if missing.any?
+          raise MissingCredentialsError,
+                "Cannot regenerate a Dhan access token: #{missing.join(', ')} not set. " \
+                'Set them to enable TOTP refresh, or sign in once at /auth/dhan/login ' \
+                'to store a token in the database.'
+        end
+
         {
           client_id: ENV.fetch('DHAN_CLIENT_ID'),
           pin: ENV.fetch('DHAN_PIN'),
