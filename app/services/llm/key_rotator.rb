@@ -21,7 +21,7 @@ module Llm
     MAX_KEYS = 5
     QUARANTINE = 5.minutes
     DEFAULT_API_BASE = 'https://ollama.com/v1'
-    DEFAULT_MODEL = 'qwen3-coder:480b-cloud'
+    DEFAULT_MODEL = 'gpt-oss:120b'
 
     # Failures that mean "this key is no good right now".
     #
