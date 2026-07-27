@@ -121,7 +121,7 @@ GEM
       bigdecimal
       rexml
     crass (1.0.6)
-    csv (3.3.5)
+    csv (3.3.6)
     daemons (1.4.1)
     database_cleaner-active_record (2.2.0)
       activerecord (>= 5.a)
@@ -561,7 +561,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
-  DhanHQ (~> 3.2, >= 3.2.1)
+  DhanHQ (~> 3.2, >= 3.2.1, < 3.3)
   activerecord-import
   ai-agents (~> 0.12)
   benchmark-ips
