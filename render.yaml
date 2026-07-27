@@ -10,12 +10,45 @@ services:
     runtime: ruby
     plan: free
     buildCommand: "./bin/render-build.sh"
-    startCommand: "bin/rails server"
+    # Bind explicitly: Render routes to $PORT, and a server left on the default
+    # port or on localhost fails the health check even though the app booted.
+    startCommand: "bundle exec puma -C config/puma.rb -b tcp://0.0.0.0:${PORT}"
+    # /up is Rails' built-in health endpoint (see config/routes.rb). Without it
+    # Render probes /, which this API does not serve, and marks the deploy
+    # unhealthy.
+    healthCheckPath: /up
     envVars:
+      # A DATABASE_URL set in the dashboard overrides this, which is how the
+      # service currently points at an external CockroachDB instance rather
+      # than the Render database declared above.
       - key: DATABASE_URL
         fromDatabase:
           name: AlgoTradingAPI-DB
           property: connectionString
+
+      # Managed Postgres and Cockroach terminate TLS with a public CA. Without
+      # this libpq looks for ~/.postgresql/root.crt, which does not exist on a
+      # Render instance, and the build dies before the first query:
+      #   root certificate file "/opt/render/.postgresql/root.crt" does not exist
+      # Use `require` to encrypt without verifying, or `disable` behind a local
+      # proxy.
+      - key: DATABASE_SSLMODE
+        value: verify-full
+
+      - key: RAILS_ENV
+        value: production
+      # Rails refuses to boot in production without this.
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      # Otherwise logs are written to log/production.log inside the container
+      # and never reach the Render dashboard.
+      - key: RAILS_LOG_TO_STDOUT
+        value: "true"
+      - key: RAILS_MAX_THREADS
+        value: "3"
+      # Helps avoid memory issues on free tier
+      - key: WEB_CONCURRENCY
+        value: "2"
 
       # Dhan API key auth (one-time login at /auth/dhan/login; token stored in DB)
       - key: DHAN_CLIENT_ID
@@ -25,9 +58,34 @@ services:
       - key: DHAN_API_SECRET
         sync: false
 
-      # Helps avoid memory issues on free tier
-      - key: WEB_CONCURRENCY
-        value: "2"
+      # Order placement stays off unless deliberately enabled: both must be
+      # "true" before anything reaches the broker (see Orders::Gateway).
+      - key: PLACE_ORDER
+        value: "false"
+      - key: LIVE_TRADING
+        value: "false"
+      # Routes Orders::Gateway to the simulated exchange instead.
+      - key: PAPER_TRADING
+        value: "false"
+
+      # LLM backend. Blank = OpenAI; ollama_cloud uses OLLAMA_API_KEY_1..5.
+      - key: LLM_BACKEND
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OLLAMA_API_KEY_1
+        sync: false
+      - key: OLLAMA_API_KEY_2
+        sync: false
+
+      # Build-time toggles, both optional:
+      #   IMPORT_INSTRUMENTS_ON_DEPLOY=true  download the scrip master (slow)
+      #   SKIP_SEEDS_ON_DEPLOY=true          skip the idempotent seed step
+      - key: IMPORT_INSTRUMENTS_ON_DEPLOY
+        sync: false
+      - key: SKIP_SEEDS_ON_DEPLOY
+        sync: false
+
   # # ─────── Cron service (every 5 min) ─────────────────────────────
   # - type: cron
   #   name: ta_update
@@ -35,11 +93,7 @@ services:
   #   plan: starter                 # free 512 MB / 0.5 CPU container
   #   schedule: "*/5 * * * *"       # every 5 minutes
   #   buildCommand: "./bin/render-build.sh"             # must match web build
-  #   startCommand: >
-  #     bash -c "
-  #       bundle install --jobs 4 --quiet &&
-  #       bundle exec rake technical_analysis:update
-  #     "
+  #   startCommand: "bundle exec rake technical_analysis:update"
   #   envVars:
   #     - key: DATABASE_URL
   #       fromDatabase:

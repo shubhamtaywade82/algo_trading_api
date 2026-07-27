@@ -96,3 +96,44 @@ production:
     <<: *primary_production
     database: algo_trading_app_production_cable
     migrations_paths: db/cable_migrate
+
+# ---------------------------------------------------------------------------
+# Production
+#
+# There was no production entry here at all, so every setting had to be
+# inferred from DATABASE_URL alone — and the entries below could not be
+# expressed, which is why config/cable.yml's `database: cable` and
+# production.rb's `solid_queue.connects_to` had nothing to resolve against.
+#
+# sslmode/sslrootcert matter for a managed provider that terminates TLS with a
+# public CA (Render Postgres, Cockroach Cloud, Neon, Supabase). Without them
+# libpq looks for ~/.postgresql/root.crt, which does not exist on a Render
+# instance, and the connection fails before a single query:
+#
+#   root certificate file "/opt/render/.postgresql/root.crt" does not exist
+#
+# `sslrootcert: system` verifies against the OS trust store instead. Both are
+# overridable per environment, and anything already present in DATABASE_URL
+# wins, so a provider needing a bundled cert is unaffected.
+# ---------------------------------------------------------------------------
+production:
+  primary: &primary_production
+    <<: *default
+    url: <%= ENV['DATABASE_URL'] %>
+    <%# libpq rejects sslrootcert alongside a non-verifying sslmode ("weak      %>
+    <%# sslmode 'disable' may not be used with sslrootcert=system"), so the     %>
+    <%# cert setting is emitted only for the modes that actually verify.        %>
+    <% ssl_mode = ENV.fetch('DATABASE_SSLMODE', 'verify-full') %>
+    sslmode: <%= ssl_mode %>
+    <% if ssl_mode.start_with?('verify') %>
+    sslrootcert: <%= ENV.fetch('DATABASE_SSLROOTCERT', 'system') %>
+    <% end %>
+  cache:
+    <<: *primary_production
+    database_tasks: false
+  queue:
+    <<: *primary_production
+    database_tasks: false
+  cable:
+    <<: *primary_production
+    database_tasks: false

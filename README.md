@@ -372,6 +372,34 @@ thin wrappers over the existing `AI::Tools::*`, not a second copy of them. Like
 every other path here it stops at a proposal: `Strategy::Validator` and
 `Orders::Gateway` decide what executes.
 
+## 🚢 Deploying to Render
+
+`bin/render-build.sh` is the build command and is safe to run on every deploy:
+first deploy against an empty database, redeploy with pending migrations, and
+redeploy with nothing to do all behave correctly.
+
+- **`db:prepare`, not `db:migrate`.** Migrate assumes a schema that a first
+  deploy does not have. Prepare creates the database if missing, loads
+  `db/schema.rb` when there is nothing to migrate from, and is a no-op once the
+  schema is current.
+- **Database steps retry** with exponential backoff, because a managed instance
+  can refuse connections for a few seconds after it wakes.
+- **Seeds run every deploy** — `db/seeds.rb` skips what already exists. Opt out
+  with `SKIP_SEEDS_ON_DEPLOY=true`.
+- **Optional steps never fail the build.** Instrument imports are opt-in
+  (`IMPORT_INSTRUMENTS_ON_DEPLOY=true`) and log a warning rather than aborting;
+  re-run them from the Render shell.
+
+Things that previously broke the deploy, and where they are fixed:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `root certificate file "/opt/render/.postgresql/root.crt" does not exist` | Managed Postgres/Cockroach verifies TLS against a cert file that isn't on the instance | `DATABASE_SSLMODE=verify-full` + `sslrootcert: system` in `config/database.yml` |
+| `expected .../DhanHQ/mcp.rb to define constant DhanHQ::Mcp` | `eager_load` in production force-loads gem Zeitwerk loaders, and the gem's filenames don't resolve | `config/initializers/dhanhq_eager_load.rb` excludes the gem from eager loading; its constants stay autoloadable |
+| `KeyError: key not found: "OPENAI_API_KEY"` | Initializer used a bare `ENV.fetch` | Missing key now fails on the call that needs it, not at boot |
+| Deploy live but unhealthy | No `healthCheckPath`, server not bound to `$PORT` | `healthCheckPath: /up` and an explicit Puma bind |
+| `No database configuration found` for cache/queue/cable | `config/database.yml` had no `production:` section at all | Added, with the three companion databases |
+
 ## 🏗️ Architecture
 
 ### Core Components

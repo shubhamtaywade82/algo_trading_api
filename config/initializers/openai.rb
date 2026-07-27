@@ -14,8 +14,17 @@ OpenAI.configure do |config|
     config.access_token   = ENV['OPENAI_API_KEY'].presence || 'ollama'
     config.organization_id = nil
   else
-    config.access_token = ENV.fetch('OPENAI_API_KEY')
+    # Deliberately not ENV.fetch without a default: that raised KeyError during
+    # initialization and took the whole production boot down before the app
+    # served a request — including deploys that never intended to use OpenAI,
+    # such as LLM_BACKEND=ollama_cloud. A missing key should fail on the call
+    # that needs it, not at boot.
+    config.access_token = ENV['OPENAI_API_KEY'].to_s
     config.organization_id = ENV.fetch('OPENAI_ORG_ID', nil)
+
+    if ENV['OPENAI_API_KEY'].blank? && !ENV['LLM_BACKEND'].to_s.casecmp('ollama_cloud').zero?
+      Rails.logger.warn('[Openai] OPENAI_API_KEY is not set; OpenAI-backed chat calls will fail when made.')
+    end
   end
   config.log_errors      = !Rails.env.production?
   config.request_timeout = 360
