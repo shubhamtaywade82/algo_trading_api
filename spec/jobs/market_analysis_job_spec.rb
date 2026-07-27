@@ -23,26 +23,63 @@ RSpec.describe MarketAnalysisJob do
       expect(TelegramNotifier).to have_received(:send_message).with('Analysis result', chat_id: chat_id)
     end
 
-    it 'sends "returned no result" when analysis is empty' do
-      allow(Market::AnalysisService).to receive(:call).and_return('')
+    # Market::AnalysisService returns nil for three different reasons, and the
+    # one that happens on a freshly deployed database — an instrument master
+    # that was never imported — used to be reported as "check data
+    # availability", which names nothing the operator can act on.
+    context 'when the analysis produces nothing' do
+      before { allow(Market::AnalysisService).to receive(:call).and_return(nil) }
 
-      described_class.perform_now(chat_id, symbol, exchange: exchange)
+      it 'says the instrument master is empty when nothing has been imported' do
+        described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      expect(TelegramNotifier).to have_received(:send_message).with(
-        /returned no result/,
-        hash_including(chat_id: chat_id)
-      )
-    end
+        expect(TelegramNotifier).to have_received(:send_message).with(
+          /instrument master is empty/,
+          hash_including(chat_id: chat_id)
+        )
+      end
 
-    it 'sends "returned no result" when analysis is nil' do
-      allow(Market::AnalysisService).to receive(:call).and_return(nil)
+      it 'names the import to run when the master is empty' do
+        described_class.perform_now(chat_id, symbol, exchange: exchange)
 
-      described_class.perform_now(chat_id, symbol, exchange: exchange)
+        expect(TelegramNotifier).to have_received(:send_message).with(
+          /instruments:import/,
+          hash_including(chat_id: chat_id)
+        )
+      end
 
-      expect(TelegramNotifier).to have_received(:send_message).with(
-        /returned no result/,
-        hash_including(chat_id: chat_id)
-      )
+      it 'says the symbol is missing when the master is populated without it' do
+        create(:instrument, :nifty)
+
+        described_class.perform_now(chat_id, 'NOTASYMBOL', exchange: exchange)
+
+        expect(TelegramNotifier).to have_received(:send_message).with(
+          /NOTASYMBOL is not in the instrument master for NSE/,
+          hash_including(chat_id: chat_id)
+        )
+      end
+
+      it 'falls back to "returned no result" when the symbol does resolve' do
+        create(:instrument, :nifty)
+
+        described_class.perform_now(chat_id, 'NIFTY', exchange: exchange)
+
+        expect(TelegramNotifier).to have_received(:send_message).with(
+          /returned no result/,
+          hash_including(chat_id: chat_id)
+        )
+      end
+
+      it 'treats a blank answer the same as a nil one' do
+        allow(Market::AnalysisService).to receive(:call).and_return('')
+
+        described_class.perform_now(chat_id, symbol, exchange: exchange)
+
+        expect(TelegramNotifier).to have_received(:send_message).with(
+          /instrument master is empty/,
+          hash_including(chat_id: chat_id)
+        )
+      end
     end
 
     context 'when Market::AnalysisService raises an error' do

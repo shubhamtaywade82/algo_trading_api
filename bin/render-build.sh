@@ -143,6 +143,11 @@ fi
 # ── Instrument master ───────────────────────────────────────────────────────
 # Large downloads from DhanHQ. Opt-in, and never fatal: the app boots without
 # them and both tasks can be re-run from the Render shell.
+#
+# The seed step above has already loaded the index segment (NIFTY, BANKNIFTY,
+# SENSEX, INDIA VIX and the rest of IDX_I) from db/seeds/index_instruments.csv,
+# so the analysis commands resolve their symbols with the import skipped. Equities
+# and derivatives still need it.
 if [ "${IMPORT_INSTRUMENTS_ON_DEPLOY:-false}" = "true" ]; then
   log "📊 Importing instruments"
   optional "instrument import" rails import:instruments

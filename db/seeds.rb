@@ -147,3 +147,33 @@ STRATEGIES_DATA.each do |strategy_data|
 end
 
 Rails.logger.debug { "Seeded #{STRATEGIES_DATA.size} strategies successfully." }
+
+# ---------------------------------------------------------------------------
+# Index instruments
+#
+# `instruments` is populated by the scrip-master import, which is opt-in on
+# deploy (IMPORT_INSTRUMENTS_ON_DEPLOY) because the detailed feed is a 37 MB
+# download of 218k rows. Until it runs the table is empty, every lookup misses,
+# and `/nifty_analysis` answers with nothing but "Instrument not found: NIFTY".
+#
+# The index segment is 191 of those rows and it is the one the analysis path is
+# addressed by: Market::AnalysisService resolves NIFTY / BANKNIFTY / SENSEX
+# here, `india_vix` reads security_id 21, and expiries and option chains are
+# fetched from DhanHQ against the instrument's security_id rather than from
+# `derivatives`. Seeding it makes those commands work on an empty database
+# without the full download.
+#
+# The rows are the feed's own, verbatim, and go in through the importer's
+# partial-feed entry point: it upserts on the same natural key the full import
+# conflicts on — (security_id, symbol_name, exchange, segment) — so a later
+# `rails instruments:import` updates these rows instead of duplicating them,
+# and it retires nothing on the way (a partial feed is not authoritative about
+# what it omits).
+INDEX_INSTRUMENTS_CSV = Rails.root.join('db/seeds/index_instruments.csv')
+
+if INDEX_INSTRUMENTS_CSV.exist?
+  InstrumentsImporter.import_from_csv(INDEX_INSTRUMENTS_CSV.read)
+  Rails.logger.debug { "Seeded index instruments; #{Instrument.segment_index.count} now in the master." }
+else
+  Rails.logger.warn { "Skipped index instruments: #{INDEX_INSTRUMENTS_CSV} is missing." }
+end
