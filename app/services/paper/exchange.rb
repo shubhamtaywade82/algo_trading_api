@@ -50,6 +50,7 @@ module Paper
 
     # @return [Hash] gateway-shaped result
     def place(payload, source: nil)
+      DayRollover.ensure!(account: account)
       params = payload.to_h.symbolize_keys
       errors = validate(params)
       return rejected(params, errors, source: source) if errors.any?
@@ -83,9 +84,14 @@ module Paper
       price = ltp.to_f
       return if price <= 0
 
+      # The tick stream is the only clock this book has, so the session
+      # boundaries hang off it. Both calls are a date comparison in the common
+      # case.
+      DayRollover.ensure!(account: account)
       mark_positions(security_id, price)
       fill_resting_orders(security_id, exchange_segment, price)
       super_monitor.check(security_id, price)
+      EodSquareOff.run_if_due(account: account)
     rescue StandardError => e
       Rails.logger.error("[Paper::Exchange] tick processing failed for #{security_id}: #{e.message}")
     end
@@ -111,7 +117,8 @@ module Paper
                 transaction_type: position.net_qty.positive? ? 'SELL' : 'BUY',
                 quantity: position.net_qty.abs,
                 order_type: 'MARKET',
-                product_type: position.product_type
+                product_type: position.product_type,
+                force: true
               })
       end
       { paper: true, exited: exited.size, results: exited }
@@ -125,11 +132,18 @@ module Paper
 
     def validate(params)
       errors = []
-      errors << 'Market is closed' if enforce_hours? && !market_open?
+      errors << 'Market is closed' if enforce_hours? && !forced?(params) && !market_open?
       errors << 'Quantity must be positive' unless params[:quantity].to_i.positive?
       errors << 'LIMIT orders require a positive price' if limit_without_price?(params)
       errors.concat(lot_size_errors(params))
       errors
+    end
+
+    # A forced order waives the market-hours check. Closing the book — an EOD
+    # square-off, an operator flattening everything — has to work after the
+    # bell, or the position it was meant to close survives into the next day.
+    def forced?(params)
+      params[:force].to_s == 'true'
     end
 
     def limit_without_price?(params)
@@ -378,11 +392,7 @@ module Paper
     end
 
     def release_margin(order)
-      blocked = order.metadata['blocked_margin'].to_f
-      return unless blocked.positive?
-
-      @margin.release!(account, blocked)
-      order.update!(metadata: order.metadata.merge('blocked_margin' => 0))
+      @margin.release_order!(account, order)
     end
 
     # Real market data: WebSocket cache first, REST second.

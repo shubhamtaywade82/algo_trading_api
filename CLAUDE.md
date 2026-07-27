@@ -103,6 +103,21 @@ of what this repo already does. Don't re-open them without a concrete reason.
   `Paper::FeedSubscriber` subscribes each instrument as it is traded and
   restores the open book on feed start, so a strike picked at signal time is
   ticked without anyone listing it in `SYMBOLS`.
+- **The tick stream is the book's only clock.** `Paper::DayRollover` (expire
+  DAY orders, drop flat positions, clear last session's realised P&L) and
+  `Paper::EodSquareOff` (close INTRADAY at 15:15 IST; MARGIN and CNC are
+  carry-forward and stay open) both hang off it, lazily and idempotently,
+  because this app has no scheduler. `live:paper_roll` / `live:paper_eod` force
+  them. Day scoping of the position view is the rollover's job — never a
+  timestamp filter, which would hide a legitimate carry-forward position.
+- **Exit management reads `Positions::Source`**, which serves the paper book in
+  paper mode, so the existing `Positions::Manager` → `Orders::RiskManager` →
+  `Orders::Executor` stack manages simulated positions too. Paper positions
+  carry `costPrice` and `drvExpiryDate` because that stack reads them.
+- **CNC lives in two places.** A delivery position is in the position book only
+  on its trade date and in holdings from T+1, so exit logic checks
+  `dhan_positions` then falls back to `dhan_holdings`. eDIS never runs in paper
+  mode — it authorises a real depository debit.
 - Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
   mode simulates fills, margin, positions and P&L with real charges.
 

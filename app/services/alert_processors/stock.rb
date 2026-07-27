@@ -270,7 +270,14 @@ module AlertProcessors
     end
 
     # eDIS (idempotent)
+    #
+    # Authorises the depository to debit real shares, so it has no business
+    # running against a simulated sell — it would call the live EDIS API and
+    # block the placement for up to 45 seconds waiting on an approval that
+    # protects nothing here.
     def ensure_edis!(qty)
+      return if Paper::Broker.enabled?
+
       info = Dhanhq::API::EDIS.status(isin: instrument.isin)
       return if info['status'] == 'SUCCESS' && info['aprvdQty'].to_i >= qty
 
@@ -294,11 +301,32 @@ module AlertProcessors
     # ------------------------------------------------------------------------
     #  Helpers delegated to Base / external
     # ------------------------------------------------------------------------
+    # Size currently held in this instrument.
+    #
+    # Delivery strategies have to fall back to holdings: a CNC position is only
+    # in the position book on its trade date, so from T+1 a `long_exit` saw
+    # zero and skipped as `:no_long`, leaving the position open indefinitely.
     def current_qty
       pos = dhan_positions.find { |p| p['securityId'].to_s == instrument.security_id.to_s }
-      pos&.dig('netQty').to_i
+      qty = pos&.dig('netQty').to_i
+      return qty unless qty.zero? && delivery?
+
+      held_qty
     end
     alias fetch_current_net_quantity current_qty
+
+    def delivery?
+      PRODUCT.fetch(alert[:strategy_type]) == 'CNC'
+    end
+
+    # Only the free quantity is sellable — anything still pending delivery (T1)
+    # or pledged as collateral is not.
+    def held_qty
+      holding = dhan_holdings.find { |h| h['securityId'].to_s == instrument.security_id.to_s }
+      return 0 unless holding
+
+      (holding['availableQty'] || holding['totalQty']).to_i
+    end
 
     def leverage_factor
       lev = instrument.mis_detail&.mis_leverage.to_i

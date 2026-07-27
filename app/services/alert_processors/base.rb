@@ -87,6 +87,27 @@ module AlertProcessors
         end
     end
 
+    # Delivery holdings on whichever book this run trades.
+    #
+    # A CNC buy shows in the *position* book only on the day it trades; from
+    # T+1 the broker reports it as a holding and the position book shows
+    # nothing. Swing and long-term exits keyed to positions alone therefore
+    # stopped finding the position they were meant to close, on every day but
+    # the first.
+    #
+    # @return [Array<Hash>]
+    def dhan_holdings
+      @dhan_holdings ||=
+        if Paper::Broker.enabled?
+          Paper::Positions.dhan_holdings
+        else
+          DhanHQ::Models::Holding.all.map(&:attributes)
+        end
+    rescue StandardError => e
+      Rails.logger.warn("[#{self.class.name}] holdings fetch failed: #{e.message}")
+      []
+    end
+
     private
 
     # Free margin, not gross cash: capital already committed to open paper

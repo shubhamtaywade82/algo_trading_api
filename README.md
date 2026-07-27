@@ -216,6 +216,8 @@ shape is identical to a live placement.
 ```bash
 PAPER_TRADING=true bin/rails s
 bin/rails live:paper_book    # positions, working orders, P&L and charges
+bin/rails live:paper_eod     # square off intraday positions now
+bin/rails live:paper_roll    # roll the book onto the current session
 bin/rails live:paper_reset   # reset the book to its starting capital
 ```
 
@@ -235,7 +237,12 @@ simulated exchange over **real market data**:
   dedupe, flips, exits, the daily-loss cap — read the paper book while
   `PAPER_TRADING=true`, not the live account.
 - **Super orders.** Once the entry fills, a tick through the target or stop
-  closes the position, whichever comes first.
+  closes the position, whichever comes first. A `trailing_jump` ratchets the
+  stop in whole jumps as price advances, and never gives it back.
+- **Session boundaries.** INTRADAY positions are squared off at 15:15 IST as the
+  broker would; MARGIN and CNC carry forward. On the next session the book is
+  rolled: DAY orders expire, flat positions are dropped and last session's
+  realised P&L is cleared, so the daily-loss guard counts today only.
 - **Virtual capital and margin.** Orders are rejected when the book cannot fund
   them; margin is blocked on placement and released on fill or cancel.
 - **Real Dhan charges** per fill, including the STT asymmetry (sell-side for

@@ -34,10 +34,33 @@ module Paper
       # lives on the row that closed, so the daily-loss guard would always see
       # zero without them.
       #
-      # @param since [Time] day boundary; Dhan's positions API is day-scoped
+      # Day scoping is the rollover's job, not a timestamp filter here. After
+      # {Paper::DayRollover} has run, every surviving row is either still open —
+      # a carry-forward position the broker would also show today — or was
+      # closed during the current session. Rolling from this read path is what
+      # makes that true even on a day the book has not traded yet.
+      #
       # @return [Array<ActiveSupport::HashWithIndifferentAccess>]
-      def dhan_shaped(since: Time.current.in_time_zone('Asia/Kolkata').beginning_of_day)
-        account.paper_positions.where(updated_at: since..).map { |position| dhan_attributes(position) }
+      def dhan_shaped
+        acct = account
+        DayRollover.ensure!(account: acct)
+
+        positions = acct.paper_positions.to_a
+        expiries = derivative_expiries(positions)
+        positions.map { |position| dhan_attributes(position, expiry: expiries[position.security_id]) }
+      end
+
+      # What the book is carrying as delivery, in the broker's holdings shape.
+      #
+      # A CNC buy sits in the position book on the day it trades and moves to
+      # holdings from T+1, so swing and long-term exit logic has to look in
+      # both places or it stops finding the position it is meant to close.
+      #
+      # @return [Array<ActiveSupport::HashWithIndifferentAccess>]
+      def dhan_holdings
+        account.paper_positions.open_positions.where(product_type: 'CNC').map do |position|
+          holding_attributes(position)
+        end
       end
 
       # @return [Hash] capital, P&L and charge totals for the book
@@ -76,12 +99,11 @@ module Paper
         PaperAccount.current
       end
 
-      # `realizedProfit` is the row's lifetime realised P&L, not strictly
-      # today's: the paper book has no end-of-day rollover, so a position
-      # reduced at a loss on more than one day over-reports the current day.
-      # Intraday product types close out the same session, so this only bites
-      # a CNC position scaled out across sessions.
-      def dhan_attributes(position)
+      # `costPrice` and `drvExpiryDate` are here because the exit stack reads
+      # them: Orders::Analyzer prices P&L off `costPrice`, and RiskManager
+      # treats expiry day specially. A paper position missing them analyses as
+      # worthless and gets skipped.
+      def dhan_attributes(position, expiry: nil)
         attrs = {
           security_id: position.security_id,
           exchange_segment: position.exchange_segment,
@@ -93,12 +115,44 @@ module Paper
           sell_qty: position.sell_qty.to_i,
           buy_avg: position.buy_avg.to_f,
           sell_avg: position.sell_avg.to_f,
+          cost_price: position.entry_price,
           realized_profit: position.realized_profit.to_f,
           unrealized_profit: position.unrealized_profit.to_f,
+          drv_expiry_date: expiry,
           ltp: position.ltp.to_f
         }
 
+        with_both_spellings(attrs)
+      end
+
+      def holding_attributes(position)
+        qty = position.net_qty.to_i.abs
+
+        with_both_spellings(
+          security_id: position.security_id,
+          trading_symbol: position.trading_symbol,
+          exchange: position.exchange_segment.to_s.split('_').first,
+          total_qty: qty,
+          available_qty: qty,
+          dp_qty: qty,
+          t1_qty: 0,
+          avg_cost_price: position.entry_price
+        )
+      end
+
+      # Callers reach for camelCase and snake_case interchangeably, so answer
+      # to both rather than betting on which one a given caller learned.
+      def with_both_spellings(attrs)
         attrs.merge(attrs.transform_keys { |key| key.to_s.camelize(:lower) }).with_indifferent_access
+      end
+
+      # One query for the whole set: the exit stack asks per position, and a
+      # lookup each would be a query per row.
+      def derivative_expiries(positions)
+        return {} if positions.empty?
+
+        Derivative.where(security_id: positions.map(&:security_id))
+          .pluck(:security_id, :expiry_date).to_h
       end
 
       def serialize(position)

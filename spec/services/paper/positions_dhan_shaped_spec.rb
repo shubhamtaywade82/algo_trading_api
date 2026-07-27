@@ -52,11 +52,33 @@ RSpec.describe Paper::Positions, '.dhan_shaped' do
     expect(losses).to eq(-4_000.0)
   end
 
-  # Dhan's positions API is day-scoped; the simulated book must be too, or a
-  # loss from last week keeps blocking today's entries.
-  it 'excludes rows untouched today' do
-    travel_to(3.days.ago) { create_position(security_id: '49083') }
+  # Dhan's positions API is day-scoped, and the rollover is what makes the
+  # simulated book day-scoped too. A flat row from a previous session is gone;
+  # an open carry-forward position is still today's business, exactly as the
+  # broker reports it.
+  context 'across a session boundary' do
+    before { account.update!(last_rolled_on: 3.days.ago.to_date) }
 
-    expect(described_class.dhan_shaped.pluck('securityId')).not_to include('49083')
+    it 'drops a position that was already flat' do
+      travel_to(3.days.ago) do
+        create_position(security_id: '49083', position_type: 'CLOSED', net_qty: 0, realized_profit: -500.0)
+      end
+
+      expect(described_class.dhan_shaped.pluck('securityId')).not_to include('49083')
+    end
+
+    it 'keeps an open carry-forward position' do
+      travel_to(3.days.ago) { create_position(security_id: '49084') }
+
+      expect(described_class.dhan_shaped.pluck('securityId')).to include('49084')
+    end
+
+    # Yesterday's realised loss is not today's, and the daily-loss guard reads
+    # this figure.
+    it 'clears realised P&L carried in from the previous session' do
+      travel_to(3.days.ago) { create_position(security_id: '49085', realized_profit: -9_000.0) }
+
+      expect(described_class.dhan_shaped.sum { |p| p['realizedProfit'].to_f }).to eq(0.0)
+    end
   end
 end
