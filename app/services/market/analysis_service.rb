@@ -213,7 +213,7 @@ module Market
           prompt,
           system: Market::PromptBuilder.system_prompt(@trade_type)
         )
-      rescue OpenAI::Error
+      rescue RubyLLM::Error
         attempt += 1
         raise if attempt > retries
 

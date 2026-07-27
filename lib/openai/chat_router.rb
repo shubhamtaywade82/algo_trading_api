@@ -23,18 +23,15 @@ module Openai
       # Not `backend_label`: on the fallback path that would claim Ollama Cloud
       # while OpenAI is actually serving the request.
       Rails.logger.info "[Openai] #{openai_backend_label(mdl)}"
-      params = {
-        model: mdl,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user',   content: user_prompt }
-        ]
-      }
-      params[:max_completion_tokens] = max_tokens if max_tokens
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
-      resp = Client.instance.chat(parameters: params)
+
+      chat = RubyLLM.chat(model: mdl, provider: :openai, assume_model_exists: true)
+      chat.with_instructions(system) if system.present?
+      chat.with_params(max_tokens: max_tokens) if max_tokens.present?
+
+      response = chat.ask(user_prompt)
       TelegramNotifier.send_chat_action(chat_id: nil, action: 'typing')
-      resp.dig('choices', 0, 'message', 'content').to_s.strip
+      response.content.to_s.strip
     end
 
     # Ollama Cloud, through the rotating key pool.

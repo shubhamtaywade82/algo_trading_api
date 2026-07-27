@@ -317,8 +317,6 @@ GEM
       racc (~> 1.4)
     nokogiri (1.17.2-x86_64-linux)
       racc (~> 1.4)
-    openai (0.17.1)
-      connection_pool
     ostruct (0.6.1)
     parallel (1.26.3)
     parser (3.3.6.0)
@@ -454,10 +452,6 @@ GEM
     rubocop-rspec_rails (2.30.0)
       rubocop (~> 1.61)
       rubocop-rspec (~> 3, >= 3.0.1)
-    ruby-openai (8.2.0)
-      event_stream_parser (>= 0.3.0, < 2.0.0)
-      faraday (>= 1)
-      faraday-multipart (>= 1)
     ruby-progressbar (1.13.0)
     ruby-technical-analysis (1.0.4)
     ruby_llm (1.16.0)
@@ -591,7 +585,6 @@ DEPENDENCIES
   matrix
   mcp (~> 0.5)
   memory_profiler
-  openai
   pg (~> 1.1)
   puma (>= 5.0)
   rack-cors
@@ -605,7 +598,6 @@ DEPENDENCIES
   rubocop-rails
   rubocop-rspec
   rubocop-rspec_rails
-  ruby-openai
   ruby-technical-analysis
   ruby_llm (~> 1.16)
   rubycritic

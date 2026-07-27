@@ -98,12 +98,6 @@ gem 'telegram-bot-ruby'
 gem 'bindata'
 gem 'faye-websocket'
 
-# Official OpenAI SDK (preferred for newest models)
-gem 'openai', require: false
-
-# Community SDK you already use (keep for OpenRouter/others)
-gem 'ruby-openai', require: false
-
 # Multi-agent AI orchestration (https://github.com/chatwoot/ai-agents)
 # Pinned to a line that allows ruby_llm >= 1.14: 0.9.x pinned ruby_llm ~> 1.9.1,
 # which predates the Ollama provider sending an Authorization header and so

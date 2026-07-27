@@ -52,6 +52,23 @@ RSpec.describe Openai::ChatRouter do
     end
   end
 
+  describe '.ask_openai!' do
+    it 'invokes RubyLLM chat with provider :openai' do
+      chat_double = instance_double(RubyLLM::Chat)
+      response_double = double('response', content: ' response text ')
+
+      allow(RubyLLM).to receive(:chat).with(model: 'gpt-4o', provider: :openai, assume_model_exists: true).and_return(chat_double)
+      allow(chat_double).to receive(:with_instructions)
+      allow(chat_double).to receive(:with_params)
+      allow(chat_double).to receive(:ask).with('hello').and_return(response_double)
+
+      res = described_class.ask_openai!('hello', system: 'sys prompt', model: 'gpt-4o', max_tokens: 100)
+      expect(res).to eq('response text')
+      expect(chat_double).to have_received(:with_instructions).with('sys prompt')
+      expect(chat_double).to have_received(:with_params).with(max_tokens: 100)
+    end
+  end
+
   describe '.backend_label' do
     it 'names Ollama Cloud when it is serving' do
       with_env('LLM_BACKEND' => 'ollama_cloud', 'OLLAMA_API_KEY_1' => 'key-one',

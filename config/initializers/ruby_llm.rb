@@ -11,8 +11,16 @@ RubyLLM.configure do |config|
   # `{api_base}/chat/completions`, so the base must include `/v1`.
   config.ollama_api_base = ENV['OLLAMA_API_BASE'].presence || 'https://ollama.com/v1'
 
-  config.openai_api_key = ENV.fetch('OPENAI_API_KEY', nil)
-  config.openai_api_base = ENV['OPENAI_URI_BASE'].presence
+  use_ollama_dev = !Rails.env.production? &&
+                   (ENV['OPENAI_URI_BASE'].blank? || ENV['OPENAI_URI_BASE'].to_s.include?('11434'))
+
+  if use_ollama_dev
+    config.openai_api_base = ENV['OPENAI_URI_BASE'].presence || 'http://localhost:11434/v1'
+    config.openai_api_key  = ENV['OPENAI_API_KEY'].presence || 'ollama'
+  else
+    config.openai_api_base = ENV['OPENAI_URI_BASE'].presence
+    config.openai_api_key  = ENV.fetch('OPENAI_API_KEY', nil)
+  end
 
   # Retries inside a single key's attempt. Rotation to the next key happens
   # above this, in Llm::KeyRotator, once these are exhausted.
