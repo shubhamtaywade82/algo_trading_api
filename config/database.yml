@@ -79,54 +79,47 @@ test:
 # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
 # for a full overview on how database connection configuration can be specified.
 #
-production:
-  primary: &primary_production
-    adapter: postgresql
-    encoding: unicode
-    url: <%= ENV['DATABASE_URL'] %>
-  cache:
-    <<: *primary_production
-    database: algo_trading_app_production_cache
-    migrations_paths: db/cache_migrate
-  queue:
-    <<: *primary_production
-    database: algo_trading_app_production_queue
-    migrations_paths: db/queue_migrate
-  cable:
-    <<: *primary_production
-    database: algo_trading_app_production_cable
-    migrations_paths: db/cable_migrate
 
 # ---------------------------------------------------------------------------
 # Production
 #
-# There was no production entry here at all, so every setting had to be
-# inferred from DATABASE_URL alone — and the entries below could not be
-# expressed, which is why config/cable.yml's `database: cable` and
-# production.rb's `solid_queue.connects_to` had nothing to resolve against.
+# Everything beyond DATABASE_URL is configured here, including the cache, queue
+# and cable entries that config/cable.yml's `database: cable` and production.rb's
+# `solid_queue.connects_to` reference. They point at the same database as the
+# primary and are marked database_tasks: false so db:prepare prepares it once.
 #
-# sslmode/sslrootcert matter for a managed provider that terminates TLS with a
-# public CA (Render Postgres, Cockroach Cloud, Neon, Supabase). Without them
-# libpq looks for ~/.postgresql/root.crt, which does not exist on a Render
-# instance, and the connection fails before a single query:
+# TLS: the connection is encrypted but the server certificate is not verified
+# by default. Verification needs both a trusted issuer and a matching hostname,
+# and a managed instance reached over the provider's private network has
+# neither — Render Postgres issues its certificate from Render's own CA and the
+# internal endpoint resolves to a private address, so verify-full against the
+# system trust store dies before the first query:
 #
-#   root certificate file "/opt/render/.postgresql/root.crt" does not exist
+#   SSL error: certificate verify failed
 #
-# `sslrootcert: system` verifies against the OS trust store instead. Both are
-# overridable per environment, and anything already present in DATABASE_URL
-# wins, so a provider needing a bundled cert is unaffected.
+# To verify, set DATABASE_SSLMODE=verify-full and point DATABASE_SSLROOTCERT at
+# the CA bundle the provider publishes (Cockroach Cloud and Supabase ship one;
+# `system` uses the OS trust store and only works for a publicly signed cert on
+# its public hostname). DATABASE_SSLMODE=disable is for a local proxy that has
+# already terminated TLS.
+#
+# An sslmode carried in DATABASE_URL wins over the value below — Rails merges
+# the URL's query parameters on top of this file — so a provider whose
+# connection string already says verify-full keeps verifying.
 # ---------------------------------------------------------------------------
 production:
   primary: &primary_production
     <<: *default
     url: <%= ENV['DATABASE_URL'] %>
-    <%# libpq rejects sslrootcert alongside a non-verifying sslmode ("weak      %>
-    <%# sslmode 'disable' may not be used with sslrootcert=system"), so the     %>
-    <%# cert setting is emitted only for the modes that actually verify.        %>
-    <% ssl_mode = ENV.fetch('DATABASE_SSLMODE', 'verify-full') %>
+    <%# libpq rejects sslrootcert alongside a mode that does not verify ("weak  %>
+    <%# sslmode 'require' may not be used with sslrootcert=system"), and takes  %>
+    <%# the 'system' keyword only under verify-full, so the cert setting is     %>
+    <%# emitted only where libpq accepts it.                                    %>
+    <% ssl_mode = ENV.fetch('DATABASE_SSLMODE', 'require') %>
+    <% ssl_root_cert = ENV['DATABASE_SSLROOTCERT'] || ('system' if ssl_mode == 'verify-full') %>
     sslmode: <%= ssl_mode %>
-    <% if ssl_mode.start_with?('verify') %>
-    sslrootcert: <%= ENV.fetch('DATABASE_SSLROOTCERT', 'system') %>
+    <% if ssl_root_cert && ssl_mode.start_with?('verify') %>
+    sslrootcert: <%= ssl_root_cert %>
     <% end %>
   cache:
     <<: *primary_production

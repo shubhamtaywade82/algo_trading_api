@@ -383,7 +383,17 @@ redeploy with nothing to do all behave correctly.
   `db/schema.rb` when there is nothing to migrate from, and is a no-op once the
   schema is current.
 - **Database steps retry** with exponential backoff, because a managed instance
-  can refuse connections for a few seconds after it wakes.
+  can refuse connections for a few seconds after it wakes. A failure that a
+  retry cannot fix — a certificate that will not verify, a rejected password —
+  aborts on the first attempt with the setting to change, instead of printing
+  the same error five times.
+- **The database connection is encrypted but not verified** by default
+  (`sslmode: require`). A managed instance on the provider's private network
+  presents a certificate from the provider's own CA on an address that
+  certificate does not name, so verification cannot succeed against the system
+  trust store. Set `DATABASE_SSLMODE=verify-full` together with
+  `DATABASE_SSLROOTCERT=/path/to/ca.crt` to verify; an `sslmode` already in
+  `DATABASE_URL` wins over both.
 - **Seeds run every deploy** — `db/seeds.rb` skips what already exists. Opt out
   with `SKIP_SEEDS_ON_DEPLOY=true`.
 - **Optional steps never fail the build.** Instrument imports are opt-in
@@ -394,7 +404,7 @@ Things that previously broke the deploy, and where they are fixed:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `root certificate file "/opt/render/.postgresql/root.crt" does not exist` | Managed Postgres/Cockroach verifies TLS against a cert file that isn't on the instance | `DATABASE_SSLMODE=verify-full` + `sslrootcert: system` in `config/database.yml` |
+| `SSL error: certificate verify failed` / `root certificate file "/opt/render/.postgresql/root.crt" does not exist` | TLS verification against a managed instance: the certificate comes from the provider's own CA, and the internal endpoint answers on a private address it does not name, so neither the issuer nor the hostname checks out | `config/database.yml` defaults to `sslmode: require` — encrypted, unverified. To verify, set `DATABASE_SSLMODE=verify-full` **and** `DATABASE_SSLROOTCERT` to the CA bundle the provider publishes |
 | `expected .../DhanHQ/mcp.rb to define constant DhanHQ::Mcp` | `eager_load` in production force-loads gem Zeitwerk loaders, and the gem's filenames don't resolve | `config/initializers/dhanhq_eager_load.rb` excludes the gem from eager loading; its constants stay autoloadable |
 | `KeyError: key not found: "OPENAI_API_KEY"` | Initializer used a bare `ENV.fetch` | Missing key now fails on the call that needs it, not at boot |
 | Deploy live but unhealthy | No `healthCheckPath`, server not bound to `$PORT` | `healthCheckPath: /up` and an explicit Puma bind |

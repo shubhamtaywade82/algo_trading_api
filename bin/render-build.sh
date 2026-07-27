@@ -22,16 +22,55 @@ log()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m⚠ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[32m✔ %s\033[0m\n' "$*"; }
 
+# Some database failures are settled before the first packet: a certificate
+# that cannot verify, or a password the server rejects, fails identically on
+# every attempt. Retrying those spends 30 seconds and buries the real error
+# under four copies of itself, so they abort straight away with the setting to
+# change. Anything else is treated as transient and retried.
+explain_db_failure() {
+  local log_file=$1
+
+  if grep -Eq 'certificate verify failed|root certificate file|sslmode|SSL error' "$log_file"; then
+    cat <<'EOF'
+  The TLS handshake with the database failed.
+
+  config/database.yml encrypts the connection without verifying the server
+  certificate unless DATABASE_SSLMODE says otherwise. If it is set to verify-ca
+  or verify-full, either drop it or set DATABASE_SSLROOTCERT to the CA bundle
+  your provider publishes — a managed instance reached over a private network
+  is signed by the provider's own CA and answers on an address its certificate
+  does not name, so neither check can pass against the system trust store.
+EOF
+    return 0
+  fi
+
+  if grep -Eq 'password authentication failed|role .* does not exist' "$log_file"; then
+    echo '  The database rejected the credentials in DATABASE_URL.'
+    return 0
+  fi
+
+  return 1
+}
+
 # Runs a command, retrying with exponential backoff. Used for anything that
 # touches the database: a managed instance can refuse connections for the first
 # few seconds after it wakes, which is not a reason to fail a deploy.
 retry() {
   local attempts=$1 description=$2; shift 2
-  local attempt=1 delay=2
+  local attempt=1 delay=2 log_file hint
+  log_file=$(mktemp)
 
-  until "$@"; do
+  until "$@" 2>&1 | tee "$log_file"; do
+    if hint=$(explain_db_failure "$log_file"); then
+      printf '\033[31m✖ %s failed for a reason retrying cannot fix\033[0m\n' "$description"
+      printf '%s\n' "$hint"
+      rm -f "$log_file"
+      return 1
+    fi
+
     if (( attempt >= attempts )); then
       printf '\033[31m✖ %s failed after %d attempts\033[0m\n' "$description" "$attempts"
+      rm -f "$log_file"
       return 1
     fi
     warn "$description failed (attempt ${attempt}/${attempts}); retrying in ${delay}s"
@@ -39,6 +78,8 @@ retry() {
     attempt=$(( attempt + 1 ))
     delay=$(( delay * 2 ))
   done
+
+  rm -f "$log_file"
 }
 
 # For steps whose failure should be reported but must not fail the deploy.
