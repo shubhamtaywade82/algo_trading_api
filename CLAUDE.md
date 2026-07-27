@@ -111,6 +111,20 @@ decisions below are settled; each has a failure mode behind it.
   `OPTION_TYPE = "XX"` on futures; `InstrumentsImport::Parser` normalises it to
   NULL, because a CE/PE check that meets it aborts the entire nightly import.
   An import that dies on one odd row is worse than the row.
+- **The index segment is seeded, everything else is imported.**
+  `db/seeds/index_instruments.csv` is the feed's own 191 IDX_I rows, loaded by
+  `db/seeds.rb` through `InstrumentsImporter.import_from_csv` — the partial-feed
+  entry point, which upserts on the same natural key and retires nothing. The
+  full import is a 37 MB download of 218k rows and is opt-in on deploy
+  (`IMPORT_INSTRUMENTS_ON_DEPLOY`), so without the seed a fresh database answers
+  `/nifty_analysis` with "Instrument not found: NIFTY". Equities and derivatives
+  still need `rails instruments:import`.
+- **Every hash in an activerecord-import batch needs the same keys.**
+  `InstrumentsImport::Mapper` sets `instrument_id` only on contracts whose
+  underlying it resolved, and `Upserter` imports both halves as one batch so an
+  unparented contract is stored rather than dropped — so it fills the key in on
+  every row first. A real scrip master has both halves non-empty, and the mixed
+  batch aborts the whole import with `Hash key mismatch`.
 - **Caching contract lookups is an in-process decision.** Measured on 62k
   contracts, the options-chain index executes in 0.05ms but a full
   `Derivative.find_by` round trip is p50 1.3ms / p95 2.8ms — the cost is the

@@ -99,6 +99,10 @@ services:
       # Build-time toggles, both optional:
       #   IMPORT_INSTRUMENTS_ON_DEPLOY=true  download the scrip master (slow)
       #   SKIP_SEEDS_ON_DEPLOY=true          skip the idempotent seed step
+      # The seed step carries the index segment of the scrip master, so leaving
+      # the import off still leaves NIFTY/BANKNIFTY/SENSEX resolvable; skipping
+      # the seeds as well leaves the instrument master empty and every symbol
+      # lookup missing.
       - key: IMPORT_INSTRUMENTS_ON_DEPLOY
         sync: false
       - key: SKIP_SEEDS_ON_DEPLOY

@@ -6,10 +6,7 @@ class MarketAnalysisJob < ApplicationJob
     if answer.present?
       TelegramNotifier.send_message(answer, chat_id: chat_id)
     else
-      TelegramNotifier.send_message(
-        "⚠️ Analysis for #{symbol} returned no result. Check data availability and try again.",
-        chat_id: chat_id
-      )
+      TelegramNotifier.send_message(no_result_message(symbol, exchange), chat_id: chat_id)
     end
   rescue StandardError => e
     Rails.logger.error "[MarketAnalysisJob] ❌ #{e.class} – #{e.message}"
@@ -19,6 +16,29 @@ class MarketAnalysisJob < ApplicationJob
   end
 
   private
+
+  # Market::AnalysisService returns nil for three different reasons and "no
+  # result" tells the operator which of them to fix: none. The one that
+  # actually happens on a fresh database is an instrument master that was never
+  # imported — every lookup misses, and the only trace is a log line reading
+  # "Instrument not found: NIFTY".
+  def no_result_message(symbol, exchange)
+    if Instrument.none?
+      '📭 The instrument master is empty, so no symbol can be resolved. Run `rails db:seed` for the ' \
+        'indices or `rails instruments:import` for the full scrip master, then try again.'
+    elsif resolvable?(symbol, exchange)
+      "⚠️ Analysis for #{symbol} returned no result. Check data availability and try again."
+    else
+      "🔍 #{symbol} is not in the instrument master for #{exchange.to_s.upcase}. " \
+        'Re-run `rails instruments:import` if the exchange should be listing it.'
+    end
+  end
+
+  def resolvable?(symbol, exchange)
+    Instrument.lookup_by_symbol(
+      symbol, exchange: exchange, segment: Market::AnalysisService::DEFAULT_SEGMENT
+    ).present?
+  end
 
   def user_facing_error_message(e)
     return '🔐 Dhan session or data access issue. Refresh your token or subscribe to Data APIs, then try again.' if dhan_related_error?(e)

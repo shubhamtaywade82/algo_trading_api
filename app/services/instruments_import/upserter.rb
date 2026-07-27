@@ -59,16 +59,22 @@ module InstrumentsImport
       # instrument_id is nullable now, so a contract whose underlying is not in
       # the master is stored unparented rather than discarded. Only ids that do
       # not resolve are cleared, which keeps the FK honest without losing rows.
+      #
+      # The key is written on every row, not just the ones being cleared:
+      # activerecord-import requires every hash in a batch to carry the same
+      # keys, and Mapper only sets :instrument_id on the contracts whose
+      # underlying it resolved. Importing its two halves as one batch — which
+      # is what makes an unparented contract importable at all — raised
+      # "Hash key mismatch. ... Missing keys: [:instrument_id]" on the first
+      # real scrip master, where both halves are non-empty.
       valid_ids = Instrument.where(id: @derivatives_rows.filter_map { |r| r[:instrument_id] }.uniq)
         .pluck(:id).to_set
-      rows = @derivatives_rows.map do |row|
-        next row if row[:instrument_id].nil? || valid_ids.include?(row[:instrument_id])
-
-        row.merge(instrument_id: nil)
+      @derivatives_rows.each do |row|
+        row[:instrument_id] = nil unless valid_ids.include?(row[:instrument_id])
       end
 
       Derivative.import(
-        rows,
+        @derivatives_rows,
         batch_size: BATCH_SIZE,
         on_duplicate_key_update: {
           conflict_target: %i[security_id symbol_name exchange segment],

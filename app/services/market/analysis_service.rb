@@ -19,8 +19,12 @@ module Market
   class AnalysisService < ApplicationService
     TELEGRAM_TAG   = '📈 Analyse'
     DEFAULT_CANDLE = '15m'
+    # The segment every caller of this service analyses. Named so that callers
+    # diagnosing a nil result resolve the symbol the same way `#instrument`
+    # does instead of re-guessing the default.
+    DEFAULT_SEGMENT = :index
 
-    def initialize(symbol, candle: DEFAULT_CANDLE, exchange: :nse, segment: :index, expiry: nil, trade_type: :analysis)
+    def initialize(symbol, candle: DEFAULT_CANDLE, exchange: :nse, segment: DEFAULT_SEGMENT, expiry: nil, trade_type: :analysis)
       @symbol   = symbol.to_s.upcase
       @candle   = candle
       @segment  = segment
