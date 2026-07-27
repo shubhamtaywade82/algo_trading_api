@@ -53,6 +53,14 @@ class Instrument < ApplicationRecord
   validates :security_id, presence: true, uniqueness: { scope: %i[exchange segment] }
   validates :symbol_name, presence: true
 
+  # Mirrors the CHECK constraints added in 20260727140000 so a record built by
+  # hand fails with an ActiveRecord error instead of a PG::CheckViolation. The
+  # database keeps the real guarantee: the importer writes through
+  # activerecord-import, which skips validations entirely.
+  validates :lot_size, numericality: { greater_than: 0 }, allow_nil: true
+  validates :tick_size, :strike_price,
+            numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+
   # Scopes
   scope :active, -> { where(active: true) }
   scope :inactive, -> { where(active: false) }

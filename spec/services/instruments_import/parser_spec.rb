@@ -57,6 +57,25 @@ RSpec.describe InstrumentsImport::Parser, type: :service do
     )
   end
 
+  # MCX futures carry OPTION_TYPE "XX". Stored verbatim they match neither
+  # Derivative#option? nor the futures scope, and they violate the CE/PE check
+  # constraint, which aborts the whole import.
+  it 'nils out the MCX futures sentinel option type' do
+    result = described_class.call(
+      csv_for('EXCH_ID' => 'MCX', 'SEGMENT' => 'M', 'INSTRUMENT' => 'FUTCOM',
+              'SECURITY_ID' => '428750', 'SYMBOL_NAME' => 'GOLD',
+              'SM_EXPIRY_DATE' => '2025-02-05', 'OPTION_TYPE' => 'XX')
+    )
+
+    expect(result[:instruments].first).to include(option_type: nil)
+  end
+
+  it 'keeps a real option type' do
+    result = described_class.call(csv_for('SEGMENT' => 'D', 'OPTION_TYPE' => 'pe'))
+
+    expect(result[:derivatives].first).to include(option_type: 'PE')
+  end
+
   it 'skips exchanges this app does not trade' do
     expect(described_class.call(csv_for('EXCH_ID' => 'XYZ'))[:instruments]).to be_empty
   end
