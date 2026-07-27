@@ -20,6 +20,14 @@ require 'action_cable/engine'
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
+# RubyLLM's railtie decides between the new and legacy `acts_as` API on
+# `on_load(:active_record)`, which fires before app initializers — so this flag
+# has to be set here or the choice is already made by the time
+# config/initializers/ruby_llm.rb runs. This app does not use RubyLLM's
+# ActiveRecord persistence at all; opting in avoids the legacy path and its
+# deprecation warning on every boot.
+RubyLLM.config.use_new_acts_as = true
+
 module AlgoTradingApp
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.

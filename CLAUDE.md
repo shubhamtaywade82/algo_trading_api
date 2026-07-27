@@ -86,13 +86,61 @@ of what this repo already does. Don't re-open them without a concrete reason.
 - **`PAPER_TRADING=true`** routes `Orders::Gateway` to `Paper::Exchange`. Paper
   mode bypasses `PLACE_ORDER`/`LIVE_TRADING` on purpose: nothing reaches the
   broker, so those gates have nothing to protect.
+- **Never pre-check `Orders::Gateway.place_order_enabled?` before placing.** The
+  gateway routes to the paper book *before* it consults those gates, so a caller
+  that decides "blocked" on its own behalf silently makes paper mode
+  unreachable. Call the gateway and branch on the result.
 - Paper state lives in `paper_accounts` / `paper_orders` / `paper_positions`
   (single account, like `DhanAccessToken`), never in the live `orders` table —
   a simulated fill must never be readable as a real position.
+- **The read side must follow the write side.** In paper mode
+  `AlertProcessors::Base#available_balance` and `#dhan_positions` serve the
+  paper book (`Paper::Positions.dhan_shaped`, in the broker's key shape). Sizing
+  or guarding against the live book during a paper run stacks duplicate entries
+  and leaves the daily-loss cap reading zero.
 - **Resting orders and super-order legs are driven by the feed.** `live:feed`
   has to be running or a limit/stop will never fill and marks will go stale.
+  `Paper::FeedSubscriber` subscribes each instrument as it is traded and
+  restores the open book on feed start, so a strike picked at signal time is
+  ticked without anyone listing it in `SYMBOLS`.
+- **The tick stream is the book's only clock.** `Paper::DayRollover` (expire
+  DAY orders, drop flat positions, clear last session's realised P&L) and
+  `Paper::EodSquareOff` (close INTRADAY at 15:15 IST; MARGIN and CNC are
+  carry-forward and stay open) both hang off it, lazily and idempotently,
+  because this app has no scheduler. `live:paper_roll` / `live:paper_eod` force
+  them. Day scoping of the position view is the rollover's job — never a
+  timestamp filter, which would hide a legitimate carry-forward position.
+- **Exit management reads `Positions::Source`**, which serves the paper book in
+  paper mode, so the existing `Positions::Manager` → `Orders::RiskManager` →
+  `Orders::Executor` stack manages simulated positions too. Paper positions
+  carry `costPrice` and `drvExpiryDate` because that stack reads them.
+- **CNC lives in two places.** A delivery position is in the position book only
+  on its trade date and in holdings from T+1, so exit logic checks
+  `dhan_positions` then falls back to `dhan_holdings`. eDIS never runs in paper
+  mode — it authorises a real depository debit.
 - Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
   mode simulates fills, margin, positions and P&L with real charges.
+
+## LLM layer
+
+- **`Openai::ChatRouter` is the switch.** Every chat caller goes through it, so
+  the backend is env-selected (`LLM_BACKEND=ollama_cloud`), never per-caller.
+- **`Llm::KeyRotator` owns Ollama Cloud auth.** Up to five keys from
+  `OLLAMA_API_KEY_1..5`, quarantined 5 minutes on 401/403/402/429/5xx. Never
+  rotate on `BadRequestError`/`ModelNotFoundError` — those fail identically on
+  every key and would burn the pool over a caller-side bug.
+- **Never set `ollama_api_key` globally.** Keys are bound per request via
+  `RubyLLM.context`; the feed thread and web requests share this process, so a
+  global `RubyLLM.configure` swaps the key underneath a concurrent caller.
+- `OLLAMA_API_BASE` must end in `/v1` — RubyLLM posts to
+  `{base}/chat/completions`.
+- Cloud model ids are absent from RubyLLM's registry, so chats need
+  `provider: :ollama, assume_model_exists: true`.
+- **`Llm::Tools::*` wrap `AI::Tools::*`**, never reimplement them — one copy of
+  the DhanHQ plumbing. `use_new_acts_as` is set in `config/application.rb`
+  because the railtie reads it before app initializers run.
+- `ai-agents` must stay on a line allowing `ruby_llm >= 1.16`; earlier ruby_llm
+  sent no `Authorization` header at all and could not reach Ollama Cloud.
 
 ## Critical rules
 

@@ -53,7 +53,7 @@ module AlertProcessors
       positions.each do |pos|
         pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
         sec_id = pos_hash['securityId'] || pos_hash[:security_id]
-        qty = pos_hash['quantity'] || pos_hash[:quantity]
+        qty = position_quantity(pos_hash)
 
         payload = {
           transaction_type: 'SELL',
@@ -66,14 +66,28 @@ module AlertProcessors
         }
 
         result = Orders::Gateway.place_order(payload, source: self.class.name)
-        if result[:dry_run]
-          @processor.send(:log, :warn, "blocked #{type.upcase} exit ⇒ security_id=#{sec_id}, quantity=#{qty}")
+        if result[:dry_run] || result[:error] || result[:blocked]
+          @processor.send(:log, :warn,
+                          "blocked #{type.upcase} exit ⇒ security_id=#{sec_id}, quantity=#{qty} " \
+                          "(#{result[:message] || 'no reason given'})")
           next
         end
 
         @processor.send(:log, :info, "#{log_prefix} #{type.upcase} ⇒ security_id=#{sec_id}, quantity=#{qty}")
         @processor.send(:notify, notify_msg, tag: tag)
       end
+    end
+
+    # Dhan's position payload reports `netQty`, not `quantity`, and the paper
+    # book mirrors that shape. Without the fallback an exit went out with a nil
+    # quantity, which the broker rejects and the paper exchange refuses.
+    #
+    # @return [Integer] absolute size to close
+    def position_quantity(pos_hash)
+      explicit = pos_hash['quantity'] || pos_hash[:quantity]
+      return explicit.to_i.abs if explicit.present?
+
+      (pos_hash['netQty'] || pos_hash[:net_qty] || pos_hash['net_qty']).to_i.abs
     end
 
     def open_long_position?(sec_ids)

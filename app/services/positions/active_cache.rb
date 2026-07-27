@@ -11,7 +11,7 @@ module Positions
     #
     # @return [void]
     def self.refresh!
-      positions = DhanHQ::Models::Position.all.map(&:attributes).reject { |p| (p['netQty'] || p[:net_qty]).to_f.zero? }
+      positions = Positions::Source.open
 
       # Build cache key from security_id and segment (enum → string key, string → enum)
       normalized = positions.index_by do |p|

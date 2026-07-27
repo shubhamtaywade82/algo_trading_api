@@ -59,6 +59,20 @@ module Paper
       )
     end
 
+    # Unwinds whatever an order had blocked and clears the marker, so calling
+    # it twice is a no-op. It lives here rather than on the exchange because
+    # the day rollover has to unwind an expiring order's margin too.
+    #
+    # @return [Float] the amount released
+    def release_order!(account, order)
+      blocked = order.metadata['blocked_margin'].to_f
+      return 0.0 unless blocked.positive?
+
+      release!(account, blocked)
+      order.update!(metadata: order.metadata.merge('blocked_margin' => 0))
+      blocked
+    end
+
     # @return [Float] margin a position of this size would consume
     def required_for(exchange_segment:, product_type:, quantity:, price:)
       turnover = quantity.to_i * price.to_f

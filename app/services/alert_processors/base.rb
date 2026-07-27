@@ -51,12 +51,16 @@ module AlertProcessors
       end
     end
 
-    # Fetches available balance from DhanHQ::Models::Funds.
-    # Raises an error if the API call fails.
+    # Buying power to size against.
     #
-    # @return [Float] The current available balance in the trading account.
+    # In paper mode this is the simulated book's free capital, not the real
+    # account's. Sizing off the live balance while filling into the paper book
+    # is the worst of both: a funded account sizes trades the simulation never
+    # constrains, and an unfunded one sizes everything to zero.
+    #
+    # @return [Float]
     def available_balance
-      return 100_000 if ENV['PAPER_MODE'] == '1'
+      return paper_available_balance if Paper::Broker.enabled?
 
       @available_balance ||= begin
         funds = DhanHQ::Models::Funds.fetch
@@ -66,8 +70,56 @@ module AlertProcessors
       raise 'Failed to fetch available balance'
     end
 
+    # Today's positions on whichever book this run trades.
+    #
+    # Every guard downstream — entry dedupe, flip, exit, the daily-loss check —
+    # reads this. Pointed at the live book during a paper run it reports an
+    # empty account, so repeated signals stack duplicate paper positions and no
+    # exit ever finds anything to close.
+    #
+    # @return [Array<Hash>]
     def dhan_positions
-      @dhan_positions ||= DhanHQ::Models::Position.all.map(&:attributes)
+      @dhan_positions ||=
+        if Paper::Broker.enabled?
+          Paper::Positions.dhan_shaped
+        else
+          DhanHQ::Models::Position.all.map(&:attributes)
+        end
+    end
+
+    # Delivery holdings on whichever book this run trades.
+    #
+    # A CNC buy shows in the *position* book only on the day it trades; from
+    # T+1 the broker reports it as a holding and the position book shows
+    # nothing. Swing and long-term exits keyed to positions alone therefore
+    # stopped finding the position they were meant to close, on every day but
+    # the first.
+    #
+    # @return [Array<Hash>]
+    def dhan_holdings
+      @dhan_holdings ||=
+        if Paper::Broker.enabled?
+          Paper::Positions.dhan_holdings
+        else
+          DhanHQ::Models::Holding.all.map(&:attributes)
+        end
+    rescue StandardError => e
+      Rails.logger.warn("[#{self.class.name}] holdings fetch failed: #{e.message}")
+      []
+    end
+
+    private
+
+    # Free margin, not gross cash: capital already committed to open paper
+    # positions is not available to size the next one.
+    def paper_available_balance
+      @paper_available_balance ||= PaperAccount.current.free_margin.to_f
+    end
+
+    # Which book this run trades, for cache keys that must not be shared
+    # between a simulated and a live session.
+    def book_key
+      Paper::Broker.enabled? ? 'paper' : 'live'
     end
   end
 end

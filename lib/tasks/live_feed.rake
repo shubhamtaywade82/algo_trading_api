@@ -11,6 +11,7 @@ namespace :live do
 
     subscribe_from_env(hub)
     subscribe_watchlist(hub) if ENV['SUBSCRIBE_WATCHLIST'] == 'true'
+    subscribe_paper_book if Paper::Broker.enabled?
 
     puts "⚡ market feed running (mode=#{mode}, subscriptions=#{hub.subscriptions.size})"
     puts '   Ctrl-C to stop.'
@@ -65,6 +66,22 @@ namespace :live do
     pp Paper::Positions.summary
   end
 
+  desc 'Square off the paper book\'s intraday positions now (as the broker would at 15:15 IST)'
+  task paper_eod: :environment do
+    closed = Paper::EodSquareOff.call
+    puts "🔔 squared off #{closed} intraday paper position(s)"
+    pp Paper::Positions.summary
+  end
+
+  desc 'Roll the paper book onto the current trading day (expire DAY orders, drop flat positions)'
+  task paper_roll: :environment do
+    if Paper::DayRollover.ensure!
+      puts '📆 paper book rolled onto the current session'
+    else
+      puts '📆 paper book was already on the current session'
+    end
+  end
+
   desc 'Reset the simulated paper book to its starting capital'
   task paper_reset: :environment do
     account = Paper::Positions.reset!
@@ -79,6 +96,15 @@ namespace :live do
 
       hub.subscribe(segment: segment, security_id: security_id)
     end
+  end
+
+  # Anything the paper book still has working needs ticks from the moment the
+  # feed comes up, not from the next order.
+  def subscribe_paper_book
+    count = Paper::FeedSubscriber.restore_book!
+    puts "📄 paper book restored: #{count} instrument(s) subscribed"
+  rescue StandardError => e
+    Rails.logger.warn("[live:feed] could not restore paper-book subscriptions: #{e.message}")
   end
 
   def subscribe_watchlist(hub)

@@ -264,6 +264,70 @@ RSpec.describe Paper::Exchange do
 
       expect(account.paper_orders.where(order_category: 'super').first.reload.status).to eq('traded')
     end
+
+    # A trailing_jump that is recorded and then ignored makes every trailing
+    # strategy test as a fixed stop: it never gives back the move, so anything
+    # that rides a trend and hands profit back looks better than it was.
+    describe 'trailing stop' do
+      let(:trailing_entry) do
+        buy_market.merge(order_type: 'LIMIT', price: 1_500.0, target_price: 1_600.0,
+                         stop_loss_price: 1_470.0, trailing_jump: 10.0)
+      end
+
+      def tick(price)
+        Live::TickCache.put('NSE_EQ', '1333', ltp: price)
+        exchange.process_tick(security_id: '1333', exchange_segment: 'NSE_EQ', ltp: price)
+      end
+
+      it 'ratchets the stop up in whole jumps as price advances' do
+        exchange.place(trailing_entry)
+
+        tick(1_525.0) # +25 from entry: two whole jumps
+
+        entry = account.paper_orders.where(order_category: 'super').first.reload
+        expect(entry.metadata['trailed_stop'].to_f).to eq(1_490.0)
+      end
+
+      it 'does not move the stop until price travels a full jump' do
+        exchange.place(trailing_entry)
+
+        tick(1_508.0)
+
+        expect(account.paper_orders.where(order_category: 'super').first.reload.metadata['trailed_stop']).to be_nil
+      end
+
+      it 'never gives the stop back when price retreats' do
+        exchange.place(trailing_entry)
+
+        tick(1_530.0)
+        tick(1_505.0)
+
+        entry = account.paper_orders.where(order_category: 'super').first.reload
+        expect(entry.metadata['trailed_stop'].to_f).to eq(1_500.0)
+        expect(entry.status).to eq('traded')
+      end
+
+      it 'exits on the trailed stop, well above the original one' do
+        exchange.place(trailing_entry)
+
+        tick(1_530.0)  # stop trails to 1500
+        tick(1_499.0)  # through the trailed stop, nowhere near the original 1470
+
+        entry = account.paper_orders.where(order_category: 'super').first.reload
+        expect(entry.metadata['exit_leg']).to eq('STOP_LOSS')
+        expect(account.paper_positions.find_by(security_id: '1333').net_qty).to eq(0)
+      end
+
+      it 'trails downward for a short' do
+        exchange.place(buy_market.merge(transaction_type: 'SELL', order_type: 'LIMIT', price: 1_500.0,
+                                        target_price: 1_400.0, stop_loss_price: 1_530.0, trailing_jump: 10.0))
+
+        tick(1_475.0) # -25 from entry: two whole jumps
+
+        entry = account.paper_orders.where(order_category: 'super').first.reload
+        expect(entry.metadata['trailed_stop'].to_f).to eq(1_510.0)
+      end
+    end
   end
 
   describe 'partial fills' do
