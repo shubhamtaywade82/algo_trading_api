@@ -103,36 +103,39 @@ namespace :instruments do
 
   desc 'Check instrument inventory freshness and counts'
   task status: :environment do
-    last_import_raw = Setting.fetch('instruments.last_imported_at')
+    # Reads instrument_sync_runs. This previously read a `Setting` constant
+    # that does not exist in this app (the model is AppSetting) and compared
+    # against InstrumentsImporter::CACHE_MAX_AGE, which lives on
+    # InstrumentsImport::Fetcher — so the task raised NameError either way.
+    run = InstrumentSyncRun.last_success
 
-    unless last_import_raw
-      pp 'No instrument import recorded yet.'
+    unless run
+      pp 'No successful instrument import recorded yet.'
+      failed = InstrumentSyncRun.status_failed.recent.first
+      pp "Last failure at #{failed.started_at}: #{failed.error_message}" if failed
       exit 1
     end
 
-    imported_at = Time.zone.parse(last_import_raw.to_s)
-    age_seconds = Time.current - imported_at
-    max_age     = InstrumentsImporter::CACHE_MAX_AGE
+    age_seconds = Time.current - run.finished_at
 
-    pp "Last import at: #{imported_at}"
+    pp "Last import at: #{run.finished_at}"
     pp "Age (seconds): #{age_seconds.round(2)}"
-    pp "Import duration (sec): #{Setting.fetch('instruments.last_import_duration_sec', 'unknown')}"
-    pp "Last instrument rows: #{Setting.fetch('instruments.last_instrument_rows', '0')}"
-    pp "Last derivative rows: #{Setting.fetch('instruments.last_derivative_rows', '0')}"
-    pp "Upserts (instruments): #{Setting.fetch('instruments.last_instrument_upserts', '0')}"
-    pp "Upserts (derivatives): #{Setting.fetch('instruments.last_derivative_upserts', '0')}"
-    pp "Total instruments: #{Setting.fetch('instruments.instrument_total', '0')}"
-    pp "Total derivatives: #{Setting.fetch('instruments.derivative_total', '0')}"
+    pp "Import duration (sec): #{run.duration&.round(2)}"
+    pp "Last instrument rows: #{run.instrument_rows}"
+    pp "Last derivative rows: #{run.derivative_rows}"
+    pp "Upserts (instruments): #{run.instrument_upserts}"
+    pp "Upserts (derivatives): #{run.derivative_upserts}"
+    pp "Unparented derivatives: #{run.unparented_derivatives}"
+    pp "Deactivated rows: #{run.deactivated_rows}"
+    pp "Total instruments: #{Instrument.count} (#{Instrument.active.count} active)"
+    pp "Total derivatives: #{Derivative.count} (#{Derivative.active.count} active)"
 
-    if age_seconds > max_age
-      pp "Status: STALE (older than #{max_age.inspect})"
+    if InstrumentSyncRun.stale?
+      pp "Status: STALE (older than #{InstrumentSyncRun::STALE_AFTER.inspect})"
       exit 1
     end
 
     pp 'Status: OK'
-  rescue ArgumentError => e
-    pp "Failed to parse last import timestamp: #{e.message}"
-    exit 1
   end
 end
 

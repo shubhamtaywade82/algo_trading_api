@@ -143,9 +143,6 @@ RSpec.describe Orders::RiskManager, type: :service do
                           series: 'X',
                           lot_size: 1,
                           tick_size: 1.0,
-                          asm_gsm_flag: 'N',
-                          asm_gsm_category: 'NA',
-                          mtf_leverage: 0.0,
                           created_at: '2025-06-28 00:59:32.511118000 +0530',
                           updated_at: '2025-06-28 00:59:32.511118000 +0530')
     end

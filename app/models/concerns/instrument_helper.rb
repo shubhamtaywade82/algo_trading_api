@@ -4,8 +4,17 @@
 module InstrumentHelper
   extend ActiveSupport::Concern
 
-  # Generate `exchange_segment` dynamically based on exchange and segment enums
+  # Prefer the stored generated column, which Postgres maintains from
+  # (exchange, segment) and which the lookup indexes are built on, so this
+  # cannot disagree with what a query matched. The case statement stays as the
+  # fallback for records not loaded from the table.
+  #
+  # This concern is included after InstrumentHelpers, so it shadows that
+  # module's identically named method — it has to do the same column check or
+  # Instrument would silently lose it.
   def exchange_segment
+    return self[:exchange_segment] if has_attribute?(:exchange_segment) && self[:exchange_segment].present?
+
     case [exchange.to_sym, segment.to_sym]
     when %i[nse index], %i[bse index] then 'IDX_I'
     when %i[nse equity] then 'NSE_EQ'

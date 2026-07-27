@@ -15,8 +15,10 @@ module AI
         sym = symbol.to_s.upcase
         lim = [limit.to_i.positive? ? limit.to_i : 20, 100].min
 
+        # There is no `trading_symbol` column on instruments; the detailed
+        # scrip master's symbol lands in `symbol_name`.
         instrument = Instrument.segment_index.find_by(underlying_symbol: sym) ||
-                     Instrument.find_by(trading_symbol: sym)
+                     Instrument.find_by(symbol_name: sym)
 
         return { error: "Instrument not found: #{sym}" } unless instrument
 
