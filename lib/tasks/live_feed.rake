@@ -11,6 +11,7 @@ namespace :live do
 
     subscribe_from_env(hub)
     subscribe_watchlist(hub) if ENV['SUBSCRIBE_WATCHLIST'] == 'true'
+    subscribe_paper_book if Paper::Broker.enabled?
 
     puts "⚡ market feed running (mode=#{mode}, subscriptions=#{hub.subscriptions.size})"
     puts '   Ctrl-C to stop.'
@@ -79,6 +80,15 @@ namespace :live do
 
       hub.subscribe(segment: segment, security_id: security_id)
     end
+  end
+
+  # Anything the paper book still has working needs ticks from the moment the
+  # feed comes up, not from the next order.
+  def subscribe_paper_book
+    count = Paper::FeedSubscriber.restore_book!
+    puts "📄 paper book restored: #{count} instrument(s) subscribed"
+  rescue StandardError => e
+    Rails.logger.warn("[live:feed] could not restore paper-book subscriptions: #{e.message}")
   end
 
   def subscribe_watchlist(hub)

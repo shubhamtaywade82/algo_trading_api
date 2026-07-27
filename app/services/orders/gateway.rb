@@ -48,10 +48,15 @@ module Orders
   #
   # With `PAPER_TRADING=true` the domestic paths route to {Paper::Broker},
   # which fills against the live feed with a slippage assumption and persists
-  # the fill as an Order row. Because the switch lives here, every caller gets
-  # paper behaviour without changing code and the result shape is unchanged.
-  # Paper mode intentionally bypasses PLACE_ORDER/LIVE_TRADING: nothing reaches
-  # the broker, so those gates have nothing to protect.
+  # the fill to the `paper_*` tables — never the live `orders` table. Because
+  # the switch lives here, every caller gets paper behaviour without changing
+  # code and the result shape is unchanged. Paper mode intentionally bypasses
+  # PLACE_ORDER/LIVE_TRADING: nothing reaches the broker, so those gates have
+  # nothing to protect.
+  #
+  # That bypass is why callers must not pre-check {.place_order_enabled?} and
+  # skip the call themselves — routing happens here, ahead of the gates, so a
+  # caller that decides "blocked" on its own makes paper mode unreachable.
   class Gateway
     # Asset classes that route to the domestic (INR) order API.
     DOMESTIC_ASSET_CLASSES = %i[equity index options futures currency commodity].freeze
@@ -102,7 +107,9 @@ module Orders
       # @param source [String] caller identifier for logs
       # @return [Hash] result hash with :dry_run or :order details
       def place_super_order(payload, logger: Rails.logger, source: nil)
-        # Paper mode fills the entry leg; the SL/target legs are not simulated.
+        # Paper mode fills the entry leg and then watches the target and stop
+        # on the tick stream (Paper::SuperOrderMonitor); `trailing_jump` is
+        # recorded but not yet trailed.
         return Paper::Broker.place(payload, source: source) if Paper::Broker.enabled?
         return blocked_result(payload, logger: logger, source: source) unless place_order_enabled?(logger: logger, source: source)
 

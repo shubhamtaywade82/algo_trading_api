@@ -86,11 +86,23 @@ of what this repo already does. Don't re-open them without a concrete reason.
 - **`PAPER_TRADING=true`** routes `Orders::Gateway` to `Paper::Exchange`. Paper
   mode bypasses `PLACE_ORDER`/`LIVE_TRADING` on purpose: nothing reaches the
   broker, so those gates have nothing to protect.
+- **Never pre-check `Orders::Gateway.place_order_enabled?` before placing.** The
+  gateway routes to the paper book *before* it consults those gates, so a caller
+  that decides "blocked" on its own behalf silently makes paper mode
+  unreachable. Call the gateway and branch on the result.
 - Paper state lives in `paper_accounts` / `paper_orders` / `paper_positions`
   (single account, like `DhanAccessToken`), never in the live `orders` table —
   a simulated fill must never be readable as a real position.
+- **The read side must follow the write side.** In paper mode
+  `AlertProcessors::Base#available_balance` and `#dhan_positions` serve the
+  paper book (`Paper::Positions.dhan_shaped`, in the broker's key shape). Sizing
+  or guarding against the live book during a paper run stacks duplicate entries
+  and leaves the daily-loss cap reading zero.
 - **Resting orders and super-order legs are driven by the feed.** `live:feed`
   has to be running or a limit/stop will never fill and marks will go stale.
+  `Paper::FeedSubscriber` subscribes each instrument as it is traded and
+  restores the open book on feed start, so a strike picked at signal time is
+  ticked without anyone listing it in `SYMBOLS`.
 - Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
   mode simulates fills, margin, positions and P&L with real charges.
 

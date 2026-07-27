@@ -157,11 +157,15 @@ module AlertProcessors
       false
     end
 
-    # Calculate today's realized loss from positions
+    # Today's realised loss on whichever book this run trades.
+    #
+    # Reads `dhan_positions` rather than the SDK directly so a paper run is
+    # guarded by its own losses; against the live book it would always see zero
+    # and the daily cap would never fire. The cache key is scoped to the book
+    # for the same reason.
     def daily_loss_today
-      Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
-        positions = DhanHQ::Models::Position.all
-        positions.sum do |pos|
+      Rails.cache.fetch("daily_loss:#{book_key}:#{Date.current}", expires_in: 1.hour) do
+        dhan_positions.sum do |pos|
           pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
           realized_pnl = pos_hash['realizedProfit'] || pos_hash[:realized_profit] || 0
           realized_pnl.to_f.negative? ? realized_pnl.to_f : 0

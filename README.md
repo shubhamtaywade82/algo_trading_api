@@ -227,7 +227,13 @@ simulated exchange over **real market data**:
   slippage applied **against the taker** — buys fill higher, sells lower.
 - **Resting orders.** A non-marketable limit and an un-elected stop rest, then
   fill when a later tick reaches them. This is driven by the market feed, so
-  `bin/rails live:feed` must be running for resting orders to work.
+  `bin/rails live:feed` must be running for resting orders to work. The feed
+  subscribes each instrument as the book trades it and re-subscribes anything
+  still working on start-up, so an option strike chosen at signal time is
+  ticked without being listed in `SYMBOLS`.
+- **Its own capital and its own positions.** Sizing and every guard — entry
+  dedupe, flips, exits, the daily-loss cap — read the paper book while
+  `PAPER_TRADING=true`, not the live account.
 - **Super orders.** Once the entry fills, a tick through the target or stop
   closes the position, whichever comes first.
 - **Virtual capital and margin.** Orders are rejected when the book cannot fund

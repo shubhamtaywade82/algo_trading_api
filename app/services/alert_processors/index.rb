@@ -146,18 +146,18 @@ module AlertProcessors
       end
       log_sizing_success(strike, derivative.lot_size, sizing) if sizing[:lots]
 
-      place_live = Orders::Gateway.place_order_enabled?(logger: Rails.logger, source: self.class.name)
+      # Never pre-check the live gate here. `Orders::Gateway` is what knows
+      # which book an order belongs on, and it routes to `Paper::Exchange`
+      # before consulting PLACE_ORDER/LIVE_TRADING. Deciding "blocked" ahead of
+      # the call meant a paper run never reached the simulator at all: every
+      # index alert was recorded as a dry run and nothing was ever filled.
       if USE_SUPER_ORDER
         order = build_super_order_payload(strike, derivative, quantity)
         return skip!(:ltp_unavailable) unless order
-        return dry_run(order) unless place_live
 
         place_super_order!(order)
       else
-        order = build_legacy_order_payload(derivative, quantity)
-        return dry_run(order) unless place_live
-
-        place_order!(order)
+        place_order!(build_legacy_order_payload(derivative, quantity))
       end
     end
 
@@ -333,7 +333,7 @@ module AlertProcessors
 
     def place_order!(params)
       result = Orders::Gateway.place_order(params, source: self.class.name)
-      return dry_run(params) if result[:dry_run]
+      return unplaced(params, result) unless placed?(result)
 
       order_id = result[:order_id]
       log :info, "order placed  → #{order_id}"
@@ -360,7 +360,7 @@ module AlertProcessors
 
     def place_super_order!(params)
       result = Orders::Gateway.place_super_order(params, source: self.class.name)
-      return dry_run(params) if result[:dry_run]
+      return unplaced(params, result) unless placed?(result)
 
       order_id = result[:order_id]
       log :info, "super-order placed → #{order_id}"
@@ -399,15 +399,35 @@ module AlertProcessors
       row.atr_pct.to_f # eg 0.0082  ( = 0.82 %)
     end
 
-    def dry_run(params)
+    # Whether the order actually reached a book — live or simulated.
+    #
+    # A paper fill answers `dry_run: false`, so it passes; a gate-blocked or
+    # rejected order does not.
+    def placed?(result)
+      !(result[:dry_run] || result[:error] || result[:blocked])
+    end
+
+    # An order that never reached a book. A dry run means a safety gate stopped
+    # it; anything else carries a real reason — in paper mode most often
+    # insufficient simulated margin — and must not be logged as a dry run.
+    def unplaced(params, result)
+      return dry_run(params, result[:message]) if result[:dry_run]
+
+      reason = result[:message].presence || 'order rejected'
+      log :warn, "🚫 order not placed – #{reason}"
+      alert.update!(status: :skipped, error_message: reason, metadata: { rejected_order: params })
+      false
+    end
+
+    def dry_run(params, reason = 'PLACE_ORDER disabled')
       log :info, "dry-run order → #{params}"
       alert.update!(
         status: :skipped,
-        error_message: 'PLACE_ORDER disabled',
+        error_message: reason,
         metadata: { simulated_order: params } # assuming you have a JSONB column
       )
       notify(<<~MSG.strip, tag: 'DRYRUN')
-        💡 DRY-RUN (PLACE_ORDER=false) – Alert ##{alert.id}
+        💡 DRY-RUN (#{reason}) – Alert ##{alert.id}
         • Symbol: #{instrument.symbol_name}
         • Type: #{params[:transaction_type]}
         • Qty: #{params[:quantity]}
@@ -441,11 +461,16 @@ module AlertProcessors
       false
     end
 
-    # Calculate today's realized loss from positions
+    # Today's realised loss on whichever book this run trades.
+    #
+    # Reads `dhan_positions` rather than the SDK directly so a paper run is
+    # guarded by its own losses; against the live book it would always see zero
+    # and the daily cap would never fire. The cache key is scoped to the book
+    # for the same reason.
     def daily_loss_today
-      Rails.cache.fetch("daily_loss:#{Date.current}", expires_in: 1.hour) do
-        positions = DhanHQ::Models::Position.all.map(&:attributes)
-        positions.sum do |pos_hash|
+      Rails.cache.fetch("daily_loss:#{book_key}:#{Date.current}", expires_in: 1.hour) do
+        dhan_positions.sum do |pos|
+          pos_hash = pos.is_a?(Hash) ? pos : pos.to_h
           realized_pnl = pos_hash['realizedProfit'] || pos_hash[:realized_profit] || pos_hash['realized_profit'] || 0
           realized_pnl.to_f.negative? ? realized_pnl.to_f : 0
         end

@@ -55,6 +55,7 @@ module Paper
       return rejected(params, errors, source: source) if errors.any?
 
       order = build_order(params)
+      FeedSubscriber.follow(segment: order.exchange_segment, security_id: order.security_id)
       margin = @margin.check(account, exchange_segment: order.exchange_segment,
                                       product_type: order.product_type,
                                       quantity: order.quantity,

@@ -152,20 +152,75 @@ RSpec.describe AlertProcessors::Index, type: :service do
 
     context 'when dry-run mode is active' do
       before do
-        allow(processor).to receive(:place_order!) { raise 'should not place' }
-        allow(processor).to receive(:place_super_order!) { raise 'should not place' }
-        allow(processor).to receive(:dry_run).and_call_original
         @orig_place_order = ENV.fetch('PLACE_ORDER', nil)
         ENV['PLACE_ORDER'] = 'false'
       end
 
       after { ENV['PLACE_ORDER'] = @orig_place_order }
 
-      it 'performs dry-run instead of placing real order', vcr: { cassette_name: 'dhan/option_expiry_list' } do
+      # The gate is the gateway's to enforce, not the processor's. The
+      # processor must hand the order over regardless and route the blocked
+      # result to #dry_run — checking the gate here instead is what stopped
+      # paper mode from ever reaching Paper::Exchange.
+      it 'still calls the gateway and records its refusal',
+         vcr: { cassette_name: 'dhan/option_expiry_list' } do
+        allow(Orders::Gateway).to receive(:place_super_order).and_call_original
+
         processor.call
 
+        expect(Orders::Gateway).to have_received(:place_super_order)
         expect(alert.reload.status).to eq('skipped')
-        expect(alert.error_message).to eq('PLACE_ORDER disabled')
+        expect(alert.error_message).to eq('PLACE_ORDER is not true; order not sent.')
+      end
+
+      it 'does not reach the broker', vcr: { cassette_name: 'dhan/option_expiry_list' } do
+        allow(DhanHQ::Models::SuperOrder).to receive(:create)
+
+        processor.call
+
+        expect(DhanHQ::Models::SuperOrder).not_to have_received(:create)
+      end
+    end
+
+    # The whole point of paper mode: the order must reach the simulator even
+    # though the live gates are off. Pre-checking PLACE_ORDER here used to mark
+    # every index alert as a dry run, so nothing was ever simulated.
+    context 'when paper trading is enabled' do
+      let!(:paper_account) do
+        PaperAccount.create!(
+          initial_capital: 1_000_000, available_balance: 1_000_000,
+          config: PaperAccount::DEFAULT_CONFIG.merge('market_hours_enforced' => false)
+        )
+      end
+
+      before do
+        @orig_paper = ENV.fetch('PAPER_TRADING', nil)
+        @orig_place_order = ENV.fetch('PLACE_ORDER', nil)
+        ENV['PAPER_TRADING'] = 'true'
+        ENV['PLACE_ORDER'] = 'false'
+      end
+
+      after do
+        ENV['PAPER_TRADING'] = @orig_paper
+        ENV['PLACE_ORDER'] = @orig_place_order
+      end
+
+      it 'fills into the paper book instead of dry-running',
+         vcr: { cassette_name: 'dhan/option_expiry_list' } do
+        expect { processor.call }.to change { paper_account.paper_orders.count }.by(1)
+
+        expect(alert.reload.status).to eq('processed')
+        expect(paper_account.paper_orders.last).to have_attributes(
+          security_id: derivative.security_id, quantity: 150, status: 'traded'
+        )
+      end
+
+      it 'never reaches the broker', vcr: { cassette_name: 'dhan/option_expiry_list' } do
+        allow(DhanHQ::Models::SuperOrder).to receive(:create)
+
+        processor.call
+
+        expect(DhanHQ::Models::SuperOrder).not_to have_received(:create)
       end
     end
 
