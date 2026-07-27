@@ -121,7 +121,7 @@ GEM
       bigdecimal
       rexml
     crass (1.0.6)
-    csv (3.3.5)
+    csv (3.3.6)
     daemons (1.4.1)
     database_cleaner-active_record (2.2.0)
       activerecord (>= 5.a)
