@@ -98,6 +98,29 @@ class Instrument < ApplicationRecord
     SEGMENT_FROM_EXCHANGE[code] || code.downcase
   end
 
+  # Resolves a human-supplied symbol ("SENSEX", "NIFTY", "INFY") against the
+  # three columns the scrip master actually fills — UNDERLYING_SYMBOL,
+  # SYMBOL_NAME and DISPLAY_NAME. There is no `trading_symbol` column on
+  # instruments (it lives on positions/orders, which are broker payloads), so
+  # querying one raised PG::UndefinedColumn instead of returning nil for a
+  # symbol that simply is not in the table.
+  #
+  # `exchange` and `segment` take enum keys (:bse, :index) or DB values.
+  def self.lookup_by_symbol(symbol, exchange: nil, segment: nil)
+    sym = symbol.to_s.upcase.strip
+    return nil if sym.blank?
+
+    scope = all
+    scope = scope.where(exchange: exchange) if exchange.present?
+    scope = scope.where(segment: segment) if segment.present?
+
+    scope.find_by(underlying_symbol: sym) ||
+      scope.find_by(symbol_name: sym) ||
+      # DISPLAY_NAME is title-cased in the feed ("Sensex", "Nifty 50"), so this
+      # last resort compares case-insensitively.
+      scope.where('UPPER(display_name) = ?', sym).first
+  end
+
   def self.find_by_sid_and_segment(security_id:, segment_code:, symbol_name: nil)
     segment_key = segment_key_for(segment_code)
     return nil unless security_id.present? && segment_key.present?

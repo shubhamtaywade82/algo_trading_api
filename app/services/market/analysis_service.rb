@@ -63,12 +63,7 @@ module Market
     private
 
     def instrument
-      @instrument ||= begin
-        scope = Instrument.where(exchange: @exchange, segment: @segment)
-        scope.find_by(underlying_symbol: @symbol)  ||
-          scope.find_by(symbol_name:      @symbol) ||
-          scope.find_by(trading_symbol:   @symbol)
-      end
+      @instrument ||= Instrument.lookup_by_symbol(@symbol, exchange: @exchange, segment: @segment)
     end
 
     def india_vix

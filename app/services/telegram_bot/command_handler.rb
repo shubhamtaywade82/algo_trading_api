@@ -321,10 +321,7 @@ module TelegramBot
     end
 
     def instrument_for(symbol, exchange)
-      scope = Instrument.where(exchange: exchange)
-      scope.find_by(underlying_symbol: symbol) ||
-        scope.find_by(symbol_name: symbol) ||
-        scope.find_by(trading_symbol: symbol)
+      Instrument.lookup_by_symbol(symbol, exchange: exchange)
     end
 
     def send_not_implemented(description)
