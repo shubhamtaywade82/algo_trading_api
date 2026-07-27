@@ -135,7 +135,7 @@ module Dhan
         return token if token.present?
 
         raise DhanHQ::InvalidAuthenticationError,
-              "Dhan token response missing accessToken. Keys: #{safe_response_keys(response)}"
+              "Dhan token response missing accessToken. Keys: #{safe_response_keys(response)}#{response_hint(response)}"
       end
 
       def extract_expiry_time(response)
@@ -143,7 +143,7 @@ module Dhan
         raw = data['expiryTime'] || data[:expiryTime] || data['expiry_time'] || data[:expiry_time]
         if raw.blank?
           raise DhanHQ::InvalidAuthenticationError,
-                "Dhan token response missing expiryTime. Keys: #{safe_response_keys(response)}"
+                "Dhan token response missing expiryTime. Keys: #{safe_response_keys(response)}#{response_hint(response)}"
         end
 
         Time.zone.parse(raw.to_s)
@@ -156,6 +156,18 @@ module Dhan
         data = response['data'] || response[:data]
         nested = data.is_a?(Hash) ? data.keys.map(&:to_s) : []
         (top + nested).uniq
+      end
+
+      # An empty key list means the SDK handed back nothing to inspect, which
+      # says nothing about *why*. Name the shape it did return so the log points
+      # somewhere — an empty Hash is the signature of an auth response that came
+      # back 2xx and was then dropped unparsed (see the
+      # dhan_auth_json_response initializer).
+      def response_hint(response)
+        return '' unless safe_response_keys(response).empty?
+
+        " (response was #{response.class}#{', empty' if response.respond_to?(:empty?) && response.empty?}; " \
+          'a 2xx response with no keys means the body was never parsed)'
       end
 
       # Required Dhan authentication credentials.

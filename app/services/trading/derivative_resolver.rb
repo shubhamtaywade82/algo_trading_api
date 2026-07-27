@@ -1,10 +1,21 @@
 # frozen_string_literal: true
 
-require 'csv'
-
 module Trading
-  # Resolve derivative contracts using the Dhan scrip master CSV.
-  # This provides a deterministic lookup without hitting the live Dhan API.
+  # Resolve derivative contracts to their Dhan tradable identifiers.
+  #
+  # Reads the `derivatives` table, which `bin/rails import:instruments` populates
+  # from the same scrip master this used to parse itself. That import is the
+  # app's inventory of contracts and every other lookup already goes through it
+  # (AlertProcessors::Index#fetch_derivative, InstrumentUtils, Orders::Manager,
+  # Paper::Positions, Dhan::WS::FeedListener) — this was the one caller that did
+  # not.
+  #
+  # It previously built a ~400k-entry Hash out of tmp/dhan_scrip_master.csv at
+  # boot. That file is InstrumentsImport::Fetcher's 24-hour *download cache*,
+  # not a data file: it is absent on a fresh container, so the index failed to
+  # load on every deploy that had not just imported, and the in-memory copy was
+  # never invalidated afterwards, so a re-import could not correct a process
+  # that had already read stale expiries.
   class DerivativeResolver
     Result = Struct.new(
       :security_id,
@@ -14,87 +25,57 @@ module Trading
       keyword_init: true
     )
 
-    SCRIP_PATH = Rails.root.join('tmp/dhan_scrip_master.csv')
-    # Mutated under CACHE_MUTEX by load_index!, so it cannot be frozen.
-    CACHE = {} # rubocop:disable Style/MutableConstant
-    CACHE_MUTEX = Mutex.new
-
-    def self.load_index!
-      return if CACHE.any?
-
-      CACHE_MUTEX.synchronize do
-        return if CACHE.any?
-
-        Rails.logger.info "Loading Dhan scrip master index from #{SCRIP_PATH}..."
-        CSV.foreach(SCRIP_PATH, headers: true) do |row|
-          next unless row['SEGMENT'] == 'D' # Only derivatives
-
-          key = [
-            row['UNDERLYING_SYMBOL'],
-            row['SM_EXPIRY_DATE'],
-            row['STRIKE_PRICE'].to_f.to_i,
-            row['OPTION_TYPE']
-          ].join(':')
-
-          CACHE[key] = {
-            security_id: row['SECURITY_ID'],
-            exchange_segment: "#{row['EXCH_ID']}_#{row['SEGMENT'] == 'D' ? 'FNO' : 'EQ'}", # Simplified mapping
-            trading_symbol: row['SYMBOL_NAME'],
-            lot_size: row['LOT_SIZE'].to_i
-          }
-        end
-        Rails.logger.info "Dhan scrip master index loaded: #{CACHE.size} contracts"
-      end
-    end
+    INDEX_SYMBOLS = %w[NIFTY BANKNIFTY SENSEX FINNIFTY MIDCPNIFTY].freeze
+    OPTION_TYPES = %w[CE PE].freeze
 
     def initialize(symbol:, expiry:, strike:, option_type:)
-      @symbol = symbol.upcase
+      @symbol = symbol.to_s.upcase
       @expiry = expiry # Expecting YYYY-MM-DD
       @strike = strike.to_i
-      @option_type = option_type.upcase
+      @option_type = option_type.to_s.upcase
     end
 
     def call
       validate!
 
-      # Try cache first
-      self.class.load_index! if CACHE.empty?
+      derivative = find_contract
+      raise not_found_message unless derivative
 
-      key = [@symbol, @expiry, @strike, @option_type].join(':')
-      data = CACHE[key]
-
-      # Fallback to manual scan if not found in cache (e.g. if index failed to load)
-      data ||= find_in_csv if CACHE.empty?
-
-      raise "Contract not found for #{@symbol} #{@expiry} #{@strike} #{@option_type}" unless data
-
-      Result.new(data)
+      Result.new(
+        security_id: derivative.security_id,
+        # The model's own mapping, so this agrees with every other call site
+        # rather than reimplementing EXCH_ID + segment string juggling.
+        exchange_segment: derivative.exchange_segment,
+        trading_symbol: derivative.symbol_name,
+        lot_size: derivative.lot_size
+      )
     end
 
     private
 
+    def find_contract
+      Derivative.find_by(
+        underlying_symbol: @symbol,
+        expiry_date: @expiry,
+        strike_price: @strike,
+        option_type: @option_type
+      )
+    end
+
     def validate!
-      raise 'Invalid symbol' unless %w[NIFTY BANKNIFTY SENSEX FINNIFTY MIDCPNIFTY].include?(@symbol)
-      raise 'Invalid option_type' unless %w[CE PE].include?(@option_type)
+      raise 'Invalid symbol' unless INDEX_SYMBOLS.include?(@symbol)
+      raise 'Invalid option_type' unless OPTION_TYPES.include?(@option_type)
       raise 'Invalid strike' if @strike <= 0
       raise 'Invalid expiry format (expected YYYY-MM-DD)' unless /^\d{4}-\d{2}-\d{2}$/.match?(@expiry)
     end
 
-    def find_in_csv
-      CSV.foreach(SCRIP_PATH, headers: true) do |row|
-        next unless row['UNDERLYING_SYMBOL'] == @symbol
-        next unless row['SM_EXPIRY_DATE'] == @expiry
-        next unless row['STRIKE_PRICE'].to_f.to_i == @strike
-        next unless row['OPTION_TYPE'] == @option_type
+    # An empty table and a genuinely unknown contract look identical to the
+    # caller otherwise, and they need opposite fixes.
+    def not_found_message
+      base = "Contract not found for #{@symbol} #{@expiry} #{@strike} #{@option_type}"
+      return base if Derivative.exists?
 
-        return {
-          security_id: row['SECURITY_ID'],
-          exchange_segment: row['EXCH_ID'] == 'NSE' ? 'NSE_FNO' : 'BSE_FNO',
-          trading_symbol: row['SYMBOL_NAME'],
-          lot_size: row['LOT_SIZE'].to_i
-        }
-      end
-      nil
+      "#{base} (no derivatives imported — run `bin/rails import:instruments`)"
     end
   end
 end

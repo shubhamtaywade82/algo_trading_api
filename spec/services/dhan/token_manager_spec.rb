@@ -97,4 +97,50 @@ RSpec.describe Dhan::TokenManager do
       end
     end
   end
+
+  # The examples above hand DhanHQ::Auth a ready-made Hash, which is precisely
+  # the assumption that broke in production: the SDK never parses its auth
+  # response, so a 2xx handshake reached this class as `{}` and the boot failed
+  # with "missing accessToken. Keys: []". Drive the whole path over HTTP so the
+  # decode step in config/initializers/dhan_auth_json_response.rb is covered.
+  describe 'end-to-end handshake', :no_dhan_token do
+    before { allow(DhanHQ::Auth).to receive(:generate_access_token).and_call_original }
+
+    it 'persists the token returned by a successful handshake' do
+      expiry = 24.hours.from_now.change(usec: 0)
+      stub_request(:post, /auth\.dhan\.co/).to_return(
+        status: 200,
+        body: { dhanClientId: '1101', accessToken: 'live.jwt.token',
+                expiryTime: expiry.iso8601 }.to_json,
+        headers: { 'Content-Type' => 'application/json' }
+      )
+
+      expect(described_class.refresh!(reason: :missing)).to eq('live.jwt.token')
+      expect(DhanAccessToken.first).to have_attributes(
+        access_token: 'live.jwt.token',
+        expires_at: expiry
+      )
+    end
+
+    it 'raises with the broker message when the handshake is rejected' do
+      stub_request(:post, /auth\.dhan\.co/).to_return(
+        status: 401,
+        body: { errorMessage: 'Invalid TOTP' }.to_json,
+        headers: { 'Content-Type' => 'application/json' }
+      )
+
+      expect { described_class.refresh!(reason: :missing) }
+        .to raise_error(DhanHQ::InvalidAuthenticationError, /Invalid TOTP/)
+      expect(DhanAccessToken.count).to eq(0)
+    end
+  end
+
+  describe 'diagnostics' do
+    it 'names the empty response so an unparsed body is identifiable in the log' do
+      allow(DhanHQ::Auth).to receive(:generate_access_token).and_return({})
+
+      expect { described_class.refresh!(reason: :missing) }
+        .to raise_error(DhanHQ::InvalidAuthenticationError, /body was never parsed/)
+    end
+  end
 end
