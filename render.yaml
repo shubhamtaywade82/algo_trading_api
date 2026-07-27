@@ -54,8 +54,7 @@ services:
       - key: RAILS_MAX_THREADS
         value: "3"
       # Starter is a 512 MB container, so two workers is the ceiling — Puma
-      # preloads the app, and each fork adds its own copy-on-write drift on top
-      # of the ~200 MB the scrip-master index takes once it is imported.
+      # preloads the app and each fork drifts off its own copy-on-write pages.
       - key: WEB_CONCURRENCY
         value: "2"
 
