@@ -26,14 +26,18 @@ services:
           name: AlgoTradingAPI-DB
           property: connectionString
 
-      # Managed Postgres and Cockroach terminate TLS with a public CA. Without
-      # this libpq looks for ~/.postgresql/root.crt, which does not exist on a
-      # Render instance, and the build dies before the first query:
-      #   root certificate file "/opt/render/.postgresql/root.crt" does not exist
-      # Use `require` to encrypt without verifying, or `disable` behind a local
-      # proxy.
+      # Encrypt the database connection without verifying the certificate.
+      # This is the default in config/database.yml; it is repeated here so a
+      # blueprint sync clears a verify-full left over in the dashboard, which
+      # fails against a Render database on every deploy:
+      #   SSL error: certificate verify failed
+      # Render issues the certificate from its own CA and the internal endpoint
+      # answers on a private address the certificate does not name, so the
+      # system trust store can verify neither. To verify anyway, set
+      # verify-full here and DATABASE_SSLROOTCERT to the provider's CA bundle.
+      # `disable` is for a local proxy that already terminated TLS.
       - key: DATABASE_SSLMODE
-        value: verify-full
+        value: require
 
       - key: RAILS_ENV
         value: production
