@@ -82,8 +82,21 @@ services:
         value: "false"
       - key: LIVE_TRADING
         value: "false"
-      # Routes Orders::Gateway to the simulated exchange instead.
+      # Routes Orders::Gateway to the simulated exchange instead. On here so a
+      # TradingView webhook or a Telegram signal hitting the web service books
+      # into the same paper account the engine below trades, rather than being
+      # dropped by the two gates above.
       - key: PAPER_TRADING
+        value: "true"
+      # Starting capital for the simulated book, in rupees. Only applies when
+      # the account row is first created — `rails live:paper_capital` applies a
+      # change to a book that already exists.
+      - key: PAPER_CAPITAL
+        value: "100000"
+      # The web service serves webhooks; it does not scan. The engine worker
+      # owns the scan loop, because Live::TickCache is process-local and Puma
+      # runs WEB_CONCURRENCY forks that would each open their own feed.
+      - key: INDEX_WATCHLIST_TRADING
         value: "false"
 
       # LLM backend. Blank = OpenAI; ollama_cloud uses OLLAMA_API_KEY_1..5.
@@ -106,6 +119,93 @@ services:
       - key: IMPORT_INSTRUMENTS_ON_DEPLOY
         sync: false
       - key: SKIP_SEEDS_ON_DEPLOY
+        sync: false
+
+  # ─────── Paper-trading engine (market feed + index watchlist scanner) ────
+  #
+  # One process, deliberately. `Live::TickCache` is a process-local Hash (see
+  # the instrument-master notes in CLAUDE.md — the measurement behind that
+  # choice), and in paper mode the tick stream is what fills resting orders,
+  # marks positions, and drives Paper::DayRollover / Paper::EodSquareOff. A
+  # scanner in one process and a feed in another would place orders nothing
+  # ever fills. The web service cannot host the feed either: Puma runs
+  # WEB_CONCURRENCY=2 forks and each would open its own WebSocket.
+  #
+  # Every DHAN_* value below is `sync: false`, so set them on this service in
+  # the dashboard as well as on the web service — they are separate services
+  # and do not share environment.
+  - type: worker
+    name: algo_trading_paper_engine
+    runtime: ruby
+    plan: starter
+    buildCommand: "./bin/render-build.sh"
+    startCommand: "bundle exec rake live:paper_engine"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: AlgoTradingAPI-DB
+          property: connectionString
+      - key: DATABASE_SSLMODE
+        value: require
+      - key: RAILS_ENV
+        value: production
+      # Need not match the web service's — this process serves no cookies and
+      # verifies no signed message; it only has to be present so Rails boots.
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      - key: RAILS_LOG_TO_STDOUT
+        value: "true"
+      # The build script's optional steps are the web service's job.
+      - key: SKIP_SEEDS_ON_DEPLOY
+        value: "true"
+
+      # Simulated book only. `live:paper_engine` aborts on boot unless
+      # PAPER_TRADING is on, because this process places orders on its own
+      # initiative — it must never be one env var away from doing that live.
+      - key: PAPER_TRADING
+        value: "true"
+      - key: PAPER_CAPITAL
+        value: "100000"
+      - key: PLACE_ORDER
+        value: "false"
+      - key: LIVE_TRADING
+        value: "false"
+
+      # The scan loop. INDEX_WATCHLIST_TRADING is what actually lets a
+      # confluence signal become an order; with it off the engine still runs
+      # the feed, the book and the Telegram alerts, and places nothing.
+      - key: INDEX_WATCHLIST
+        value: "NIFTY,BANKNIFTY,SENSEX"
+      - key: INDEX_WATCHLIST_TRADING
+        value: "true"
+      # :high is 8 of 14 confluence factors agreeing. :medium (5) fires several
+      # times a session and is a notification-grade signal, not a trade.
+      - key: INDEX_WATCHLIST_MIN_LEVEL
+        value: "high"
+      - key: INDEX_WATCHLIST_MAX_TRADES_PER_DAY
+        value: "3"
+      - key: INDEX_WATCHLIST_COOLDOWN_MINUTES
+        value: "30"
+      # Matches the 5-minute candles the score is computed on.
+      - key: INDEX_WATCHLIST_SCAN_SECONDS
+        value: "180"
+
+      # Same credentials as the web service, set separately on this one.
+      - key: DHAN_CLIENT_ID
+        sync: false
+      - key: DHAN_API_KEY
+        sync: false
+      - key: DHAN_API_SECRET
+        sync: false
+      - key: DHAN_PIN
+        sync: false
+      - key: DHAN_TOTP_SECRET
+        sync: false
+
+      # Without a chat id the scanner still trades; it just does so silently.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
         sync: false
 
   # ─────── Crypto SMC/ICT scanner — NOT DEPLOYED ──────────────────────────

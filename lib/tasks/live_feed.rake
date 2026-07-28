@@ -11,6 +11,7 @@ namespace :live do
 
     subscribe_from_env(hub)
     subscribe_watchlist(hub) if ENV['SUBSCRIBE_WATCHLIST'] == 'true'
+    subscribe_index_watchlist(hub) if ENV['SUBSCRIBE_INDEX_WATCHLIST'] == 'true'
     subscribe_paper_book if Paper::Broker.enabled?
 
     puts "⚡ market feed running (mode=#{mode}, subscriptions=#{hub.subscriptions.size})"
@@ -88,6 +89,111 @@ namespace :live do
     puts "🧹 paper book reset to ₹#{account.initial_capital.to_f.round(2)}"
   end
 
+  desc 'Set the paper book\'s capital (CAPITAL=100000, or PAPER_CAPITAL) and reset it to that figure'
+  task paper_capital: :environment do
+    amount = ENV['CAPITAL'].presence || ENV.fetch('PAPER_CAPITAL', nil)
+    account = PaperAccount.recapitalize!(amount)
+    puts "💰 paper book re-capitalised to ₹#{account.initial_capital.to_f.round(2)} (positions and orders cleared)"
+    pp Paper::Positions.summary
+  end
+
+  desc 'Run the paper-trading engine: market feed + index watchlist scanner in one process'
+  task paper_engine: :environment do
+    guard_paper_engine!
+
+    hub = Live::MarketFeedHub.instance
+    start_token_refresher
+
+    hub.start!(mode: (ENV['MODE'] || 'quote').to_sym)
+    abort('❌ feed failed to start; check credentials and network') unless hub.running?
+
+    subscribe_index_watchlist(hub)
+    subscribe_paper_book
+
+    puts "📄 paper engine up — book ₹#{PaperAccount.current.initial_capital.to_f.round(2)}, " \
+         "watching #{Market::IndexWatchlist.symbols.join(', ')}"
+    puts "   trading=#{Market::IndexWatchlist.trading_enabled?} " \
+         "min_level=#{Market::IndexWatchlist.min_level} " \
+         "scan=#{Market::IndexWatchlist.scan_interval}s " \
+         "cap=#{Market::IndexWatchlist.max_trades_per_day}/symbol/day"
+
+    trap('INT') do
+      puts "\n… stopping paper engine"
+      hub.stop!
+      exit 0
+    end
+
+    run_paper_engine_loop(hub)
+  end
+
+  # The engine places orders on its own initiative, so it refuses to run
+  # anywhere they could reach a broker. PAPER_ENGINE_ALLOW_LIVE is the
+  # deliberate override, and it is not set anywhere in this repo.
+  def guard_paper_engine!
+    return if Paper::Broker.enabled?
+
+    if ENV['PAPER_ENGINE_ALLOW_LIVE'] == 'true'
+      warn('⚠️  paper engine running with PAPER_TRADING off — orders will take the live path')
+      return
+    end
+
+    abort('❌ refusing to run: PAPER_TRADING is not enabled. Set PAPER_TRADING=true, ' \
+          'or PAPER_ENGINE_ALLOW_LIVE=true to run this against the live path on purpose.')
+  end
+
+  # config/initializers/dhan_token_bootstrap.rb and dhan_token_scheduler.rb both
+  # skip when Rake is defined, so that a db:migrate never reaches auth.dhan.co.
+  # A long-lived rake process still needs both, so it does them itself.
+  def start_token_refresher
+    Dhan::TokenManager.current_token!
+    Thread.new do
+      loop do
+        sleep 5.minutes
+        Dhan::TokenManager.current_token!
+      rescue StandardError => e
+        Rails.logger.error("[paper_engine] token refresh failed: #{e.class}: #{e.message}")
+      end
+    end
+  rescue StandardError => e
+    abort("❌ could not mint a Dhan access token: #{e.class}: #{e.message}")
+  end
+
+  # One process holds the feed *and* runs the scan because Live::TickCache is
+  # process-local: a scanner in another process would place orders that no tick
+  # stream ever fills or marks.
+  def run_paper_engine_loop(hub)
+    loop do
+      scan_index_watchlist if paper_engine_session?
+      report_paper_engine_health(hub)
+      sleep Market::IndexWatchlist.scan_interval
+    end
+  end
+
+  def scan_index_watchlist
+    Market::AnalysisUpdater.call
+  rescue StandardError => e
+    Rails.logger.error("[paper_engine] scan failed: #{e.class}: #{e.message}")
+  end
+
+  # 09:15–15:30 IST on a trading day. Outside it the REST calls the scan makes
+  # would return the same stale candles every cycle.
+  def paper_engine_session?
+    now = Time.current.in_time_zone('Asia/Kolkata')
+    return false unless MarketCalendar.trading_day?(now.to_date)
+
+    now.between?(now.change(hour: 9, min: 15), now.change(hour: 15, min: 30))
+  end
+
+  def report_paper_engine_health(hub)
+    health = hub.health
+    summary = Paper::Positions.summary
+    puts "[engine] connected=#{health[:connected]} ticks=#{health[:cached_ticks]} " \
+         "subs=#{health[:tracked_subscriptions]} open=#{summary[:open_positions]} " \
+         "net_pnl=#{summary[:net_pnl]} capital=#{summary[:current_capital]}"
+  rescue StandardError => e
+    Rails.logger.warn("[paper_engine] health snapshot failed: #{e.message}")
+  end
+
   # SYMBOLS=NSE_FNO:49081,IDX_I:13
   def subscribe_from_env(hub)
     ENV['SYMBOLS'].to_s.split(',').each do |pair|
@@ -105,6 +211,17 @@ namespace :live do
     puts "📄 paper book restored: #{count} instrument(s) subscribed"
   rescue StandardError => e
     Rails.logger.warn("[live:feed] could not restore paper-book subscriptions: #{e.message}")
+  end
+
+  # The spot index itself, so the scanner's marks and the option leg's
+  # underlying both tick. Strikes are subscribed by Paper::FeedSubscriber as
+  # they are traded — nobody knows which strike until the signal fires.
+  def subscribe_index_watchlist(hub)
+    subscribed = Market::IndexWatchlist.instruments.count do |instrument|
+      hub.subscribe(segment: instrument.exchange_segment, security_id: instrument.security_id)
+    end
+    puts "📈 index watchlist: #{subscribed} of #{Market::IndexWatchlist.symbols.size} subscribed"
+    subscribed
   end
 
   def subscribe_watchlist(hub)

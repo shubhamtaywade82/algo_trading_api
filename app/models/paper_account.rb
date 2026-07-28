@@ -25,13 +25,48 @@ class PaperAccount < ApplicationRecord
     'market_hours_enforced' => true
   }.freeze
 
+  # Starting capital when the book is first created, in rupees.
+  #
+  # `PAPER_CAPITAL` only decides what a *new* book starts with — an account row
+  # already in the database keeps its capital, because silently re-capitalising
+  # a running book would rewrite the denominator of every P&L number it has
+  # produced so far. Use {.recapitalize!} (or `rails live:paper_capital`) to
+  # apply a new figure deliberately.
+  DEFAULT_CAPITAL = 1_000_000
+
+  # @return [BigDecimal] configured starting capital, falling back to the
+  #   default when PAPER_CAPITAL is unset or not a positive number
+  def self.configured_capital
+    configured = ENV.fetch('PAPER_CAPITAL', nil).to_s.strip.delete('_,').to_d
+    configured.positive? ? configured : DEFAULT_CAPITAL.to_d
+  rescue ArgumentError
+    DEFAULT_CAPITAL.to_d
+  end
+
   # @return [PaperAccount] the single account, created on first use
   def self.current
     first || create!(
-      available_balance: 1_000_000,
-      initial_capital: 1_000_000,
+      available_balance: configured_capital,
+      initial_capital: configured_capital,
       config: DEFAULT_CONFIG.dup
     )
+  end
+
+  # Sets the book's capital and resets it to that figure. Destructive by
+  # design: open positions and orders go with it, because a book holding
+  # positions sized against the old capital is not comparable to one starting
+  # fresh at the new figure.
+  #
+  # @param capital [Numeric, nil] defaults to PAPER_CAPITAL
+  # @return [PaperAccount]
+  def self.recapitalize!(capital = nil)
+    amount = (capital || configured_capital).to_d
+    raise ArgumentError, "capital must be positive, got #{amount}" unless amount.positive?
+
+    account = current
+    account.update!(initial_capital: amount)
+    account.reset!
+    account
   end
 
   # @return [Hash] config with defaults filled in
