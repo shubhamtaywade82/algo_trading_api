@@ -19,7 +19,8 @@ module Paper
 
       # @return [Boolean] whether paper trading is switched on
       def enabled?
-        ENV['PAPER_TRADING'] == 'true'
+        %w[true 1 yes t].include?(ENV['PAPER_TRADING']&.downcase) ||
+          %w[true 1 yes t].include?(ENV['PAPER_MODE']&.downcase)
       end
 
       # Slippage is configured per account now; this remains for callers that
