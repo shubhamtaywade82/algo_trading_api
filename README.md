@@ -293,11 +293,20 @@ and, in paper mode, the tick stream is what fills resting orders and marks
 positions. The engine refuses to start unless `PAPER_TRADING` is on.
 
 Bounds on the loop: `INDEX_WATCHLIST_MIN_LEVEL` (default `high`, 8 of 14
-confluence factors), a per-symbol `INDEX_WATCHLIST_COOLDOWN_MINUTES`, a
-per-symbol `INDEX_WATCHLIST_MAX_TRADES_PER_DAY`, and an entry window of
-09:20–15:00 IST — nothing new is opened inside the 15:15 square-off. Set
+confluence factors), a per-symbol `INDEX_WATCHLIST_COOLDOWN_MINUTES` and a
+per-symbol `INDEX_WATCHLIST_MAX_TRADES_PER_DAY`. Set
 `INDEX_WATCHLIST_TRADING=false` to keep the feed, the book and the Telegram
 alerts while placing nothing. See `docs/PAPER_TRADING_INDICES.md`.
+
+**Session hours.** `MarketCalendar.market_open?` is the single definition —
+a weekday, not on the holiday list, 09:15–15:30 IST — and every gate reads it:
+`Orders::PlaceOrderGuard` live, `Paper::Exchange` on the paper book, the MCP
+status tool, and the scanner. Entries from the scanner are narrower still,
+09:20–15:00, so nothing new is opened inside the 15:15 square-off. Nothing
+trades at the weekend or on a market holiday. The times are evaluated in IST
+regardless of the host's zone, which matters on Render (UTC). The one exception
+is a `force: true` order, which waives the check so the EOD square-off can
+close positions after the bell.
 
 ### Alert routing by asset class
 

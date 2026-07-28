@@ -175,13 +175,12 @@ namespace :live do
     Rails.logger.error("[paper_engine] scan failed: #{e.class}: #{e.message}")
   end
 
-  # 09:15–15:30 IST on a trading day. Outside it the REST calls the scan makes
-  # would return the same stale candles every cycle.
+  # 09:15–15:30 IST, weekdays, excluding market holidays. Outside it the REST
+  # calls the scan makes would return the same stale candles every cycle. The
+  # feed itself stays up — a reconnect out of hours is cheaper than a cold
+  # start at 09:15.
   def paper_engine_session?
-    now = Time.current.in_time_zone('Asia/Kolkata')
-    return false unless MarketCalendar.trading_day?(now.to_date)
-
-    now.between?(now.change(hour: 9, min: 15), now.change(hour: 15, min: 30))
+    MarketCalendar.market_open?
   end
 
   def report_paper_engine_health(hub)

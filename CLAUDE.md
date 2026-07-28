@@ -205,6 +205,14 @@ decisions below are settled; each has a failure mode behind it.
 - **The engine aborts unless `PAPER_TRADING` is on.** It places orders on its
   own initiative, so it must never be one env var away from doing that live.
   See `docs/PAPER_TRADING_INDICES.md`.
+- **`MarketCalendar.market_open?` is the only definition of the session** —
+  weekday, not on the holiday list, 09:15–15:30 IST, converted to IST rather
+  than assumed. `Orders::PlaceOrderGuard`, `Paper::Exchange`,
+  `Mcp::Tools::SystemStatus` and the scanner all delegate to it; they used to
+  each carry a copy, and `Paper::Exchange`'s had drifted to a weekday-only
+  check that accepted orders on market holidays. Don't reintroduce a local
+  copy. `force: true` waives it, which is what lets `Paper::EodSquareOff` close
+  positions after the bell.
 
 ## LLM layer
 

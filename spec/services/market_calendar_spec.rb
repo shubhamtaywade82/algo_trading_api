@@ -205,4 +205,47 @@ RSpec.describe MarketCalendar do
       end
     end
   end
+
+  describe '.market_open?' do
+    def ist(date, hour, min)
+      Time.find_zone('Asia/Kolkata').local(date.year, date.month, date.day, hour, min, 0)
+    end
+
+    it 'is open through the weekday session' do
+      expect(described_class.market_open?(ist(wednesday, 9, 15))).to be true
+      expect(described_class.market_open?(ist(wednesday, 12, 0))).to be true
+      expect(described_class.market_open?(ist(wednesday, 15, 30))).to be true
+    end
+
+    it 'is closed before the bell and after it' do
+      expect(described_class.market_open?(ist(wednesday, 9, 14))).to be false
+      expect(described_class.market_open?(ist(wednesday, 8, 0))).to be false
+      expect(described_class.market_open?(ist(wednesday, 15, 31))).to be false
+      expect(described_class.market_open?(ist(wednesday, 22, 0))).to be false
+    end
+
+    it 'is closed all weekend, session hours or not' do
+      expect(described_class.market_open?(ist(saturday, 12, 0))).to be false
+      expect(described_class.market_open?(ist(sunday, 12, 0))).to be false
+    end
+
+    # Holi 2026 falls on a Wednesday — a weekday check alone would call it open.
+    it 'is closed on a weekday market holiday' do
+      expect(holi_2026.on_weekday?).to be true
+      expect(described_class.market_open?(ist(holi_2026, 12, 0))).to be false
+    end
+
+    # Render runs UTC. 12:00 IST is 06:30 UTC, and 06:30 UTC read as a local
+    # time would be outside the session.
+    it 'converts to IST rather than assuming the caller is already there' do
+      utc_noon_ist = Time.utc(wednesday.year, wednesday.month, wednesday.day, 6, 30)
+
+      expect(described_class.market_open?(utc_noon_ist)).to be true
+    end
+
+    it 'defaults to now' do
+      travel_to(ist(wednesday, 12, 0)) { expect(described_class.market_open?).to be true }
+      travel_to(ist(saturday, 12, 0)) { expect(described_class.market_open?).to be false }
+    end
+  end
 end

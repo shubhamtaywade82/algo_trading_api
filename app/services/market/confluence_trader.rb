@@ -96,9 +96,13 @@ module Market
       IndexWatchlist.level_tradable?(@signal.level)
     end
 
+    # Two conditions, not one. `MarketCalendar.market_open?` is the session
+    # itself — weekday, not a listed holiday, 09:15–15:30 IST — and the entry
+    # window is a strictly narrower slice of it. Checking both means a change
+    # to the session definition can never let an entry fall outside it.
     def within_entry_window?
       now = Time.current.in_time_zone(ZONE)
-      return false unless MarketCalendar.trading_day?(now.to_date)
+      return false unless MarketCalendar.market_open?(now)
 
       now.between?(now.change(**ENTRY_OPENS_AT), now.change(**ENTRY_CLOSES_AT))
     end

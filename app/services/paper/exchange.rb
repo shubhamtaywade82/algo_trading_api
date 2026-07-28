@@ -167,11 +167,11 @@ module Paper
       settings['market_hours_enforced'].to_s == 'true' || settings['market_hours_enforced'] == true
     end
 
+    # Weekday, not a market holiday, 09:15–15:30 IST. The local copy this used
+    # to carry checked the weekday but not the holiday list, so an order placed
+    # on a weekday holiday was accepted and filled against a stale price.
     def market_open?
-      return MarketCalendar.market_open? if defined?(MarketCalendar) && MarketCalendar.respond_to?(:market_open?)
-
-      now = Time.current.in_time_zone('Asia/Kolkata')
-      now.on_weekday? && now.between?(now.change(hour: 9, min: 15), now.change(hour: 15, min: 30))
+      MarketCalendar.market_open?
     end
 
     # ── Placement ───────────────────────────────────────────────────────

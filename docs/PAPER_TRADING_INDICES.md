@@ -71,6 +71,40 @@ The window closes at 15:00 because `Paper::EodSquareOff` closes INTRADAY at
 at 09:20 because the opening range is noise and the 5-minute candles the score
 is computed on have barely formed.
 
+## When it is allowed to trade
+
+`MarketCalendar.market_open?` is the single definition of "the market is open":
+**a weekday, not on the holiday list, between 09:15 and 15:30 IST.** Everything
+that gates on the session reads it — `Orders::PlaceOrderGuard` on the live
+path, `Paper::Exchange` on the simulated one, the MCP status tool, and the
+scanner. It converts the time to IST rather than assuming the caller is already
+there, so it is correct on Render's UTC hosts.
+
+Three layers apply, narrowest first:
+
+| Layer | Window | Applies to |
+|---|---|---|
+| `ConfluenceTrader` entry window | 09:20–15:00 IST, trading days | new entries from the scanner |
+| `MarketCalendar.market_open?` | 09:15–15:30 IST, trading days | every order, from any source |
+| `live:paper_engine` scan loop | 09:15–15:30 IST, trading days | whether the scan runs at all |
+
+So: nothing is entered before 09:20 or after 15:00, nothing at all is placed
+outside 09:15–15:30, and neither happens on a Saturday, a Sunday, or a listed
+market holiday. Outside the session the engine keeps the feed up and reports
+health but makes no REST calls — a reconnect out of hours is cheaper than a
+cold start at 09:15.
+
+The one deliberate exception is a `force: true` order, which waives the
+market-hours check. That is how `Paper::EodSquareOff` closes intraday
+positions at 15:15 and how an operator flattens the book after the bell — a
+square-off that could not run after the close would leave the position it was
+meant to close.
+
+`Paper::Exchange` used to carry its own copy of this check that tested the
+weekday but not the holiday list, so an order placed on a weekday holiday —
+Gandhi Jayanti 2026 is a Friday — was accepted and filled against a stale
+cached price. It now delegates like everything else.
+
 The cooldown and the daily cap are belt and braces over `ConfluenceDetector`'s
 own 45-minute cooldown and state-change gate. That one is keyed on the *signal*
 and lives in `Rails.cache`, so a process restart mid-session repopulates it from
