@@ -208,6 +208,47 @@ RSpec.describe Paper::Exchange do
         expect(described_class.new(account: account).place(buy_market)[:message]).to match(/Market is closed/)
       end
     end
+
+    context 'when market hours are enforced' do
+      before { account.update!(config: account.settings.merge('market_hours_enforced' => true)) }
+
+      def place_at(time)
+        travel_to(time) { described_class.new(account: account).place(buy_market) }
+      end
+
+      it 'accepts an order inside the session' do
+        expect(place_at(Time.zone.parse('2026-07-29 12:00:00'))[:message]).not_to match(/Market is closed/)
+      end
+
+      it 'rejects an order at the weekend' do
+        expect(place_at(Time.zone.parse('2026-08-01 12:00:00'))[:message]).to match(/Market is closed/)
+        expect(place_at(Time.zone.parse('2026-08-02 12:00:00'))[:message]).to match(/Market is closed/)
+      end
+
+      # This is the case a weekday-only check got wrong: Gandhi Jayanti 2026 is
+      # a Friday, so the book accepted orders and filled them against whatever
+      # price was last cached.
+      it 'rejects an order on a weekday market holiday' do
+        expect(place_at(Time.zone.parse('2026-10-02 12:00:00'))[:message]).to match(/Market is closed/)
+      end
+
+      it 'rejects an order before the bell and after the close' do
+        expect(place_at(Time.zone.parse('2026-07-29 09:14:00'))[:message]).to match(/Market is closed/)
+        expect(place_at(Time.zone.parse('2026-07-29 15:31:00'))[:message]).to match(/Market is closed/)
+      end
+
+      # Closing the book has to work after the bell, or an EOD square-off
+      # cannot close the position it was created to close.
+      it 'still lets a forced order through, which is how the square-off works' do
+        result = place_at(Time.zone.parse('2026-07-29 22:00:00'))
+        forced = travel_to(Time.zone.parse('2026-07-29 22:00:00')) do
+          described_class.new(account: account).place(buy_market.merge(force: 'true'))
+        end
+
+        expect(result[:message]).to match(/Market is closed/)
+        expect(forced[:message]).not_to match(/Market is closed/)
+      end
+    end
   end
 
   describe 'super orders' do

@@ -219,7 +219,13 @@ bin/rails live:paper_book    # positions, working orders, P&L and charges
 bin/rails live:paper_eod     # square off intraday positions now
 bin/rails live:paper_roll    # roll the book onto the current session
 bin/rails live:paper_reset   # reset the book to its starting capital
+bin/rails live:paper_capital CAPITAL=100000   # set the book's capital (clears it)
 ```
+
+`PAPER_CAPITAL` sets the starting capital when the book is first created; after
+that it is fixed, because re-capitalising a running book would rewrite the
+denominator of every P&L figure it has already produced. Use
+`live:paper_capital` to change it deliberately.
 
 This is a step beyond the SDK's `DHAN_DRY_RUN`, which suppresses the request and
 returns a `DRYRUN-…` id without modelling the outcome. `Paper::Exchange` is a
@@ -268,6 +274,39 @@ impact for sizing studies.
 approximation rather than SPAN. It is conservative for option buying and
 **understates naked option selling**, where real SPAN is far higher — don't use
 paper margin to size a short-vol strategy.
+
+### Trading the index watchlist unattended
+
+The app is signal-driven, so without a sender it sits idle. `live:paper_engine`
+is the sender: one process holding the market feed *and* a scan loop over
+`INDEX_WATCHLIST` (default `NIFTY,BANKNIFTY,SENSEX`). A high-confluence signal
+becomes an `Alert` on the normal pipeline — `AlertProcessors::Index` →
+`Orders::Gateway` — so strike selection, sizing, risk and exits are unchanged.
+
+```bash
+PAPER_TRADING=true PAPER_CAPITAL=100000 INDEX_WATCHLIST_TRADING=true \
+  bin/rails live:paper_engine
+```
+
+Feed and scan share a process on purpose: `Live::TickCache` is process-local
+and, in paper mode, the tick stream is what fills resting orders and marks
+positions. The engine refuses to start unless `PAPER_TRADING` is on.
+
+Bounds on the loop: `INDEX_WATCHLIST_MIN_LEVEL` (default `high`, 8 of 14
+confluence factors), a per-symbol `INDEX_WATCHLIST_COOLDOWN_MINUTES` and a
+per-symbol `INDEX_WATCHLIST_MAX_TRADES_PER_DAY`. Set
+`INDEX_WATCHLIST_TRADING=false` to keep the feed, the book and the Telegram
+alerts while placing nothing. See `docs/PAPER_TRADING_INDICES.md`.
+
+**Session hours.** `MarketCalendar.market_open?` is the single definition —
+a weekday, not on the holiday list, 09:15–15:30 IST — and every gate reads it:
+`Orders::PlaceOrderGuard` live, `Paper::Exchange` on the paper book, the MCP
+status tool, and the scanner. Entries from the scanner are narrower still,
+09:20–15:00, so nothing new is opened inside the 15:15 square-off. Nothing
+trades at the weekend or on a market holiday. The times are evaluated in IST
+regardless of the host's zone, which matters on Render (UTC). The one exception
+is a `force: true` order, which waives the check so the EOD square-off can
+close positions after the bell.
 
 ### Alert routing by asset class
 

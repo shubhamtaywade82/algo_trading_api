@@ -31,11 +31,38 @@ module MarketCalendar
     Date.new(2026, 12, 25)  # Christmas
   ].freeze
 
+  # NSE/BSE regular session, in IST.
+  ZONE = 'Asia/Kolkata'.freeze
+  SESSION_OPEN_MINUTES = (9 * 60) + 15
+  SESSION_CLOSE_MINUTES = (15 * 60) + 30
+
   def self.trading_day?(date)
     return false unless date.respond_to?(:on_weekday?)
 
     date = date.to_date if date.respond_to?(:to_date)
     date.on_weekday? && MARKET_HOLIDAYS.exclude?(date)
+  end
+
+  # The one answer to "is the market open right now". Weekday, not a listed
+  # holiday, and inside 09:15–15:30 IST.
+  #
+  # Everything that gates on the session reads this — Orders::PlaceOrderGuard
+  # on the live path, Paper::Exchange on the simulated one, the MCP status
+  # tool. They each carried their own copy of these two rules, and one of them
+  # (Paper::Exchange) had drifted: it checked the weekday but not the holiday
+  # list, so a paper order placed on Gandhi Jayanti was accepted.
+  #
+  # The time is converted to IST rather than assumed to be in it, so this is
+  # correct on a UTC host regardless of what the caller passes.
+  #
+  # @param time [Time, ActiveSupport::TimeWithZone]
+  # @return [Boolean]
+  def self.market_open?(time = Time.current)
+    ist = time.respond_to?(:in_time_zone) ? time.in_time_zone(ZONE) : Time.current.in_time_zone(ZONE)
+    return false unless trading_day?(ist.to_date)
+
+    minutes = (ist.hour * 60) + ist.min
+    minutes >= SESSION_OPEN_MINUTES && minutes <= SESSION_CLOSE_MINUTES
   end
 
   # Returns the most recent trading day on or before +from+.

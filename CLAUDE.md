@@ -180,6 +180,39 @@ decisions below are settled; each has a failure mode behind it.
   mode — it authorises a real depository debit.
 - Distinct from `DHAN_DRY_RUN`, which is the SDK suppressing requests. Paper
   mode simulates fills, margin, positions and P&L with real charges.
+- **`PAPER_CAPITAL` only applies to a book that does not exist yet.**
+  `PaperAccount.current` reads it on create; re-capitalising a running book on
+  every boot would rewrite the denominator of every P&L figure it has already
+  produced. `rails live:paper_capital CAPITAL=…` applies a change deliberately,
+  and clears the book with it.
+
+## Index watchlist scanner
+
+- **`live:paper_engine` is the autonomous side**, and it holds the feed *and*
+  the scan loop in one process because `Live::TickCache` is process-local: a
+  scanner elsewhere would place orders no tick stream ever fills. It cannot
+  live in Puma either — `WEB_CONCURRENCY=2` forks would each open a socket.
+- **`Market::ConfluenceTrader` is a signal source, not an execution path.** It
+  turns a `ConfluenceDetector` signal into an `Alert` and hands it to
+  `AlertProcessorFactory`, exactly as the webhook does, so strike selection,
+  sizing, risk and exits stay in `AlertProcessors::Index` → `Orders::Gateway`.
+  Anything it needs to decide differently belongs in the processor, not in a
+  parallel path.
+- **The roster is `Market::IndexWatchlist`, not a `Watchlist` row.**
+  `Watchlist`/`WatchlistItem` are the equity universe `Watchlists::RefreshService`
+  rebuilds daily; three indices that change about never do not need a table and
+  a "traded nothing because the row was missing" failure mode.
+- **The engine aborts unless `PAPER_TRADING` is on.** It places orders on its
+  own initiative, so it must never be one env var away from doing that live.
+  See `docs/PAPER_TRADING_INDICES.md`.
+- **`MarketCalendar.market_open?` is the only definition of the session** —
+  weekday, not on the holiday list, 09:15–15:30 IST, converted to IST rather
+  than assumed. `Orders::PlaceOrderGuard`, `Paper::Exchange`,
+  `Mcp::Tools::SystemStatus` and the scanner all delegate to it; they used to
+  each carry a copy, and `Paper::Exchange`'s had drifted to a weekday-only
+  check that accepted orders on market holidays. Don't reintroduce a local
+  copy. `force: true` waives it, which is what lets `Paper::EodSquareOff` close
+  positions after the bell.
 
 ## LLM layer
 

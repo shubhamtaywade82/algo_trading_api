@@ -4,11 +4,14 @@ module Market
   # Service for updating technical analysis (ATR, Trend, Confluence) for key indices.
   class AnalysisUpdater < ApplicationService
     INTERVAL  = '5' # 5-minute candles
-    SYMBOLS   = %w[NIFTY BANKNIFTY SENSEX].freeze
+    # Kept for callers that reference it; the roster itself now comes from
+    # Market::IndexWatchlist so INDEX_WATCHLIST drives analysis and trading
+    # from one place rather than two lists that can disagree.
+    SYMBOLS   = IndexWatchlist::DEFAULT_SYMBOLS
 
     def call
       candle_map = {}
-      SYMBOLS.each do |sym|
+      IndexWatchlist.symbols.each do |sym|
         candles = update_symbol(sym)
         candle_map[sym] = candles if candles.present?
       end
@@ -65,11 +68,31 @@ module Market
       series.hlc # Returns [ {high:, low:, close:, date_time:}, ... ]
     end
 
+    # The notifier and the trader are two independent consumers of one signal:
+    # a failing Telegram token must not stop an entry, and a declined entry
+    # must not silence the alert. Hence the separate rescues.
     def detect_confluence(symbol, candles)
       signal = Market::ConfluenceDetector.call(symbol: symbol, candles: candles)
-      Market::ConfluenceNotifier.call(signal: signal)
+      return if signal.nil?
+
+      notify_confluence(signal)
+      trade_confluence(signal)
     rescue StandardError => e
       log_error("Confluence #{symbol} – #{e.class}: #{e.message}")
+    end
+
+    def notify_confluence(signal)
+      Market::ConfluenceNotifier.call(signal: signal)
+    rescue StandardError => e
+      log_error("Confluence notify #{signal.symbol} – #{e.class}: #{e.message}")
+    end
+
+    # Gated on INDEX_WATCHLIST_TRADING inside the trader, so this call is inert
+    # until that is deliberately switched on.
+    def trade_confluence(signal)
+      Market::ConfluenceTrader.call(signal: signal)
+    rescue StandardError => e
+      log_error("Confluence trade #{signal.symbol} – #{e.class}: #{e.message}")
     end
 
     # --- ATR (simple Wilder’s) ----------------------------------------------

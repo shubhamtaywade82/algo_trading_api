@@ -42,10 +42,7 @@ module Orders
     end
 
     def market_open?(time)
-      return false unless MarketCalendar.trading_day?(time.to_date)
-
-      minutes = (time.hour * 60) + time.min
-      minutes >= (9 * 60) + 15 && minutes <= (15 * 60) + 30
+      MarketCalendar.market_open?(time)
     end
 
     def resolve_derivative!
