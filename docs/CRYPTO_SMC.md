@@ -9,6 +9,15 @@ to the database.
 The DhanHQ side of this app is untouched by all of it — different broker,
 different market, no shared code path.
 
+> **Status: off on the deployed app.** Binance answers `HTTP 451 — Service
+> unavailable from a restricted location` to Render's egress IPs, so the
+> scanner cannot fetch a candle from there. It is not deployed: the Render
+> worker is commented out in `render.yaml`, the recurring entry is commented
+> out in `config/recurring.yml`, and `CRYPTO_SMC_ENABLED` /
+> `CRYPTO_SMC_AUTOSTART` both default to `false`. Run it from a machine
+> Binance serves — see [Verifying it locally](#verifying-it-locally). Nothing
+> here affects the DhanHQ services.
+
 ---
 
 ## What it looks for
@@ -105,12 +114,17 @@ lives with the listener rather than in a crontab that may not exist.
 
 ### Scheduled
 
-`Crypto::SmcScanJob` runs the same sweep and is wired into `config/recurring.yml`
-at five minutes, for deployments that *do* run the Solid Queue supervisor.
+`Crypto::SmcScanJob` runs the same sweep. Its entry in `config/recurring.yml` is
+**commented out** — see the status note at the top — and even uncommented it
+needs a Solid Queue supervisor (`bin/jobs`, or `SOLID_QUEUE_IN_PUMA`) that this
+deployment does not run. The job checks the data feed before scanning and
+returns early if Binance is unreachable, so a blocked region produces one state
+change alert rather than a scan that silently finds nothing.
 
 ### One-off
 
 ```bash
+rake crypto:doctor                 # can we reach Binance? does Telegram work?
 rake crypto:config                 # show resolved settings
 rake crypto:report SYMBOL=ETHUSDT  # full MTF read, no Telegram
 rake crypto:scan                   # scan and alert now
@@ -119,6 +133,96 @@ rake crypto:scan SYMBOLS=SOLUSDT
 
 `crypto:report` prints each timeframe's bias and the reason a chart did *not*
 qualify — the first thing to reach for when the scanner seems too quiet.
+
+---
+
+## Verifying it locally
+
+The scanner needs no DhanHQ credentials, no market hours and no API key. It does
+need a machine Binance will serve, which is the whole reason it is not deployed.
+
+```bash
+bundle install
+bin/rails db:prepare          # Rails.cache is solid_cache, so the DB must be up
+```
+
+Put this in `.env` (see `.env.example` for the rest):
+
+```bash
+CRYPTO_SMC_ENABLED=true
+CRYPTO_SMC_SYMBOLS=SOLUSDT,ETHUSDT
+CRYPTO_TELEGRAM_CHAT_ID=<your chat id>
+TELEGRAM_BOT_TOKEN=<your bot token>
+# Optional — the analyst step. Follows LLM_BACKEND like every other caller.
+CRYPTO_SMC_LLM=true
+```
+
+Then work up in four steps, each of which proves one thing:
+
+**1. Is anything reachable?**
+
+```bash
+bin/rails crypto:doctor
+```
+
+Probes Binance with a real `/fapi/v1/ping` plus a two-candle fetch, prints the
+endpoint, latency, last price and candle count, checks the Telegram
+configuration, reports which LLM backend the analyst would use — and sends the
+`✅ Binance connected` message to your chat, so you have confirmed the whole
+delivery path before a single setup exists. `NOTIFY=false` skips the message.
+Exits non-zero when Binance is unreachable.
+
+A `451` here means the egress IP, not the code:
+
+```
+status:     ❌ Binance /fapi/v1/klines responded 451: Service unavailable from a restricted location
+            HTTP 451 is a geo-block on this egress IP.
+```
+
+**2. What does the scanner actually see?**
+
+```bash
+bin/rails crypto:report SYMBOL=ETHUSDT
+```
+
+Prints every timeframe's bias, dealing-range zone and last structural event,
+then either the setup or the reason there isn't one. No Telegram, no gates —
+this is the view that explains a quiet scanner.
+
+**3. Does an alert render and send?**
+
+```bash
+bin/rails crypto:scan SYMBOLS=SOLUSDT
+```
+
+Runs the real gates. Prints `telegram=sent` / `suppressed` / `unconfigured` per
+symbol. Most of the time it will find nothing — that is correct behaviour, not a
+failure. To see the message end to end without waiting for the market, drop
+`CRYPTO_SMC_MIN_SCORE` and `CRYPTO_SMC_MIN_RR` temporarily:
+
+```bash
+CRYPTO_SMC_MIN_SCORE=1 CRYPTO_SMC_MIN_RR=0.1 bin/rails crypto:scan
+```
+
+Put them back afterwards — those thresholds are the difference between an alert
+worth reading and a stream of noise.
+
+**4. Does it run unattended?**
+
+```bash
+bin/rails crypto:stream
+```
+
+Opens the WebSocket, announces `✅ Binance connected` on startup, and scans on
+every 5m/15m candle close. Leave it running; it should be silent until a setup
+qualifies. `Ctrl-C` stops it.
+
+Run the specs — they cover the detector, the analyst, the health probe and the
+dispatcher without touching the network:
+
+```bash
+bundle exec rspec spec/services/crypto spec/jobs/crypto
+```
 
 ### In-process
 
@@ -156,6 +260,62 @@ Range: discount
 
 🕒 28 Jul 2026 14:35 IST
 Analysis only — no order was placed.
+```
+
+### The execution plan
+
+`Crypto::Analyst` writes the `🤖 Execution plan` block through
+`Openai::ChatRouter`, so it follows `LLM_BACKEND` like every other LLM caller in
+the app and needs no configuration of its own.
+
+The division of labour is deliberately lopsided. `SetupDetector` decides
+**whether** there is a trade — that stays arithmetic, reproducible and incapable
+of hallucinating a confluence. The model only decides **how to describe taking
+it**: entry, stop and targets are computed first and handed over as fixed facts
+it is instructed never to alter, so the worst a bad generation can do is read
+poorly. It cannot move a stop.
+
+The prompt also carries the confluences that did *not* fire, which is what lets
+the caveat be specific about a setup that scraped past the threshold rather than
+generically hedged.
+
+Every failure path returns nil and the alert sends with the levels alone — an
+LLM outage must never cost a setup that already cleared every gate. It runs
+inside `AlertDispatcher` *after* the cooldown check, so a suppressed duplicate
+costs no round trip. `CRYPTO_SMC_LLM=false` turns it off entirely.
+
+### Connectivity alerts
+
+The scanner is silent by design, which makes an outage indistinguishable from a
+quiet market: a scanner that has failed to fetch for six hours looks exactly
+like one that has found nothing worth taking. `Crypto::Healthcheck` closes that
+hole.
+
+The probe is a real fetch — `/fapi/v1/ping` plus two candles — because a
+reachable host returning no data is still a dead scanner. It reports on **state
+change only**:
+
+| Transition | Result |
+|---|---|
+| first ever probe | announce |
+| ok → down, down → ok | announce |
+| ok → ok, down → down | log only |
+| `force: true` | announce regardless |
+
+State is held in `Rails.cache` as well as in-process, so the scheduled job and
+the stream runner do not each announce the same recovery. It runs at stream
+startup (forced — starting the listener is the one moment someone is definitely
+watching), on the stream's five-minute safety timer, at the head of every
+`SmcScanJob`, and on demand via `rake crypto:doctor`. `CRYPTO_SMC_HEALTH_ALERTS=false`
+silences the Telegram half; the logging happens either way.
+
+```
+✅ Binance connected
+SOLUSDT · 5m · last 151.750
+2 candles in 212ms · https://fapi.binance.com
+
+Scanning SOLUSDT, ETHUSDT on 1d/4h/1h/15m/5m. You will hear from the
+scanner again only when a setup qualifies.
 ```
 
 **Suppression** is two-layered, because two processes can dispatch: an

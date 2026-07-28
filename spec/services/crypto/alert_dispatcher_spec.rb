@@ -20,6 +20,7 @@ RSpec.describe Crypto::AlertDispatcher do
     described_class.reset!
     allow(TelegramNotifier).to receive(:send_message)
     allow(Crypto::Config).to receive(:telegram_chat_id).and_return('-100123')
+    allow(Crypto::Analyst).to receive(:call).and_return(nil)
   end
 
   it 'sends the formatted setup to the configured chat' do
@@ -27,6 +28,32 @@ RSpec.describe Crypto::AlertDispatcher do
     expect(TelegramNotifier).to have_received(:send_message).with(
       a_string_including('LONG', 'SOLUSDT'), chat_id: '-100123'
     )
+  end
+
+  it 'includes the execution plan when the analyst produced one' do
+    allow(Crypto::Analyst).to receive(:call).and_return('ENTRY: limit into the block.')
+
+    described_class.dispatch(build_setup)
+
+    expect(TelegramNotifier).to have_received(:send_message).with(
+      a_string_including('🤖 Execution plan', 'ENTRY: limit into the block.'), chat_id: '-100123'
+    )
+  end
+
+  it 'sends the levels anyway when the analyst could not answer' do
+    allow(Crypto::Analyst).to receive(:call).and_return(nil)
+
+    expect(described_class.dispatch(build_setup)).to eq(:sent)
+    expect(TelegramNotifier).to have_received(:send_message).with(
+      a_string_including('Entry'), chat_id: '-100123'
+    )
+  end
+
+  it 'does not pay for a plan on a setup it is going to suppress' do
+    described_class.dispatch(build_setup)
+    described_class.dispatch(build_setup)
+
+    expect(Crypto::Analyst).to have_received(:call).once
   end
 
   it 'stays silent the second time the same setup is seen' do

@@ -24,7 +24,7 @@ namespace :crypto do
     analyzer = Crypto::Analyzer.new(symbol)
     reports = analyzer.reports
 
-    abort("❌ Could not fetch market data for #{symbol}") if reports.nil?
+    abort("❌ Could not fetch market data for #{symbol}. Run `rails crypto:doctor` for the reason.") if reports.nil?
 
     puts "── #{symbol} ─────────────────────────────"
     Crypto::Config::TIMEFRAMES.each do |timeframe|
@@ -64,6 +64,50 @@ namespace :crypto do
     stream.run
   end
 
+  desc 'Check Binance connectivity, candle data and Telegram delivery. NOTIFY=false to stay quiet.'
+  task doctor: :environment do
+    notify = ENV.fetch('NOTIFY', 'true').to_s.downcase != 'false'
+
+    puts '── Binance ───────────────────────────────'
+    # force: the whole point of running this by hand is to see the message
+    # arrive, so it announces even when the state has not changed.
+    health = notify ? Crypto::Healthcheck.report(force: true) : Crypto::Healthcheck.call
+
+    puts "endpoint:   #{health.base_url}"
+    if health.ok?
+      puts "status:     ✅ connected (#{health.latency_ms}ms)"
+      puts "data:       #{health.symbol} #{health.candles} candles, last #{Crypto::Formatting.price(health.price)}"
+    else
+      puts "status:     ❌ #{health.error}"
+      puts '            HTTP 451 is a geo-block on this egress IP. Run from a permitted' if health.restricted_region?
+      puts '            region, or set CRYPTO_BINANCE_BASE to an endpoint that serves you.' if health.restricted_region?
+    end
+
+    puts
+    puts '── Telegram ──────────────────────────────'
+    chat = Crypto::Config.telegram_chat_id
+    if chat.blank?
+      puts 'chat:       ❌ unset — set CRYPTO_TELEGRAM_CHAT_ID or TELEGRAM_CHAT_ID'
+    elsif ENV['TELEGRAM_BOT_TOKEN'].blank?
+      puts 'chat:       ❌ TELEGRAM_BOT_TOKEN is unset; nothing can be delivered'
+    else
+      puts "chat:       #{chat}"
+      puts "delivery:   #{notify ? 'announced above (check your phone)' : 'skipped (NOTIFY=false)'}"
+    end
+
+    puts
+    puts '── LLM ───────────────────────────────────'
+    if Crypto::Config.llm_enabled?
+      puts "analyst:    on — #{Openai::ChatRouter.backend_label(Crypto::Config.llm_model)}"
+      puts '            alerts still send with deterministic levels if it fails.'
+    else
+      puts 'analyst:    off (CRYPTO_SMC_LLM=false) — alerts send levels only'
+    end
+
+    abort("\n❌ Binance is not reachable; the scanner cannot detect anything.") unless health.ok?
+    puts "\n✅ Ready. Next: rails crypto:report SYMBOL=#{Crypto::Config.symbols.first}"
+  end
+
   desc 'Show the resolved scanner configuration'
   task config: :environment do
     puts "enabled:        #{Crypto::Config.enabled?}"
@@ -74,5 +118,8 @@ namespace :crypto do
     puts "min R:R:        #{Crypto::Config.min_risk_reward}"
     puts "cooldown:       #{(Crypto::Config.cooldown_seconds / 60).round} min"
     puts "telegram chat:  #{Crypto::Config.telegram_chat_id.presence || '(unset)'}"
+    puts "binance base:   #{Crypto::Binance::Client.new.base_url}"
+    puts "llm analyst:    #{Crypto::Config.llm_enabled? ? Openai::ChatRouter.backend_label(Crypto::Config.llm_model) : 'off'}"
+    puts "health alerts:  #{Crypto::Config.health_alerts?}"
   end
 end

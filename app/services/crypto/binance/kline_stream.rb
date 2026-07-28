@@ -48,6 +48,13 @@ module Crypto
       # Blocks, running an EventMachine reactor. Intended for a dedicated
       # process (`rails crypto:stream`), never a web request.
       def run
+        # Announce before opening the socket. Starting the listener is the one
+        # moment an operator is definitely watching, so the confirmation that
+        # Binance answered and returned candles is worth sending unconditionally
+        # — and a 451 here is answered in seconds rather than discovered hours
+        # later through silence.
+        Healthcheck.report(force: true)
+
         EM.run do
           connect
           start_safety_timer
@@ -84,6 +91,10 @@ module Crypto
       # scanned inside the interval is skipped.
       def start_safety_timer
         EM.add_periodic_timer(SAFETY_SCAN_INTERVAL) do
+          # Off the reactor thread: the probe makes blocking HTTPS calls, and a
+          # blocked reactor stops reading frames until it returns.
+          EM.defer { Healthcheck.report }
+
           stale = symbols.reject { |symbol| recently_scanned?(symbol) }
           next if stale.empty?
 

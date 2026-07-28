@@ -6,7 +6,22 @@ require 'json'
 
 module Crypto
   module Binance
-    class Error < StandardError; end
+    # Carries the HTTP status when there was one, because the status is the
+    # whole diagnosis for the failure this scanner actually hits: Binance
+    # answers 451 to restricted regions, and no amount of retrying or
+    # re-reading the response body says that as plainly as the code does.
+    class Error < StandardError
+      attr_reader :status
+
+      def initialize(message, status: nil)
+        @status = status
+        super(message)
+      end
+
+      # Binance's geo-block. Distinguished from every other failure because
+      # the fix is an endpoint or an egress IP, not a retry.
+      def restricted_region? = status == 451
+    end
 
     # Read-only client for Binance USD-M futures market data.
     #
@@ -45,6 +60,21 @@ module Crypto
       def series(symbol:, interval:, limit: 200)
         rows = klines(symbol: symbol, interval: interval, limit: limit)
         Series.from_binance(symbol: normalize_symbol(symbol), timeframe: interval, rows: rows)
+      end
+
+      # Cheapest possible liveness probe: no symbol, no rate-limit weight
+      # worth counting, and it fails the same way a real request would — which
+      # is what makes it worth calling before concluding the market is quiet.
+      #
+      # @return [Boolean] true, or raises {Error}
+      def ping
+        get('/fapi/v1/ping')
+        true
+      end
+
+      # @return [Time] Binance's own clock, for spotting local clock drift
+      def server_time
+        Time.zone.at(get('/fapi/v1/time').fetch('serverTime').to_i / 1000.0)
       end
 
       # @return [Float] last traded price
@@ -101,7 +131,10 @@ module Crypto
         response = http.request(Net::HTTP::Get.new(uri))
         return response.body if response.is_a?(Net::HTTPSuccess)
 
-        raise Error, "Binance #{uri.path} responded #{response.code}: #{response.body.to_s.truncate(200)}"
+        raise Error.new(
+          "Binance #{uri.path} responded #{response.code}: #{response.body.to_s.truncate(200)}",
+          status: response.code.to_i
+        )
       end
     end
   end

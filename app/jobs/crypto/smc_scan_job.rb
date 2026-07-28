@@ -33,6 +33,13 @@ module Crypto
         return
       end
 
+      # Before scanning, not after: a scan that finds nothing because Binance
+      # is unreachable is indistinguishable from a quiet market, and this is
+      # the only thing in the scheduled path that can tell them apart. The
+      # probe announces on state change only, so it is silent on a normal run.
+      health = Healthcheck.report
+      return [] unless health.ok?
+
       results = Scanner.call(symbols: Array(symbols).presence)
       log(results)
       results

@@ -1,18 +1,24 @@
 # Solid Queue recurring tasks.
 #
-# Crypto::SmcScanJob is the scheduled half of the SMC/ICT scanner; the
-# event-driven half is `rails crypto:stream`, which fires on candle close.
-# Both are inert unless CRYPTO_SMC_ENABLED=true, so enabling the schedule here
-# does not start alerting on its own.
+# Crypto::SmcScanJob's five-minute sweep used to live here and is now commented
+# out. Binance answers HTTP 451 to this deployment's egress IPs, so a scheduled
+# scan could only produce a log of failures every five minutes. The scanner
+# itself stays in the repo and stays tested; it runs where Binance is reachable
+# via `rails crypto:stream`, which carries its own five-minute safety sweep
+# (Crypto::Binance::KlineStream::SAFETY_SCAN_INTERVAL) and needs no scheduler.
 #
-# Five minutes matches the execution timeframe: every 5m candle close gets a
-# read even when the stream process is not running.
+# Note that this file is only read by the Solid Queue supervisor — `bin/jobs`,
+# or Puma's `plugin :solid_queue` behind SOLID_QUEUE_IN_PUMA. Production runs
+# Active Job on `:async` with neither, so nothing here fires today in any case.
+# Uncommenting is therefore not sufficient to start it: that would also need a
+# supervisor process and CRYPTO_SMC_ENABLED=true.
 
 default: &default
-  crypto_smc_scan:
-    class: Crypto::SmcScanJob
-    queue: default
-    schedule: every 5 minutes
+  {}
+  # crypto_smc_scan:
+  #   class: Crypto::SmcScanJob
+  #   queue: default
+  #   schedule: every 5 minutes
 
 development:
   <<: *default

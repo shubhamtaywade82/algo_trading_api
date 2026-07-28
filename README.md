@@ -321,20 +321,35 @@ clears every gate**.
   gaps, liquidity pools and sweeps, premium/discount + OTE, displacement.
 - **Gates**: a 5m trigger is mandatory, the 1d and 4h biases must not both
   oppose, and the setup needs a confluence score ≥ 62/100 and R:R ≥ 1.8.
+- **Explains**: `Crypto::Analyst` turns the confirmed setup into an execution
+  plan through `Openai::ChatRouter`. The levels are computed *before* the model
+  is asked and are handed over as facts it may not change, so an LLM failure
+  costs the narrative, never the alert.
+- **Announces its own health**: `Crypto::Healthcheck` alerts on Binance
+  connectivity state changes, because a silent scanner and a broken one look
+  identical otherwise.
 - **Runs**: event-based on candle close (`rake crypto:stream`, which also
   carries a 5-minute safety-net sweep) and/or scheduled via
   `Crypto::SmcScanJob`.
 
+> **Not deployed.** Binance answers **HTTP 451 — Service unavailable from a
+> restricted location** to Render's egress IPs, so the scanner cannot fetch a
+> candle from the hosted app. The Render worker and the `config/recurring.yml`
+> entry are both commented out, and `CRYPTO_SMC_ENABLED` defaults to `false`.
+> The code is in the repo and tested; run it from a machine Binance serves.
+> Nothing here affects the DhanHQ path.
+
 ```bash
+bin/rails crypto:doctor                                  # can we reach Binance? does Telegram work?
 CRYPTO_SMC_ENABLED=true bundle exec rake crypto:stream   # event-driven listener
 rake crypto:report SYMBOL=ETHUSDT                        # full MTF read, no alert
 rake crypto:scan                                         # scan and alert now
 rake crypto:config                                       # resolved settings
 ```
 
-Everything is inert unless `CRYPTO_SMC_ENABLED=true`. Note that Binance answers
-**HTTP 451** from restricted regions, including many cloud IP ranges — see the
-docs for `CRYPTO_BINANCE_BASE`.
+Start with `crypto:doctor`: it probes Binance with a real fetch, prints latency,
+last price and candle count, and sends the confirmation to Telegram so the whole
+delivery path is proven before a setup ever exists.
 
 Full docs: **[docs/CRYPTO_SMC.md](docs/CRYPTO_SMC.md)**.
 

@@ -7,20 +7,24 @@ module Crypto
   # never needs escaping, so a stray underscore in a future pair name cannot
   # make Telegram reject the whole message. The order is the order the trade
   # is taken in — what, where, how much risk, then why.
+  #
+  # `commentary` is {Analyst}'s execution plan, and is optional on purpose:
+  # the levels are the alert and must send whether or not an LLM answered.
   class SetupFormatter
     def self.call(...) = new(...).call
 
-    def initialize(setup)
-      @setup = setup
+    def initialize(setup, commentary: nil)
+      @setup      = setup
+      @commentary = commentary
     end
 
     def call
-      [header, levels, context, confluence, footer].compact.join("\n\n")
+      [header, levels, context, confluence, plan, footer].compact.join("\n\n")
     end
 
     private
 
-    attr_reader :setup
+    attr_reader :setup, :commentary
 
     def header
       arrow = setup.long? ? '🟢 LONG' : '🔴 SHORT'
@@ -53,6 +57,12 @@ module Crypto
 
       body = setup.confluences.map { |c| "• #{c[:label]}" }.join("\n")
       "📋 Confluence\n#{body}"
+    end
+
+    def plan
+      return nil if commentary.blank?
+
+      "🤖 Execution plan\n#{commentary}"
     end
 
     def footer
