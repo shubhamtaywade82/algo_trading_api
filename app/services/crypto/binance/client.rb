@@ -88,9 +88,6 @@ module Crypto
           rescue GeoblockedError => e
             last_error = e
             next
-          rescue Error => e
-            last_error = e
-            break if @configured_base.present?
           end
         end
 
