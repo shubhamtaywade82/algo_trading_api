@@ -11,7 +11,7 @@ RSpec.describe Crypto::Healthcheck do
   end
 
   let(:client) do
-    instance_double(Crypto::Binance::Client, ping: true, klines: rows, base_url: 'https://fapi.binance.com')
+    instance_double(Crypto::Binance::Client, ping: true, klines: rows, base_urls: %w[https://fapi.binance.com])
   end
 
   before do
@@ -53,6 +53,20 @@ RSpec.describe Crypto::Healthcheck do
 
       expect(result).not_to be_ok
       expect(result).to be_restricted_region
+    end
+
+    it 'identifies a geo-block raised as GeoblockedError, once every mirror has failed' do
+      allow(client).to receive(:klines).and_raise(Crypto::Binance::GeoblockedError, 'Datacenter IP is geoblocked.')
+
+      expect(described_class.call(client: client)).to be_restricted_region
+    end
+
+    it 'names the mirror pool it tried rather than claiming one host served it' do
+      allow(client).to receive(:base_urls).and_return(
+        %w[https://fapi.binance.com https://fapi1.binance.com https://fapi2.binance.com]
+      )
+
+      expect(described_class.call(client: client).base_url).to eq('https://fapi.binance.com (+2 mirrors)')
     end
 
     it 'does not let an unexpected failure escape' do

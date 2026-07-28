@@ -43,6 +43,31 @@ RSpec.describe TelegramBot::CommandHandler do
       described_class.new(chat_id:, command: 'sensex-ce').call
     end
 
+    it 'handles /crypto_scan command' do
+      allow(Crypto::Scanner).to receive(:call).and_return([])
+
+      described_class.new(chat_id: chat_id, command: '/crypto_scan').call
+
+      expect(TelegramNotifier).to have_received(:send_message).with(
+        'ℹ️ Crypto scan complete: No qualifying setups found across configured symbols.',
+        chat_id: chat_id
+      )
+    end
+
+    it 'handles /crypto_analysis command with symbol argument' do
+      dummy_analyzer = instance_double(Crypto::Analyzer)
+      allow(Crypto::Analyzer).to receive(:new).with('BTCUSDT').and_return(dummy_analyzer)
+      allow(dummy_analyzer).to receive(:reports).and_return({})
+      allow(Crypto::SetupDetector).to receive(:call).and_return(nil)
+
+      described_class.new(chat_id: chat_id, command: '/crypto_analysis BTCUSDT').call
+
+      expect(TelegramNotifier).to have_received(:send_message).with(
+        include('Crypto SMC Analysis – BTCUSDT'),
+        chat_id: chat_id
+      )
+    end
+
     it 'falls back to unknown command message when pattern not matched' do
       expect(TelegramBot::ManualSignalTrigger).not_to receive(:call)
 

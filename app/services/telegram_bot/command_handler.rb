@@ -1,4 +1,5 @@
 module TelegramBot
+  # rubocop:disable Metrics/ClassLength
   class CommandHandler < ApplicationService
     ANALYSIS_CACHE_KEY = 'portfolio:institutional:last_run'.freeze
 
@@ -22,12 +23,14 @@ module TelegramBot
 
     def call
       case @cmd
+      when '/start', '/help' then show_help
       when '/portfolio'  then quick_portfolio_brief
       when '/positions'  then positions_brief
-      when '/portfolio_full'  then institutional_portfolio_brief
+      when '/portfolio_full' then institutional_portfolio_brief
+      when '/funds', '/balance' then funds_brief
       when '/nifty_analysis' then run_market_analysis('NIFTY')
       when '/sensex_analysis' then run_market_analysis('SENSEX', exchange: :bse)
-      when '/bank_nifty_analysis' then run_market_analysis('BANKNIFTY')
+      when '/bank_nifty_analysis', '/banknifty_analysis' then run_market_analysis('BANKNIFTY')
       when '/nifty_options' then run_options_buying_analysis('NIFTY')
       when '/banknifty_options' then run_options_buying_analysis('BANKNIFTY')
       when '/sensex_options' then run_options_buying_analysis('SENSEX', exchange: :bse)
@@ -36,6 +39,11 @@ module TelegramBot
       when '/oi_snapshot' then oi_snapshot
       when '/market_summary' then market_summary
       when '/expiry_roadmap' then expiry_roadmap
+      when '/screener', '/stocks_screener' then run_stocks_screener
+      when '/market_sentiment' then market_sentiment_brief
+      when '/crypto_scan' then run_crypto_scan
+      when '/crypto_config' then crypto_config_brief
+      when %r{\A/crypto_analysis(?:\s+(.+))?\z} then run_crypto_analysis(Regexp.last_match(1))
       else
         handled = try_manual_signal!
         TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid) unless handled
@@ -320,6 +328,165 @@ module TelegramBot
       notify_analysis_error(e)
     end
 
+    def run_crypto_scan
+      typing_ping
+      results = Crypto::Scanner.call
+      if results.empty?
+        TelegramNotifier.send_message(
+          'ℹ️ Crypto scan complete: No qualifying setups found across configured symbols.',
+          chat_id: @cid
+        )
+      else
+        results.each do |r|
+          next unless r.setup
+
+          msg = Crypto::SetupFormatter.call(r.setup)
+          TelegramNotifier.send_message(msg, chat_id: @cid)
+        end
+      end
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ crypto_scan failed – #{e.class}: #{e.message}"
+      notify_crypto_error(e)
+    end
+
+    def run_crypto_analysis(raw_symbol = nil)
+      typing_ping
+      sym = normalize_crypto_symbol(raw_symbol)
+
+      analyzer = Crypto::Analyzer.new(sym)
+      reports = analyzer.reports
+      return TelegramNotifier.send_message("❌ Could not fetch Binance market data for #{sym}.", chat_id: @cid) if reports.nil?
+
+      lines = build_crypto_analysis_lines(sym, reports)
+      TelegramNotifier.send_message(lines.join("\n"), chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ crypto_analysis failed – #{e.class}: #{e.message}"
+      notify_crypto_error(e)
+    end
+
+    def notify_crypto_error(e)
+      if e.is_a?(Crypto::Binance::GeoblockedError) || e.message.to_s.include?('451') || e.message.to_s.include?('restricted location')
+        msg = <<~TEXT.strip
+          🚫 *Binance API Geoblocked (HTTP 451)*
+          Binance restricts public API access from this server's datacenter IP location.
+
+          *Quick Solutions:*
+          1️⃣ Set `CRYPTO_BINANCE_BASE` in Render Env Vars to a non-US proxy mirror or Cloudflare Worker (e.g. `https://your-proxy.workers.dev`).
+          2️⃣ Or change your Render service region to Singapore or Frankfurt.
+        TEXT
+        TelegramNotifier.send_message(msg, chat_id: @cid, parse_mode: 'Markdown')
+      else
+        TelegramNotifier.send_message("🚨 Error running crypto analysis – #{e.message}", chat_id: @cid)
+      end
+    end
+
+    def normalize_crypto_symbol(raw_symbol)
+      sym = raw_symbol.presence || Crypto::Config.symbols.first || 'SOLUSDT'
+      sym = sym.to_s.strip.upcase
+      sym.end_with?('USDT') ? sym : "#{sym}USDT"
+    end
+
+    def build_crypto_analysis_lines(sym, reports)
+      lines = ["🪙 *Crypto SMC Analysis – #{sym}*"]
+      Crypto::Config::TIMEFRAMES.each do |tf|
+        rep = reports[tf]
+        next unless rep
+
+        s = rep.summary
+        price_fmt = Crypto::Formatting.price(s[:price])
+        lines << "• *#{tf.upcase}*: #{s[:bias].upcase} | #{price_fmt} | Zone: #{s[:zone] || 'N/A'} | Event: #{s[:last_event] || 'None'}"
+      end
+
+      setup = Crypto::SetupDetector.call(symbol: sym, reports: reports)
+      lines << ''
+      lines << if setup
+                 Crypto::SetupFormatter.call(setup)
+               else
+                 "ℹ️ _No active setup meeting score >= #{Crypto::Config.min_score} & R:R >= #{Crypto::Config.min_risk_reward}_"
+               end
+      lines
+    end
+
+    def show_help
+      msg = <<~TEXT.strip
+        🤖 *Algo Trading API — Command Guide*
+
+        📈 *Indian Markets (DhanHQ)*
+        • /nifty_analysis — NIFTY technical & option chain report
+        • /bank_nifty_analysis — BANKNIFTY analysis
+        • /sensex_analysis — SENSEX analysis
+        • /nifty_options — NIFTY options buying setup
+        • /banknifty_options — BANKNIFTY options buying setup
+        • /sensex_options — SENSEX options buying setup
+        • /options_avoid_check — Check if IV/VIX favors buying options
+        • /oi_snapshot — NIFTY ATM Open Interest & IV snapshot
+        • /market_summary — Live index LTPs and India VIX
+        • /expiry_roadmap — Index expiry roadmap & ATM IV
+        • /screener — Run NIFTY 100 stock screener
+        • /market_sentiment — Market sentiment & institutional flow
+
+        💼 *Portfolio & Account*
+        • /portfolio — Quick portfolio holdings summary
+        • /positions — Live open positions & P&L
+        • /portfolio_full — Full institutional risk analysis
+        • /funds — Account funds, margin & collateral limits
+
+        🪙 *Crypto Futures (Binance USD-M)*
+        • /crypto_analysis — SMC multi-timeframe report (e.g. `/crypto_analysis BTCUSDT`)
+        • /crypto_scan — Scan crypto futures pairs for trade setups
+        • /crypto_config — Active crypto scanner settings & parameters
+
+        ⚡ *Manual Signals*
+        • `/nifty_ce`, `/nifty_pe`, `/banknifty_ce`, `/banknifty_pe`, `/sensex_ce`, `/sensex_pe`
+      TEXT
+      TelegramNotifier.send_message(msg, chat_id: @cid, parse_mode: 'Markdown')
+    end
+
+    def funds_brief
+      typing_ping
+      balance = Dhanhq::API::Funds.balance
+      return TelegramNotifier.send_message('⚠️ Could not fetch fund limits from Dhan.', chat_id: @cid) if balance.blank?
+
+      avail = balance['availMargin'] || balance['available_balance'] || balance[:available_balance] || 0
+      used = balance['utilisedMargin'] || balance['used_margin'] || balance[:used_margin] || 0
+
+      msg = <<~TEXT.strip
+        💰 *Dhan Funds & Margin Status*
+        Available Margin: ₹#{PriceMath.round_tick(avail.to_f)}
+        Utilised Margin: ₹#{PriceMath.round_tick(used.to_f)}
+      TEXT
+      TelegramNotifier.send_message(msg, chat_id: @cid, parse_mode: 'Markdown')
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] funds_brief – #{e.class}: #{e.message}"
+      notify_analysis_error(e)
+    end
+
+    def market_sentiment_brief
+      typing_ping
+      service = Market::SentimentService.new
+      res = service.call
+      return TelegramNotifier.send_message('⚠️ Market sentiment analysis unavailable.', chat_id: @cid) if res.blank?
+
+      msg = "📊 *Market Sentiment Analysis*\n#{res}"
+      TelegramNotifier.send_message(msg, chat_id: @cid, parse_mode: 'Markdown')
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] market_sentiment – #{e.class}: #{e.message}"
+      notify_analysis_error(e)
+    end
+
+    def crypto_config_brief
+      msg = <<~TEXT.strip
+        ⚙️ *Crypto SMC Scanner Configuration*
+        Enabled: #{Crypto::Config.enabled?}
+        Symbols: #{Crypto::Config.symbols.join(', ')}
+        Timeframes: #{Crypto::Config::TIMEFRAMES.join(', ')} (Execution: #{Crypto::Config::EXECUTION_TIMEFRAME})
+        Stream Timeframes: #{Crypto::Config.stream_timeframes.join(', ')}
+        Min Score: #{Crypto::Config.min_score} | Min R:R: #{Crypto::Config.min_risk_reward}
+        Cooldown: #{(Crypto::Config.cooldown_seconds / 60).round} min
+      TEXT
+      TelegramNotifier.send_message(msg, chat_id: @cid, parse_mode: 'Markdown')
+    end
+
     def instrument_for(symbol, exchange)
       Instrument.lookup_by_symbol(symbol, exchange: exchange)
     end
@@ -332,3 +499,4 @@ module TelegramBot
     end
   end
 end
+# rubocop:enable Metrics/ClassLength

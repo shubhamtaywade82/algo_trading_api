@@ -171,19 +171,30 @@ module Crypto
     def success(rows, started)
       Result.new(
         ok: true, symbol: @symbol, price: rows.last[4].to_f, candles: rows.size,
-        latency_ms: elapsed_ms(started), base_url: @client.base_url, checked_at: Time.current
+        latency_ms: elapsed_ms(started), base_url: endpoint_label, checked_at: Time.current
       )
     end
 
     def failure(error, status, started)
       Result.new(
         ok: false, symbol: @symbol, error: error, status: status,
-        latency_ms: elapsed_ms(started), base_url: @client.base_url, checked_at: Time.current
+        latency_ms: elapsed_ms(started), base_url: endpoint_label, checked_at: Time.current
       )
     end
 
     def elapsed_ms(started)
       ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+    end
+
+    # The client walks a pool of mirrors on a geo-block and does not report
+    # which one answered, so the message names what was tried rather than
+    # claiming a specific host served it. A single configured base is quoted
+    # exactly — that is the case where the operator set it and wants it back.
+    def endpoint_label
+      bases = @client.base_urls
+      return bases.first if bases.size <= 1
+
+      "#{bases.first} (+#{bases.size - 1} mirrors)"
     end
   end
 end

@@ -18,9 +18,19 @@ module Crypto
         super(message)
       end
 
-      # Binance's geo-block. Distinguished from every other failure because
-      # the fix is an endpoint or an egress IP, not a retry.
+      # True for a geo-block however it was raised — {Healthcheck} branches on
+      # this rather than on the class, so a 451 that arrives as a plain Error
+      # from some future path still reports as one.
       def restricted_region? = status == 451
+    end
+
+    # The geo-block, as its own class because `get` treats it differently from
+    # every other failure: it walks on to the next base URL instead of giving
+    # up, since a mirror may serve a region the primary does not.
+    class GeoblockedError < Error
+      def initialize(message, status: 451)
+        super
+      end
     end
 
     # Read-only client for Binance USD-M futures market data.
@@ -31,7 +41,12 @@ module Crypto
     # request path in this class, so a leaked deploy cannot place an order
     # through it.
     class Client
-      DEFAULT_BASE = 'https://fapi.binance.com'
+      DEFAULT_BASES = %w[
+        https://fapi.binance.com
+        https://fapi1.binance.com
+        https://fapi2.binance.com
+        https://fapi3.binance.com
+      ].freeze
       OPEN_TIMEOUT = 5
       READ_TIMEOUT = 10
       MAX_ATTEMPTS = 3
@@ -40,10 +55,14 @@ module Crypto
       MAX_LIMIT = 1500
 
       def initialize(base_url: nil)
-        @base_url = (base_url || ENV['CRYPTO_BINANCE_BASE'].presence || DEFAULT_BASE).chomp('/')
+        @configured_base = base_url || ENV['CRYPTO_BINANCE_BASE'].presence
       end
 
-      attr_reader :base_url
+      def base_urls
+        return [@configured_base.chomp('/')] if @configured_base.present?
+
+        DEFAULT_BASES
+      end
 
       # @param symbol [String] e.g. "SOLUSDT"
       # @param interval [String] e.g. "15m", "4h", "1d"
@@ -96,11 +115,24 @@ module Crypto
       private
 
       def get(path, **params)
-        uri = URI.join(base_url, path)
-        uri.query = URI.encode_www_form(params.compact)
+        last_error = nil
 
-        body = request_with_retries(uri)
-        JSON.parse(body)
+        base_urls.each do |base|
+          uri = URI.join(base, path)
+          uri.query = URI.encode_www_form(params.compact)
+
+          begin
+            body = request_with_retries(uri)
+            return JSON.parse(body)
+          rescue GeoblockedError => e
+            last_error = e
+            next
+          end
+        end
+
+        raise last_error if last_error
+
+        raise Error, "Binance request failed for #{path}"
       rescue JSON::ParserError => e
         raise Error, "Binance returned unparseable JSON from #{path}: #{e.message}"
       end
@@ -130,6 +162,10 @@ module Crypto
 
         response = http.request(Net::HTTP::Get.new(uri))
         return response.body if response.is_a?(Net::HTTPSuccess)
+
+        if response.code.to_i == 451 || response.body.to_s.include?('restricted location')
+          raise GeoblockedError, "Binance #{uri.path} responded 451 (Restricted Location). Datacenter IP is geoblocked."
+        end
 
         raise Error.new(
           "Binance #{uri.path} responded #{response.code}: #{response.body.to_s.truncate(200)}",

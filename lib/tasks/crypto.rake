@@ -118,7 +118,7 @@ namespace :crypto do
     puts "min R:R:        #{Crypto::Config.min_risk_reward}"
     puts "cooldown:       #{(Crypto::Config.cooldown_seconds / 60).round} min"
     puts "telegram chat:  #{Crypto::Config.telegram_chat_id.presence || '(unset)'}"
-    puts "binance base:   #{Crypto::Binance::Client.new.base_url}"
+    puts "binance base:   #{Crypto::Binance::Client.new.base_urls.join(', ')}"
     puts "llm analyst:    #{Crypto::Config.llm_enabled? ? Openai::ChatRouter.backend_label(Crypto::Config.llm_model) : 'off'}"
     puts "health alerts:  #{Crypto::Config.health_alerts?}"
   end

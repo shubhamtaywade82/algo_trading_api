@@ -38,3 +38,25 @@ This is a **Rails 8 API-only** app (Ruby 3.3.4, PostgreSQL 16). No Redis or Side
 - `PLACE_ORDER` enforcement must live in the gateway; do not add new direct broker placement calls in other services.
 - The gateway also gates on `LIVE_TRADING`, which the DhanHQ SDK (>= 2.7) requires for every order mutation.
 - Any new order placement flow must return a dry-run/blocked response when either `PLACE_ORDER != "true"` or `LIVE_TRADING != "true"`, with logging.
+
+---
+
+### Rule Precedence Hierarchy (Must Follow for AI Agents & Tools)
+
+1. **User Explicit Instructions**: Directly overrides generic defaults.
+2. **Repository Project Rules (`AGENTS.md`, `CLAUDE.md`)**: Project invariants (e.g. `Orders::Gateway` invariant, RSpec testing) supersede external domain skills.
+3. **Detected Repository Profile**: Existing architecture (PostgreSQL, Delayed Job, RSpec) overrides generic defaults (e.g. Solid Queue, Minitest).
+4. **Team Conventions**: Defined architectural patterns.
+5. **External Domain Skills (Rails-AI / GoF Patterns)**: Knowledge reference.
+
+---
+
+### Architecture & Refactoring Tools
+
+Available executable analysis scripts in `bin/` or `.agents/skills/scripts/`:
+- **Context Compiler**: `ruby .agents/skills/scripts/rails_context_compiler.rb <file_path>`
+- **Prism AST Parser**: `ruby .agents/skills/scripts/ruby_prism_ast_analyzer.rb <file_path>`
+- **Smell Detector**: `ruby .agents/skills/scripts/ruby_reek_smell_detector.rb <file_or_dir>`
+- **Pattern Advisor**: `ruby .agents/skills/scripts/ruby_pattern_advisor.rb <file_or_dir>`
+- **Project Profiler**: `ruby .agents/skills/scripts/rails_project_profiler.rb`
+
