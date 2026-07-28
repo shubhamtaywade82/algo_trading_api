@@ -345,7 +345,7 @@ module TelegramBot
       end
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ crypto_scan failed – #{e.class}: #{e.message}"
-      TelegramNotifier.send_message("🚨 Error running crypto scan – #{e.message}", chat_id: @cid)
+      notify_crypto_error(e)
     end
 
     def run_crypto_analysis(raw_symbol = nil)
@@ -360,7 +360,23 @@ module TelegramBot
       TelegramNotifier.send_message(lines.join("\n"), chat_id: @cid)
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] ❌ crypto_analysis failed – #{e.class}: #{e.message}"
-      TelegramNotifier.send_message("🚨 Error running crypto analysis – #{e.message}", chat_id: @cid)
+      notify_crypto_error(e)
+    end
+
+    def notify_crypto_error(e)
+      if e.is_a?(Crypto::Binance::GeoblockedError) || e.message.to_s.include?('451') || e.message.to_s.include?('restricted location')
+        msg = <<~TEXT.strip
+          🚫 *Binance API Geoblocked (HTTP 451)*
+          Binance restricts public API access from this server's datacenter IP location.
+
+          *Quick Solutions:*
+          1️⃣ Set `CRYPTO_BINANCE_BASE` in Render Env Vars to a non-US proxy mirror or Cloudflare Worker (e.g. `https://your-proxy.workers.dev`).
+          2️⃣ Or change your Render service region to Singapore or Frankfurt.
+        TEXT
+        TelegramNotifier.send_message(msg, chat_id: @cid, parse_mode: 'Markdown')
+      else
+        TelegramNotifier.send_message("🚨 Error running crypto analysis – #{e.message}", chat_id: @cid)
+      end
     end
 
     def normalize_crypto_symbol(raw_symbol)
