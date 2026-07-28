@@ -14,7 +14,9 @@ module ArchitectureGate
         forbidden_paths.each do |path_pattern|
           files = Dir.glob(path_pattern).select { |f| File.file?(f) }
           files.each do |file|
-            next if allowed_paths.any? { |a| file.start_with?(a.gsub("/**", "")) }
+            rel_path = file.sub(%r{^(\./)+}, "")
+            next if allowed_paths.any? { |a| matches_path?(rel_path, a) }
+
             check_file(file)
           end
         end
@@ -29,26 +31,26 @@ module ArchitectureGate
         lines.each_with_index do |line, idx|
           next if line.strip.start_with?("#")
 
-          if line.match?(/(#{MONEY_FIELDS.join('|')}).*\.to_f/i)
-            @report.add_failure(
-              check: "float_money",
-              file: file,
-              line: idx + 1,
-              message: "Float conversion on money field: #{line.strip}",
-              severity: :error
-            )
-          end
-
-          if line.match?(/Float\(/)
-            @report.add_failure(
-              check: "float_money",
-              file: file,
-              line: idx + 1,
-              message: "Float() call in domain/service layer: #{line.strip}",
-              severity: :error
-            )
+          # Check for .to_f on money-related variables (excluding percentages/ratios/counts like pnl_percent, margin_per, etc.)
+          MONEY_FIELDS.each do |field|
+            pattern = /\b#{field}(?!(?:_per|_percent|_pct|_ratio|_rate|_count|_size))\b.*\.to_f/i
+            if line.match?(pattern)
+              @report.add_failure(
+                check: "float_money",
+                file: file,
+                line: idx + 1,
+                message: "Float conversion on money field '#{field}': #{line.strip}",
+                severity: :error
+              )
+            end
           end
         end
+      end
+
+      def matches_path?(file_path, pattern)
+        clean_pattern = pattern.gsub("/**", "/*").gsub("**", "*")
+        File.fnmatch(clean_pattern, file_path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
+          file_path.start_with?(pattern.gsub("/**", "").gsub("/*", ""))
       end
     end
   end

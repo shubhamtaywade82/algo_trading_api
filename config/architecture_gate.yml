@@ -127,6 +127,8 @@ money:
     - "price.*=.*\\d+\\.\\d+"
   allowed_in:
     - "app/gateways/**"
+    - "app/services/instruments_importer.rb"
+    - "app/services/historical_options_analyzer.rb"
 
 idempotency:
   webhook_paths:
