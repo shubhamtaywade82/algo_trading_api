@@ -108,6 +108,97 @@ services:
       - key: SKIP_SEEDS_ON_DEPLOY
         sync: false
 
+  # ─────── Crypto SMC/ICT scanner — NOT DEPLOYED ──────────────────────────
+  #
+  # Deliberately absent, not forgotten. Binance answers `HTTP 451 — Service
+  # unavailable from a restricted location` to Render's egress IPs, so a worker
+  # here would boot, fail every fetch, and alert nothing. Paying for a service
+  # that cannot reach its only data source is worse than not running it.
+  #
+  # The code stays in the repo and is fully tested; it is simply inert on this
+  # deployment. Every switch it needs defaults to false, so nothing about the
+  # DhanHQ services above is affected:
+  #
+  #   CRYPTO_SMC_ENABLED=false     master switch (Crypto::Config.enabled?)
+  #   CRYPTO_SMC_AUTOSTART=false   in-Puma listener thread
+  #   config/recurring.yml         crypto entry commented out
+  #
+  # Run it where Binance is reachable — a laptop, or a host in a permitted
+  # region — with `rails crypto:doctor` first and then `rails crypto:stream`.
+  # See docs/CRYPTO_SMC.md. If a permitted endpoint ever becomes available from
+  # Render, the service below is what to uncomment; set CRYPTO_BINANCE_BASE to
+  # it and flip CRYPTO_SMC_ENABLED to "true".
+  #
+  # - type: worker
+  #   name: algo_trading_crypto_scanner
+  #   runtime: ruby
+  #   plan: starter
+  #   buildCommand: "./bin/render-build.sh"
+  #   startCommand: "bundle exec rake crypto:stream"
+  #   envVars:
+  #     # Rails.cache is solid_cache and the scanner boots the full app, so the
+  #     # database has to be reachable even though it persists nothing itself.
+  #     - key: DATABASE_URL
+  #       fromDatabase:
+  #         name: AlgoTradingAPI-DB
+  #         property: connectionString
+  #     - key: DATABASE_SSLMODE
+  #       value: require
+  #     - key: RAILS_ENV
+  #       value: production
+  #     # Need not match the web service's — this process serves no cookies and
+  #     # verifies no signed message; it only has to be present so Rails boots.
+  #     - key: SECRET_KEY_BASE
+  #       generateValue: true
+  #     - key: RAILS_LOG_TO_STDOUT
+  #       value: "true"
+  #     # The build script's optional steps are the web service's job.
+  #     - key: SKIP_SEEDS_ON_DEPLOY
+  #       value: "true"
+  #
+  #     - key: CRYPTO_SMC_ENABLED
+  #       value: "true"
+  #     - key: CRYPTO_SMC_SYMBOLS
+  #       value: "SOLUSDT,ETHUSDT"
+  #     - key: CRYPTO_SMC_STREAM_TIMEFRAMES
+  #       value: "5m,15m"
+  #     - key: CRYPTO_SMC_MIN_SCORE
+  #       value: "62"
+  #     - key: CRYPTO_SMC_MIN_RR
+  #       value: "1.8"
+  #     - key: CRYPTO_SMC_COOLDOWN_MINUTES
+  #       value: "45"
+  #     # How a 451 or a dead feed becomes visible: without it, an outage is
+  #     # indistinguishable from a quiet market.
+  #     - key: CRYPTO_SMC_HEALTH_ALERTS
+  #       value: "true"
+  #     # Required from Render — the default endpoint is geo-blocked here.
+  #     - key: CRYPTO_BINANCE_BASE
+  #       sync: false
+  #
+  #     - key: CRYPTO_TELEGRAM_CHAT_ID
+  #       sync: false
+  #     - key: TELEGRAM_BOT_TOKEN
+  #       sync: false
+  #     - key: TELEGRAM_CHAT_ID
+  #       sync: false
+  #
+  #     # The analyst step. Off leaves alerts with deterministic levels only.
+  #     - key: CRYPTO_SMC_LLM
+  #       value: "true"
+  #     - key: CRYPTO_SMC_LLM_MODEL
+  #       sync: false
+  #     - key: LLM_BACKEND
+  #       sync: false
+  #     - key: OLLAMA_API_KEY_1
+  #       sync: false
+  #
+  #     # Belt and braces: this process must never reach a broker.
+  #     - key: PLACE_ORDER
+  #       value: "false"
+  #     - key: LIVE_TRADING
+  #       value: "false"
+
   # # ─────── Cron service (every 5 min) ─────────────────────────────
   # - type: cron
   #   name: ta_update

@@ -78,6 +78,26 @@ module Crypto
       ENV['CRYPTO_TELEGRAM_CHAT_ID'].presence || ENV.fetch('TELEGRAM_CHAT_ID', nil)
     end
 
+    # Whether {Analyst} turns a qualifying setup into an execution plan before
+    # it is sent. On by default: the arithmetic decides *whether* to alert,
+    # the model decides how to say it. A failed or disabled call costs nothing
+    # — the alert still goes out with the deterministic levels.
+    def llm_enabled?
+      ENV.fetch('CRYPTO_SMC_LLM', 'true').to_s.downcase == 'true'
+    end
+
+    # Model override for the analyst. Unset means whatever
+    # `Openai::ChatRouter` resolves for the configured backend.
+    def llm_model
+      ENV['CRYPTO_SMC_LLM_MODEL'].presence
+    end
+
+    # Whether {Healthcheck} announces Binance connectivity on Telegram.
+    # Logging happens either way; this only governs the message.
+    def health_alerts?
+      ENV.fetch('CRYPTO_SMC_HEALTH_ALERTS', 'true').to_s.downcase == 'true'
+    end
+
     # Streams the event-based runner subscribes to. Only closed candles on
     # these timeframes trigger a scan; 1h/4h/1d closes are covered by the
     # scheduled scan.

@@ -34,8 +34,12 @@ module Crypto
 
       private
 
+      # The analyst runs here, past the cooldown, rather than in the scanner:
+      # this is the point at which the setup is definitely going to be sent,
+      # so a suppressed duplicate never costs an LLM round trip.
       def deliver(setup)
-        TelegramNotifier.send_message(SetupFormatter.call(setup), chat_id: chat_id)
+        commentary = Analyst.call(setup)
+        TelegramNotifier.send_message(SetupFormatter.call(setup, commentary: commentary), chat_id: chat_id)
         Rails.logger.info("[Crypto] alerted #{setup.symbol} #{setup.side} score=#{setup.score} rr=#{setup.risk_reward}")
         :sent
       rescue StandardError => e

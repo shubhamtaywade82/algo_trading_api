@@ -3,7 +3,12 @@
 require 'rails_helper'
 
 RSpec.describe Crypto::SmcScanJob do
-  before { allow(Crypto::Scanner).to receive(:call).and_return([]) }
+  let(:healthy) { Crypto::Healthcheck::Result.new(ok: true, symbol: 'SOLUSDT', price: 150.0, candles: 2) }
+
+  before do
+    allow(Crypto::Scanner).to receive(:call).and_return([])
+    allow(Crypto::Healthcheck).to receive(:report).and_return(healthy)
+  end
 
   context 'when the scanner is disabled' do
     before { allow(Crypto::Config).to receive(:enabled?).and_return(false) }
@@ -12,11 +17,32 @@ RSpec.describe Crypto::SmcScanJob do
       described_class.perform_now
 
       expect(Crypto::Scanner).not_to have_received(:call)
+      expect(Crypto::Healthcheck).not_to have_received(:report)
+    end
+  end
+
+  context 'when Binance is unreachable' do
+    before do
+      allow(Crypto::Config).to receive(:enabled?).and_return(true)
+      allow(Crypto::Healthcheck).to receive(:report)
+        .and_return(Crypto::Healthcheck::Result.new(ok: false, error: 'responded 451', status: 451))
+    end
+
+    it 'does not scan, so silence is never mistaken for a quiet market' do
+      described_class.perform_now
+
+      expect(Crypto::Scanner).not_to have_received(:call)
     end
   end
 
   context 'when the scanner is enabled' do
     before { allow(Crypto::Config).to receive(:enabled?).and_return(true) }
+
+    it 'checks the data feed before reading anything into a quiet scan' do
+      described_class.perform_now
+
+      expect(Crypto::Healthcheck).to have_received(:report)
+    end
 
     it 'scans every configured symbol by default' do
       described_class.perform_now
