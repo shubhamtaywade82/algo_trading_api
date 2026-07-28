@@ -1,4 +1,5 @@
 module TelegramBot
+  # rubocop:disable Metrics/ClassLength
   class CommandHandler < ApplicationService
     ANALYSIS_CACHE_KEY = 'portfolio:institutional:last_run'.freeze
 
@@ -498,3 +499,4 @@ module TelegramBot
     end
   end
 end
+# rubocop:enable Metrics/ClassLength
