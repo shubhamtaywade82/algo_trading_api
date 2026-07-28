@@ -36,6 +36,8 @@ module TelegramBot
       when '/oi_snapshot' then oi_snapshot
       when '/market_summary' then market_summary
       when '/expiry_roadmap' then expiry_roadmap
+      when '/crypto_scan' then run_crypto_scan
+      when %r{\A/crypto_analysis(?:\s+(.+))?\z} then run_crypto_analysis(Regexp.last_match(1))
       else
         handled = try_manual_signal!
         TelegramNotifier.send_message("❓ Unknown command: #{@cmd}", chat_id: @cid) unless handled
@@ -318,6 +320,69 @@ module TelegramBot
     rescue StandardError => e
       Rails.logger.error "[CommandHandler] expiry_roadmap – #{e.class}: #{e.message}"
       notify_analysis_error(e)
+    end
+
+    def run_crypto_scan
+      typing_ping
+      results = Crypto::Scanner.call
+      if results.empty?
+        TelegramNotifier.send_message(
+          'ℹ️ Crypto scan complete: No qualifying setups found across configured symbols.',
+          chat_id: @cid
+        )
+      else
+        results.each do |r|
+          next unless r.setup
+
+          msg = Crypto::SetupFormatter.call(r.setup)
+          TelegramNotifier.send_message(msg, chat_id: @cid)
+        end
+      end
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ crypto_scan failed – #{e.class}: #{e.message}"
+      TelegramNotifier.send_message("🚨 Error running crypto scan – #{e.message}", chat_id: @cid)
+    end
+
+    def run_crypto_analysis(raw_symbol = nil)
+      typing_ping
+      sym = normalize_crypto_symbol(raw_symbol)
+
+      analyzer = Crypto::Analyzer.new(sym)
+      reports = analyzer.reports
+      return TelegramNotifier.send_message("❌ Could not fetch Binance market data for #{sym}.", chat_id: @cid) if reports.nil?
+
+      lines = build_crypto_analysis_lines(sym, reports)
+      TelegramNotifier.send_message(lines.join("\n"), chat_id: @cid)
+    rescue StandardError => e
+      Rails.logger.error "[CommandHandler] ❌ crypto_analysis failed – #{e.class}: #{e.message}"
+      TelegramNotifier.send_message("🚨 Error running crypto analysis – #{e.message}", chat_id: @cid)
+    end
+
+    def normalize_crypto_symbol(raw_symbol)
+      sym = raw_symbol.presence || Crypto::Config.symbols.first || 'SOLUSDT'
+      sym = sym.to_s.strip.upcase
+      sym.end_with?('USDT') ? sym : "#{sym}USDT"
+    end
+
+    def build_crypto_analysis_lines(sym, reports)
+      lines = ["🪙 *Crypto SMC Analysis – #{sym}*"]
+      Crypto::Config::TIMEFRAMES.each do |tf|
+        rep = reports[tf]
+        next unless rep
+
+        s = rep.summary
+        price_fmt = Crypto::Formatting.price(s[:price])
+        lines << "• *#{tf.upcase}*: #{s[:bias].upcase} | #{price_fmt} | Zone: #{s[:zone] || 'N/A'} | Event: #{s[:last_event] || 'None'}"
+      end
+
+      setup = Crypto::SetupDetector.call(symbol: sym, reports: reports)
+      lines << ''
+      lines << if setup
+                 Crypto::SetupFormatter.call(setup)
+               else
+                 "ℹ️ _No active setup meeting score >= #{Crypto::Config.min_score} & R:R >= #{Crypto::Config.min_risk_reward}_"
+               end
+      lines
     end
 
     def instrument_for(symbol, exchange)

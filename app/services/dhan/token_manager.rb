@@ -61,15 +61,18 @@ module Dhan
 
       def request_local_dashboard_token
         url = ENV['DHAN_TOKEN_SERVICE_URL'].presence || 'http://localhost:3011/api/dhan_access_token'
-        bearer = ENV['DHAN_DASHBOARD_TOKEN'].presence || ENV['DASHBOARD_TOKEN'].presence || 'YOUR_DASHBOARD_TOKEN'
+        bearer = ENV['DHAN_TOKEN_ACCESS_TOKEN'].presence ||
+                 ENV['DHAN_DASHBOARD_TOKEN'].presence ||
+                 ENV['DASHBOARD_TOKEN'].presence ||
+                 'YOUR_DASHBOARD_TOKEN'
 
-        Rails.logger.info("[DHAN] Attempting to fetch access token from local dashboard (#{url})...")
+        Rails.logger.info("[DHAN] Attempting to fetch access token from remote service (#{url})...")
 
         Faraday.get(url) do |req|
           req.headers['Authorization'] = "Bearer #{bearer}"
           req.headers['Accept'] = 'application/json'
-          req.options.timeout = 3
-          req.options.open_timeout = 2
+          req.options.timeout = 5
+          req.options.open_timeout = 3
         end
       end
 
@@ -80,16 +83,22 @@ module Dhan
           {}
         end
 
-        token = data['dhan_access_token'] || data['dhanaccesstoken'] || data['accessToken']
+        token = data['dhan_access_token'] || data['dhanaccesstoken'] || data['accessToken'] || data['access_token']
         raw_expiry = data['expiry_time'] || data['expiryTime'] || data['expires_at']
         return nil if token.blank? || raw_expiry.blank?
 
         expires_at = Time.zone.parse(raw_expiry.to_s)
-        Rails.logger.info("[DHAN] Successfully retrieved access token from local dashboard service. Expires at #{expires_at}")
+        Rails.logger.info("[DHAN] Successfully retrieved access token from remote token service. Expires at #{expires_at}")
         { access_token: token, expires_at: expires_at }
       end
 
       def fetch_via_totp
+        unless allow_totp?
+          raise DhanHQ::InvalidAuthenticationError,
+                '[DHAN] TOTP token generation is disabled on this instance (DHAN_TOKEN_SERVICE_URL configured or DHAN_ALLOW_TOTP=false) ' \
+                'to prevent invalidating the active token on the deployed server.'
+        end
+
         Rails.logger.warn('[DHAN] Regenerating token via TOTP...')
 
         c = creds
@@ -105,13 +114,17 @@ module Dhan
         }
       end
 
-      def should_try_local_dashboard?
-        return false if Rails.env.test? && ENV['DHAN_TOKEN_SERVICE_URL'].blank? && ENV['DHAN_DASHBOARD_TOKEN'].blank?
+      def allow_totp?
+        return false if ENV['DHAN_ALLOW_TOTP'].to_s.downcase == 'false' || ENV['DHAN_DISABLE_TOTP'].to_s.downcase == 'true'
 
-        ENV['DHAN_TOKEN_SERVICE_URL'].present? ||
-          ENV['DHAN_DASHBOARD_TOKEN'].present? ||
-          ENV['DASHBOARD_TOKEN'].present? ||
-          Rails.env.development?
+        true
+      end
+
+      def should_try_local_dashboard?
+        return true if ENV['DHAN_TOKEN_SERVICE_URL'].present? || ENV['DHAN_DASHBOARD_TOKEN'].present? || ENV['DHAN_TOKEN_ACCESS_TOKEN'].present?
+        return false if Rails.env.test?
+
+        Rails.env.development?
       end
 
       # Executes block under PostgreSQL advisory lock.
