@@ -61,8 +61,8 @@ module Dhan
 
       def request_local_dashboard_token
         url = ENV['DHAN_TOKEN_SERVICE_URL'].presence || 'http://localhost:3011/api/dhan_access_token'
-        bearer = ENV['DHAN_TOKEN_ACCESS_TOKEN'].presence ||
-                 ENV['DHAN_DASHBOARD_TOKEN'].presence ||
+        bearer = ENV['DHAN_DASHBOARD_TOKEN'].presence ||
+                 ENV['DHAN_TOKEN_ACCESS_TOKEN'].presence ||
                  ENV['DASHBOARD_TOKEN'].presence ||
                  'YOUR_DASHBOARD_TOKEN'
 
@@ -121,10 +121,18 @@ module Dhan
       end
 
       def should_try_local_dashboard?
-        return true if ENV['DHAN_TOKEN_SERVICE_URL'].present? || ENV['DHAN_DASHBOARD_TOKEN'].present? || ENV['DHAN_TOKEN_ACCESS_TOKEN'].present?
-        return false if Rails.env.test?
+        if Rails.env.test? &&
+           ENV['DHAN_TOKEN_SERVICE_URL'].blank? &&
+           ENV['DHAN_DASHBOARD_TOKEN'].blank? &&
+           ENV['DHAN_TOKEN_ACCESS_TOKEN'].blank?
+          return false
+        end
 
-        Rails.env.development?
+        ENV['DHAN_TOKEN_SERVICE_URL'].present? ||
+          ENV['DHAN_DASHBOARD_TOKEN'].present? ||
+          ENV['DASHBOARD_TOKEN'].present? ||
+          ENV['DHAN_TOKEN_ACCESS_TOKEN'].present? ||
+          Rails.env.development?
       end
 
       # Executes block under PostgreSQL advisory lock.

@@ -10,6 +10,7 @@ RSpec.describe Dhan::TokenManager do
   let(:expiry_time) { 24.hours.from_now.iso8601 }
 
   before do
+    allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with('DHAN_CLIENT_ID').and_return(client_id)
     allow(ENV).to receive(:fetch).with('DHAN_PIN').and_return(pin)
     allow(ENV).to receive(:fetch).with('DHAN_TOTP_SECRET').and_return(totp_secret)
