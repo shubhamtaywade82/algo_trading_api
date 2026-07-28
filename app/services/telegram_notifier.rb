@@ -24,6 +24,12 @@ class TelegramNotifier
     post('sendChatAction', chat_id: chat_id, action: action)
   end
 
+  # rubocop:disable Naming/AccessorMethodName
+  def self.set_my_commands(commands)
+    post('setMyCommands', commands: commands)
+  end
+  # rubocop:enable Naming/AccessorMethodName
+
   # Telegram inline buttons reject localhost; use only for public HTTPS URLs.
   def self.public_url?(url)
     return false if url.blank?
