@@ -305,6 +305,39 @@ hit the live API — so a full strategy can be rehearsed against real prices.
 This is distinct from `PLACE_ORDER=false`, which short-circuits in this app
 before the SDK is called at all.
 
+## ₿ Crypto SMC/ICT scanner (analysis only)
+
+A scanner for **SOLUSDT** and **ETHUSDT** on Binance USD-M futures, running
+alongside — and entirely independent of — the DhanHQ path. It reads Smart Money
+Concepts / ICT structure top-down across `1d`, `4h`, `1h`, `15m` and `5m`
+(execution), and sends a Telegram message **only when a LONG or SHORT setup
+clears every gate**.
+
+- **Places no orders and holds no keys** — `Crypto::Binance::Client` has no
+  signed-request path at all, only public market data.
+- **Persists nothing** — candles are fetched, analysed and dropped. The Telegram
+  message is the entire output; there is no model and no migration.
+- **Reads**: market structure (BOS/CHoCH on closes), order blocks, fair value
+  gaps, liquidity pools and sweeps, premium/discount + OTE, displacement.
+- **Gates**: a 5m trigger is mandatory, the 1d and 4h biases must not both
+  oppose, and the setup needs a confluence score ≥ 62/100 and R:R ≥ 1.8.
+- **Runs**: event-based on candle close (`rake crypto:stream`, which also
+  carries a 5-minute safety-net sweep) and/or scheduled via
+  `Crypto::SmcScanJob`.
+
+```bash
+CRYPTO_SMC_ENABLED=true bundle exec rake crypto:stream   # event-driven listener
+rake crypto:report SYMBOL=ETHUSDT                        # full MTF read, no alert
+rake crypto:scan                                         # scan and alert now
+rake crypto:config                                       # resolved settings
+```
+
+Everything is inert unless `CRYPTO_SMC_ENABLED=true`. Note that Binance answers
+**HTTP 451** from restricted regions, including many cloud IP ranges — see the
+docs for `CRYPTO_BINANCE_BASE`.
+
+Full docs: **[docs/CRYPTO_SMC.md](docs/CRYPTO_SMC.md)**.
+
 ## 🤖 MCP (Model Context Protocol)
 
 The app exposes a **read-only DhanHQ MCP server** over HTTP so AI assistants (e.g. Cursor) and other MCP clients can call broker and market tools via JSON-RPC.

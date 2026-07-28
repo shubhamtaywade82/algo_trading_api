@@ -1,10 +1,24 @@
-# production:
-#   periodic_cleanup:
-#     class: CleanSoftDeletedRecordsJob
-#     queue: background
-#     args: [ 1000, { batch_size: 500 } ]
-#     schedule: every hour
-#   periodic_command:
-#     command: "SoftDeletedRecord.due.delete_all"
-#     priority: 2
-#     schedule: at 5am every day
+# Solid Queue recurring tasks.
+#
+# Crypto::SmcScanJob is the scheduled half of the SMC/ICT scanner; the
+# event-driven half is `rails crypto:stream`, which fires on candle close.
+# Both are inert unless CRYPTO_SMC_ENABLED=true, so enabling the schedule here
+# does not start alerting on its own.
+#
+# Five minutes matches the execution timeframe: every 5m candle close gets a
+# read even when the stream process is not running.
+
+default: &default
+  crypto_smc_scan:
+    class: Crypto::SmcScanJob
+    queue: default
+    schedule: every 5 minutes
+
+development:
+  <<: *default
+
+production:
+  <<: *default
+
+# Recurring tasks are skipped in test; the job is exercised directly by specs.
+test: {}
