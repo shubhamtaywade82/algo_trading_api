@@ -123,6 +123,23 @@ services:
 
   # ─────── Paper-trading engine (market feed + index watchlist scanner) ────
   #
+  # ⚠ Declaring this service here does not create it. Pushing to the branch
+  # auto-deploys the services that already exist; a service that is new in the
+  # blueprint is only created when the blueprint is synced from the Render
+  # dashboard (Blueprints → this blueprint → Sync). Until that sync happens
+  # there is no worker, no build and no log stream — the dashboard simply shows
+  # nothing for it, which reads exactly like a service that started and stayed
+  # quiet. If this engine appears not to have run for a session, check that the
+  # service exists at all before reading anything into its empty log.
+  #
+  # After the sync, every `sync: false` key below still has to be filled in on
+  # *this* service — services do not share environment, so the DHAN_* values
+  # set on the web service are not visible here. Missing DHAN_CLIENT_ID /
+  # DHAN_PIN / DHAN_TOTP_SECRET make `ENV.fetch` raise inside
+  # `start_token_refresher`, which aborts the process on boot; that abort goes
+  # to stderr and is visible immediately, so a log showing it means the sync
+  # worked and only the variables are missing.
+  #
   # One process, deliberately. `Live::TickCache` is a process-local Hash (see
   # the instrument-master notes in CLAUDE.md — the measurement behind that
   # choice), and in paper mode the tick stream is what fills resting orders,

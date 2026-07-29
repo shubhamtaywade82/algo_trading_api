@@ -158,6 +158,44 @@ rails live:paper_roll      # force the day rollover
 rails live:paper_reset     # back to starting capital
 ```
 
+## When the engine shows no logs at all
+
+An empty log is ambiguous — it is produced by a worker that never existed, by
+one that crashed before writing, and by one that is running perfectly. Work
+through it in this order rather than assuming the engine is dead.
+
+**1. Does the service exist on Render?** Declaring `algo_trading_paper_engine`
+in `render.yaml` does not create it. A push auto-deploys the services that
+already exist; a service that is new in the blueprint is only created when the
+blueprint is synced from the dashboard (Blueprints → this blueprint → Sync).
+Before the sync there is no worker, no build, and no log stream — the dashboard
+shows nothing, which reads exactly like a service that started and stayed
+quiet. Check the service list before reading anything into an empty log.
+
+**2. Did it abort on boot?** Both abort paths — `PAPER_TRADING` not set, and a
+token that could not be minted — write to stderr, which is never buffered, so
+they appear immediately. Seeing one means the service exists and only its
+environment is wrong. Every `DHAN_*` key is `sync: false` and services do not
+share environment, so the values set on the web service are not visible on the
+worker; missing `DHAN_CLIENT_ID` / `DHAN_PIN` / `DHAN_TOTP_SECRET` make
+`ENV.fetch` raise inside `start_token_refresher` and abort the process.
+
+**3. Is it running but buffered?** This was the original failure. Ruby leaves
+`$stdout` block-buffered whenever it is not a TTY, and on Render logs are
+captured through a pipe. The buffer flushes at 8 KB or on exit, and the engine
+is a daemon that does neither during a session: at a ~75-byte heartbeat every
+180s it needs roughly 5.5 hours to fill 8 KB — longer than the 6h15m session —
+so a healthy engine logged nothing all day. Puma sets sync itself, which is why
+the web service was never affected and this stayed invisible until the first
+rake worker was deployed.
+
+`config/environments/production.rb` and the daemon tasks in
+`lib/tasks/live_feed.rake` now set `$stdout.sync = true`, so a running engine
+prints its `[engine] connected=… ticks=… open=… net_pnl=…` heartbeat every
+`INDEX_WATCHLIST_SCAN_SECONDS`. That line appears outside market hours too —
+the scan is session-gated but the health report is not — so silence during the
+session now means the process really is not running.
+
 ## Turning it off
 
 Set `INDEX_WATCHLIST_TRADING=false` on the engine worker. The feed, the book,

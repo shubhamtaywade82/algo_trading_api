@@ -213,6 +213,21 @@ decisions below are settled; each has a failure mode behind it.
   check that accepted orders on market holidays. Don't reintroduce a local
   copy. `force: true` waives it, which is what lets `Paper::EodSquareOff` close
   positions after the bell.
+- **A rake daemon must set `$stdout.sync`.** Ruby block-buffers `$stdout`
+  whenever it is not a TTY, and flushes only at 8 KB or on exit — which a
+  process that runs all session never does. The engine's ~75-byte heartbeat
+  needs ~5.5 hours to fill the buffer, so a healthy worker logged nothing for a
+  whole session and looked like it had never started. Puma sets sync itself, so
+  only the rake workers are exposed. It is set in
+  `config/environments/production.rb` and again in the daemon tasks, because
+  the trap belongs to the process shape rather than the environment. `abort`
+  and `Rails.logger.error` to stderr are unaffected — stderr is never buffered,
+  which is why a crash was always visible and a healthy run was not.
+- **An empty Render log does not mean the worker died.** A service newly
+  declared in `render.yaml` is not created by a push; the blueprint has to be
+  synced from the dashboard first. Until then there is no service to log at
+  all. Check that it exists before debugging its silence — see the
+  troubleshooting order in `docs/PAPER_TRADING_INDICES.md`.
 
 ## LLM layer
 

@@ -3,6 +3,7 @@
 namespace :live do
   desc 'Run the market-feed daemon (Live::MarketFeedHub). MODE=ticker|quote|full, SYMBOLS=NSE_FNO:49081,IDX_I:13'
   task feed: :environment do
+    unbuffer_stdout!
     mode = (ENV['MODE'] || 'quote').to_sym
     hub = Live::MarketFeedHub.instance
 
@@ -99,6 +100,7 @@ namespace :live do
 
   desc 'Run the paper-trading engine: market feed + index watchlist scanner in one process'
   task paper_engine: :environment do
+    unbuffer_stdout!
     guard_paper_engine!
 
     hub = Live::MarketFeedHub.instance
@@ -124,6 +126,21 @@ namespace :live do
     end
 
     run_paper_engine_loop(hub)
+  end
+
+  # Ruby leaves $stdout block-buffered whenever it is not a TTY — a pipe to a
+  # log collector, a supervisor, a shell redirect. The buffer only flushes at
+  # 8 KB or on exit, and these tasks are daemons that do neither for a whole
+  # session, so their output is invisible for hours while the process is
+  # perfectly healthy. `bin/ws_feed` has set this since it was written; these
+  # tasks are the same kind of process and need the same line.
+  #
+  # config/environments/production.rb sets this too, so the deployed worker is
+  # covered before the task body runs. It is repeated here because the trap is
+  # a property of the *process shape*, not the environment: the same daemon run
+  # in development under a supervisor buffers identically.
+  def unbuffer_stdout!
+    $stdout.sync = true
   end
 
   # The engine places orders on its own initiative, so it refuses to run
