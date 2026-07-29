@@ -34,6 +34,23 @@ Rails.application.configure do
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   # Log to STDOUT with the current request id as a default log tag.
+  #
+  # `$stdout.sync` must be set before anything writes, and it is not on by
+  # default: Ruby leaves $stdout block-buffered whenever it is not a TTY, which
+  # on Render is always — logs are captured through a pipe. Puma sets sync
+  # itself, so the web service was never affected and this looked like a
+  # non-issue; a `rake` daemon (`live:paper_engine`, `live:feed`) has nothing
+  # that does, so its output sat in an 8 KB buffer that only flushes when the
+  # process exits. A process that runs all session never exits, so a healthy
+  # engine printing a ~75-byte heartbeat every 180s needs ~5.5 hours to fill
+  # the buffer — longer than the 6h15m session — and the dashboard shows an
+  # empty log for a worker that is in fact running fine.
+  #
+  # This covers the logger below and bare `puts` alike, since both write to the
+  # same IO. Do not remove it in favour of setting sync on the logger's device:
+  # `puts` would still be buffered.
+  $stdout.sync = true
+
   config.log_tags = [:request_id]
   config.logger   = ActiveSupport::TaggedLogging.logger($stdout)
 
