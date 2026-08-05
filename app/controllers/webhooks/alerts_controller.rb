@@ -84,12 +84,13 @@ module Webhooks
       @instrument ||= Alerts::InstrumentResolver.call(alert_params)
     end
 
-    # Checks if the instrument type is 'index' or 'stock', ignoring case.
+    # Checks if the instrument type is one of the supported types for alert processing.
+    # Includes domestic instruments (index, stock, futures) and global equities.
     #
     # @return [Boolean] true if relevant instrument type, false otherwise
     #
     def relevant_instrument_type?
-      %w[index stock futures].include?(alert_params[:instrument_type].to_s.downcase)
+      %w[index stock futures global_equity us_equity].include?(alert_params[:instrument_type].to_s.downcase)
     end
 
     # Strong parameters for alert creation.
