@@ -43,6 +43,8 @@ RSpec.describe 'TOKEN_PROVIDER_ONLY mode', :no_dhan_token do
     end
 
     it 'still serves the Dhan login route' do
+      secret = 'token-api-secret-at-least-24-chars'
+      allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(secret)
       allow(ENV).to receive(:fetch).and_call_original
       allow(ENV).to receive(:fetch).with('DHAN_CLIENT_ID', nil).and_return('client-123')
       allow(ENV).to receive(:fetch).with('CLIENT_ID', nil).and_return(nil)
@@ -52,7 +54,8 @@ RSpec.describe 'TOKEN_PROVIDER_ONLY mode', :no_dhan_token do
         .to_return(status: 200, body: { consentAppId: 'abc', status: 'success' }.to_json,
                    headers: { 'Content-Type' => 'application/json' })
 
-      get auth_dhan_login_url
+      basic = "Basic #{Base64.strict_encode64("anything:#{secret}")}"
+      get auth_dhan_login_url, headers: { 'Authorization' => basic }
 
       expect(response).to have_http_status(:redirect)
     end

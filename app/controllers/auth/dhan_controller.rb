@@ -5,8 +5,22 @@ module Auth
   class DhanController < ApplicationController
     include ActionController::HttpAuthentication::Basic::ControllerMethods
 
+    DASHBOARD_REALM = 'Dhan Token Status'
+    MAX_AUTH_FAILURES = 10
+    AUTH_LOCKOUT_WINDOW = 5.minutes
+
+    # login/callback are the OAuth-style hand-off with Dhan and would otherwise be
+    # public, unauthenticated GETs — anyone could hit /login to mint a consent
+    # session with our app_id/app_secret, complete it with their own Dhan account,
+    # and let Dhan's redirect land a foreign access_token in our single-row store,
+    # silently hijacking the token every other caller then receives. Gating both
+    # behind the same Basic Auth as /status closes that: an attacker without the
+    # shared secret can't start the flow, and a browser that already authenticated
+    # for /login reuses the cached credentials automatically when Dhan redirects
+    # back to /callback (same origin, same realm).
+    before_action :apply_security_headers
+    before_action :authenticate_dashboard_request, only: %i[login callback status]
     before_action :authenticate_token_request, only: :token
-    before_action :authenticate_status_request, only: :status
 
     # STEP 1 + redirect to STEP 2: generate consent, send user to Dhan login.
     def login
@@ -68,7 +82,17 @@ module Auth
 
     private
 
+    def apply_security_headers
+      response.set_header('Cache-Control', 'no-store')
+      response.set_header('X-Content-Type-Options', 'nosniff')
+      response.set_header('X-Frame-Options', 'DENY')
+      response.set_header('Referrer-Policy', 'no-referrer')
+      response.set_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+    end
+
     def authenticate_token_request
+      return if rate_limited?(:token, as: :json)
+
       expected = Auth::DhanTokenEndpointSecret.configured_secret
       if expected.blank?
         render json: { error: token_endpoint_config_error }, status: :service_unavailable
@@ -76,21 +100,74 @@ module Auth
       end
 
       bearer = request.authorization.to_s.sub(/\ABearer\s+/i, '').strip
-      return if ActiveSupport::SecurityUtils.secure_compare(bearer, expected)
+      if ActiveSupport::SecurityUtils.secure_compare(bearer, expected)
+        reset_auth_failures(:token)
+        return
+      end
 
+      register_auth_failure(:token)
       render json: { error: 'Invalid or missing Authorization: Bearer token' }, status: :unauthorized
     end
 
-    def authenticate_status_request
+    def authenticate_dashboard_request
+      return if rate_limited?(:dashboard, as: :plain)
+
       expected = Auth::DhanTokenEndpointSecret.configured_secret
       if expected.blank?
         render plain: token_endpoint_config_error, status: :service_unavailable
         return
       end
 
-      authenticate_or_request_with_http_basic('Dhan Token Status') do |_user, password|
-        ActiveSupport::SecurityUtils.secure_compare(password, expected)
+      authenticate_or_request_with_http_basic(DASHBOARD_REALM) do |_user, password|
+        ok = ActiveSupport::SecurityUtils.secure_compare(password, expected)
+        ok ? reset_auth_failures(:dashboard) : register_auth_failure(:dashboard)
+        ok
       end
+    end
+
+    # Per-IP failure lockout for both auth paths. Rails.cache is process-local
+    # memory_store in production (see config/environments/production.rb), so with
+    # WEB_CONCURRENCY=2 the effective ceiling is up to 2x MAX_AUTH_FAILURES across
+    # workers — an acceptable trade for not adding a shared-store dependency just
+    # for this.
+    def rate_limited?(bucket, as:)
+      return false if auth_failure_count(bucket) < MAX_AUTH_FAILURES
+
+      message = 'Too many failed attempts. Try again later.'
+      if as == :json
+        render json: { error: message }, status: :too_many_requests
+      else
+        render plain: message, status: :too_many_requests
+      end
+      true
+    end
+
+    def auth_failure_count(bucket)
+      Rails.cache.read(auth_lockout_key(bucket)).to_i
+    end
+
+    def register_auth_failure(bucket)
+      count = Rails.cache.increment(auth_lockout_key(bucket), 1, expires_in: AUTH_LOCKOUT_WINDOW)
+      notify_auth_lockout(bucket) if count == MAX_AUTH_FAILURES
+    end
+
+    def reset_auth_failures(bucket)
+      Rails.cache.delete(auth_lockout_key(bucket))
+    end
+
+    def auth_lockout_key(bucket)
+      "dhan_auth_lockout:#{bucket}:#{request.remote_ip}"
+    end
+
+    def notify_auth_lockout(bucket)
+      return if ENV['TELEGRAM_BOT_TOKEN'].blank? || ENV['TELEGRAM_CHAT_ID'].blank?
+
+      TelegramNotifier.send_message(
+        "🚨 #{MAX_AUTH_FAILURES} failed Dhan #{bucket} auth attempts from #{request.remote_ip}. " \
+        "Locked out for #{AUTH_LOCKOUT_WINDOW.inspect}."
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[Auth::DhanController] lockout notify failed: #{e.message}")
     end
 
     def status_html(record)
