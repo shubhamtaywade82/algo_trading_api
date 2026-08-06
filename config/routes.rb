@@ -5,6 +5,7 @@ Rails.application.routes.draw do
     get 'dhan/login', to: 'dhan#login', as: :dhan_login
     get 'dhan/callback', to: 'dhan#callback', as: :dhan_callback
     get 'dhan/token', to: 'dhan#token', as: :dhan_token
+    get 'dhan/status', to: 'dhan#status', as: :dhan_status
   end
 
   resources :swing_picks

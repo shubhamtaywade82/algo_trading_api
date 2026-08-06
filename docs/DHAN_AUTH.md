@@ -4,10 +4,12 @@ Dhan uses an **API Key & Secret** flow (auth.dhan.co): the access token is user-
 
 ## Flow (3 steps)
 
-1. **Login** — Visit `GET /auth/dhan/login`. The app calls Dhan to generate a consent session, then redirects you to **auth.dhan.co** to log in and approve.
-2. **Callback** — After login, Dhan redirects to `GET /auth/dhan/callback?tokenId=...`. The app exchanges the tokenId for an access token and stores it in `dhan_access_tokens`.
+1. **Login** — Visit `GET /auth/dhan/login`. Your browser will prompt for HTTP Basic credentials first (see below) — any username, and the same secret used for `/auth/dhan/token` as the password. Once authenticated, the app calls Dhan to generate a consent session and redirects you to **auth.dhan.co** to log in and approve.
+2. **Callback** — After login, Dhan redirects to `GET /auth/dhan/callback?tokenId=...`. This route requires the same Basic Auth as `/login`; your browser reuses the credentials it already cached for this origin, so you normally aren't re-prompted. The app exchanges the tokenId for an access token and stores it in `dhan_access_tokens`.
 3. **Usage** — The DhanHQ client reads the token from the DB (injected in `config/initializers/dhanhq.rb`). No manual copy-paste.
 4. **Expiry** — When the token expires, trading jobs halt. Re-login at `/auth/dhan/login`.
+
+`/login` and `/callback` are gated deliberately: left open, anyone could hit `/login` to mint a consent session under your `DHAN_API_KEY`/`DHAN_API_SECRET`, approve it with *their own* Dhan account, and let Dhan's redirect overwrite `dhan_access_tokens` with a foreign token — silently hijacking every token every other caller then receives. Requiring the shared secret up front closes that off.
 
 ## Environment
 
@@ -36,6 +38,18 @@ Example:
 ```bash
 curl -H "Authorization: Bearer YOUR_DHAN_TOKEN_ACCESS_TOKEN" https://algo-trading-api.onrender.com/auth/dhan/token
 ```
+
+## Browser dashboard
+
+`GET /auth/dhan/status` is a small read-only HTML page — token state, expiry countdown, last-refresh time, masked token (never the full value) — for checking things by eye instead of `curl`. It's gated behind HTTP Basic Auth using the same secret as `/token`; the browser will prompt for credentials the first time.
+
+## Security notes
+
+- **Same secret, three doors.** `DHAN_TOKEN_ACCESS_TOKEN` (or the `dhan.token_endpoint_secret` credential) gates `/token` (Bearer), and `/login` + `/callback` + `/status` (Basic). Rotate it by changing that one value; nothing else references it.
+- **Lockout on repeated failures.** After 10 failed auth attempts from the same IP within 5 minutes, that IP is locked out (`429`) for the rest of the window — including with the *correct* secret, so don't hammer a misconfigured integration or you'll lock yourself out too. A Telegram alert fires once per lockout if `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are set.
+- **Nothing sensitive is cached.** Every response from this controller sets `Cache-Control: no-store`, and `/status` adds `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and a `default-src 'none'` CSP, so the page can't be framed, sniffed, or cached by a shared proxy.
+- **The full access token is only ever in the `/token` JSON response**, never in `/status`'s HTML (which shows a masked `prefix…suffix` instead) or in any log line (`filter_parameter_logging.rb` also redacts anything matching `token`/`secret`/`_key` as a backstop).
+- **Transport is enforced.** `config.force_ssl = true` in production, so Basic Auth credentials and Bearer tokens never travel over plain HTTP.
 
 ## Jobs
 

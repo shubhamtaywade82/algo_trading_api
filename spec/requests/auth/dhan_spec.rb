@@ -3,11 +3,18 @@
 require 'rails_helper'
 
 RSpec.describe 'Auth::Dhan' do
-  describe 'GET /auth/dhan/login' do
+  let(:dashboard_secret) { 'token-api-secret-at-least-24-chars' }
+
+  def basic_auth_header(user, password)
+    "Basic #{Base64.strict_encode64("#{user}:#{password}")}"
+  end
+
+  describe 'GET /auth/dhan/login', :no_dhan_token do
     let(:consent_url) { %r{https://auth\.dhan\.co/app/generate-consent\?client_id=client-123} }
     let(:consent_response) { { consentAppId: 'consent-abc', consentAppStatus: 'GENERATED', status: 'success' }.to_json }
 
     before do
+      allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(dashboard_secret)
       stub_request(:post, consent_url)
         .with(headers: { 'app_id' => 'api-key', 'app_secret' => 'api-secret' })
         .to_return(status: 200, body: consent_response, headers: { 'Content-Type' => 'application/json' })
@@ -18,8 +25,15 @@ RSpec.describe 'Auth::Dhan' do
       allow(ENV).to receive(:fetch).with('DHAN_API_SECRET', nil).and_return('api-secret')
     end
 
-    it 'generates consent and redirects to Dhan login with consentAppId' do
+    it 'returns 401 without credentials, without calling Dhan' do
       get auth_dhan_login_url
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(a_request(:post, consent_url)).not_to have_been_made
+    end
+
+    it 'generates consent and redirects to Dhan login with consentAppId when authenticated' do
+      get auth_dhan_login_url, headers: { 'Authorization' => basic_auth_header('anything', dashboard_secret) }
 
       expect(response).to have_http_status(:redirect)
       expect(response.location).to start_with('https://auth.dhan.co/login/consentApp-login?')
@@ -27,8 +41,20 @@ RSpec.describe 'Auth::Dhan' do
     end
   end
 
-  describe 'GET /auth/dhan/callback' do
+  describe 'GET /auth/dhan/callback', :no_dhan_token do
     let(:consume_url) { %r{https://auth\.dhan\.co/app/consumeApp-consent\?tokenId=token-xyz} }
+    let(:auth_header) { { 'Authorization' => basic_auth_header('anything', dashboard_secret) } }
+
+    before do
+      allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(dashboard_secret)
+    end
+
+    it 'returns 401 without credentials and does not create a token' do
+      expect { get auth_dhan_callback_url(tokenId: 'token-xyz') }
+        .not_to change(DhanAccessToken, :count)
+
+      expect(response).to have_http_status(:unauthorized)
+    end
 
     context 'when consent consume succeeds' do
       before do
@@ -48,7 +74,7 @@ RSpec.describe 'Auth::Dhan' do
       end
 
       it 'creates a DhanAccessToken and returns success' do
-        expect { get auth_dhan_callback_url(tokenId: 'token-xyz') }
+        expect { get auth_dhan_callback_url(tokenId: 'token-xyz'), headers: auth_header }
           .to change(DhanAccessToken, :count).by(1)
 
         expect(response).to have_http_status(:ok)
@@ -62,7 +88,7 @@ RSpec.describe 'Auth::Dhan' do
 
     context 'when tokenId is missing' do
       it 'returns unprocessable_entity and does not create a token' do
-        expect { get auth_dhan_callback_url }
+        expect { get auth_dhan_callback_url, headers: auth_header }
           .not_to change(DhanAccessToken, :count)
 
         expect(response).to have_http_status(:unprocessable_entity)
@@ -81,7 +107,7 @@ RSpec.describe 'Auth::Dhan' do
       end
 
       it 'returns unprocessable_entity and does not create a token' do
-        expect { get auth_dhan_callback_url(tokenId: 'token-xyz') }
+        expect { get auth_dhan_callback_url(tokenId: 'token-xyz'), headers: auth_header }
           .not_to change(DhanAccessToken, :count)
 
         expect(response).to have_http_status(:unprocessable_entity)
@@ -91,7 +117,7 @@ RSpec.describe 'Auth::Dhan' do
   end
 
   describe 'GET /auth/dhan/token', :no_dhan_token do
-    let(:secret) { 'token-api-secret-at-least-24-chars' }
+    let(:secret) { dashboard_secret }
 
     context 'when token endpoint secret is not configured' do
       before { allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(nil) }
@@ -155,6 +181,115 @@ RSpec.describe 'Auth::Dhan' do
         expect(body['client_id']).to eq('client-456')
         expect(body['expires_at']).to be_present
       end
+
+      it 'sets Cache-Control: no-store and hardening headers' do
+        DhanAccessToken.delete_all
+        DhanAccessToken.create!(access_token: 'jwt.here', expires_at: 1.hour.from_now)
+
+        get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{secret}" }
+
+        expect(response.headers['Cache-Control']).to eq('no-store')
+        expect(response.headers['X-Content-Type-Options']).to eq('nosniff')
+        expect(response.headers['X-Frame-Options']).to eq('DENY')
+      end
+    end
+  end
+
+  describe 'GET /auth/dhan/status', :no_dhan_token do
+    let(:secret) { dashboard_secret }
+
+    before do
+      allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(secret)
+    end
+
+    it 'returns 401 without credentials' do
+      get auth_dhan_status_url
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it 'returns 401 with wrong password' do
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', 'wrong') }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it 'renders an HTML page with masked token when a token exists' do
+      DhanAccessToken.delete_all
+      DhanAccessToken.create!(access_token: 'eyJhbGciOiJIUzI1NiJ9.testtoken.signature', expires_at: 30.minutes.from_now)
+
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', secret) }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.content_type).to include('text/html')
+      expect(response.body).to include('ACTIVE')
+      expect(response.body).not_to include('eyJhbGciOiJIUzI1NiJ9.testtoken.signature')
+    end
+
+    it 'renders MISSING when no token exists' do
+      DhanAccessToken.delete_all
+
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', secret) }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('MISSING')
+    end
+
+    it 'sets Cache-Control: no-store and a restrictive CSP' do
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', secret) }
+
+      expect(response.headers['Cache-Control']).to eq('no-store')
+      expect(response.headers['Content-Security-Policy']).to include("default-src 'none'")
+    end
+  end
+
+  describe 'auth failure lockout', :no_dhan_token do
+    around do |example|
+      original_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = original_cache
+    end
+
+    before do
+      allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(dashboard_secret)
+    end
+
+    it 'locks out the Bearer token endpoint after repeated failures from the same IP' do
+      10.times do
+        get auth_dhan_token_url, headers: { 'Authorization' => 'Bearer wrong' }
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{dashboard_secret}" }
+
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    it 'resets the lockout counter on a successful Bearer auth' do
+      3.times { get auth_dhan_token_url, headers: { 'Authorization' => 'Bearer wrong' } }
+
+      DhanAccessToken.delete_all
+      DhanAccessToken.create!(access_token: 'jwt.here', expires_at: 1.hour.from_now)
+      get auth_dhan_token_url, headers: { 'Authorization' => "Bearer #{dashboard_secret}" }
+      expect(response).to have_http_status(:ok)
+
+      9.times do
+        get auth_dhan_token_url, headers: { 'Authorization' => 'Bearer wrong' }
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    it 'locks out the dashboard (Basic Auth) endpoints after repeated failures from the same IP' do
+      10.times do
+        get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('x', 'wrong') }
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('x', dashboard_secret) }
+
+      expect(response).to have_http_status(:too_many_requests)
     end
   end
 end

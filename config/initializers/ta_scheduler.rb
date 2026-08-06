@@ -1,7 +1,7 @@
 START_TIME = Time.zone.parse('09:10')
 END_TIME = Time.zone.parse('15:30')
 
-if ENV['ENABLE_TA_LOOP'] == 'true'
+if ENV['ENABLE_TA_LOOP'] == 'true' && ENV['TOKEN_PROVIDER_ONLY'] != 'true'
   Rails.application.config.after_initialize do
     next if defined?(Rake) # skip during db:migrate, db:seed, and other one-off rake tasks
     next unless ActiveRecord::Base.connection.table_exists?('dhan_access_tokens')
