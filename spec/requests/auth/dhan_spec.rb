@@ -157,4 +157,49 @@ RSpec.describe 'Auth::Dhan' do
       end
     end
   end
+
+  describe 'GET /auth/dhan/status', :no_dhan_token do
+    let(:secret) { 'token-api-secret-at-least-24-chars' }
+
+    before do
+      allow(Auth::DhanTokenEndpointSecret).to receive(:configured_secret).and_return(secret)
+    end
+
+    it 'returns 401 without credentials' do
+      get auth_dhan_status_url
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it 'returns 401 with wrong password' do
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', 'wrong') }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it 'renders an HTML page with masked token when a token exists' do
+      DhanAccessToken.delete_all
+      DhanAccessToken.create!(access_token: 'eyJhbGciOiJIUzI1NiJ9.testtoken.signature', expires_at: 30.minutes.from_now)
+
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', secret) }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.content_type).to include('text/html')
+      expect(response.body).to include('ACTIVE')
+      expect(response.body).not_to include('eyJhbGciOiJIUzI1NiJ9.testtoken.signature')
+    end
+
+    it 'renders MISSING when no token exists' do
+      DhanAccessToken.delete_all
+
+      get auth_dhan_status_url, headers: { 'Authorization' => basic_auth_header('anything', secret) }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('MISSING')
+    end
+  end
+
+  def basic_auth_header(user, password)
+    "Basic #{Base64.strict_encode64("#{user}:#{password}")}"
+  end
 end
