@@ -21,6 +21,7 @@
 #     inert on every existing deployment.
 Rails.application.config.after_initialize do
   next unless ENV.fetch('CRYPTO_SMC_AUTOSTART', 'false').to_s.downcase == 'true'
+  next if ENV['TOKEN_PROVIDER_ONLY'] == 'true'
   next unless Crypto::Config.enabled?
   next if Rails.env.test?
   # Rake tasks, migrations and consoles have no business holding a socket open.

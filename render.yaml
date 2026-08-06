@@ -99,6 +99,17 @@ services:
       - key: INDEX_WATCHLIST_TRADING
         value: "false"
 
+      # Set to "true" to run this deployment as a bare Dhan token provider:
+      # ApplicationController 503s every route except /auth/dhan/*, so other
+      # apps/bots can call GET /auth/dhan/token for an always-fresh access
+      # token without this instance placing a single order. TokenManager's
+      # boot-time refresh and the 5-minute background refresh thread are
+      # unaffected and keep the token current either way. If you flip this on,
+      # also suspend (or never sync) the algo_trading_paper_engine worker
+      # below — it places orders on its own initiative and has no use here.
+      - key: TOKEN_PROVIDER_ONLY
+        value: "false"
+
       # LLM backend. Blank = OpenAI; ollama_cloud uses OLLAMA_API_KEY_1..5.
       - key: LLM_BACKEND
         sync: false
